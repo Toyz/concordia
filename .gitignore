@@ -1,0 +1,26 @@
+# Build directories
+build/
+bin/
+lib/
+
+# IDEs
+.vscode/
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln
+*.vcxproj
+*.vcxproj.filters
+
+# Temporary/Generated files
+*.il
+*.bin
+*.tmp
+*.log
+output.json
+nested_out.json
+
+# OS
+.DS_Store
+Thumbs.db

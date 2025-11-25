@@ -1,0 +1,8 @@
+@version(1)
+
+packet Status {
+    uint16 voltage;
+    @count(3)
+    uint8 sensors[3];
+    string log until 0x00 max 32;
+}

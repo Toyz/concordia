@@ -1,0 +1,5 @@
+{
+    "voltage": 12345,
+    "sensors": 42,
+    "log": "Hello World"
+}
