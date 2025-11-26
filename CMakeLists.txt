@@ -33,14 +33,16 @@ endif()
 
 # --- Targets ---
 
-# VM Library
-add_library(concordia src/vm.c)
+# Library
+add_library(concordia src/vm/vm_exec.c src/vm/vm_io.c)
 
 # Compiler Library
 add_library(cnd_compiler src/compiler/cndc.c)
 
+add_executable(hexview src/tools/hexview.c)
+
 # Main CLI Tool (cnd)
-add_executable(cnd src/cli/main.c)
+add_executable(cnd src/cli/main.c src/cli/cli_helpers.c src/cli/cmd_compile.c src/cli/cmd_encode.c src/cli/cmd_decode.c)
 target_link_libraries(cnd concordia cnd_compiler cjson)
 
 # Test Executable

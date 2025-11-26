@@ -1,0 +1,3 @@
+packet TestPacket {
+    string description until 0x00 max 64;
+}

@@ -1,0 +1,11 @@
+struct PackedItem {
+    uint8 a : 1;
+    uint8 b : 1;
+    @pad(2)
+    uint8 c : 4;
+}
+
+packet BitpackTest {
+    @count(2)
+    PackedItem items[2];
+}

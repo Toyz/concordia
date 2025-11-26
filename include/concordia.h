@@ -36,7 +36,7 @@ extern "C" {
 #define OP_IO_BIT_I         0x21
 #define OP_IO_BIT_BOOL      0x22
 #define OP_ALIGN_PAD        0x23
-#define OP_ALIGN_BYTE       0x24
+#define OP_ALIGN_FILL       0x24
 
 // Category D: Arrays & Strings
 #define OP_STR_NULL         0x30

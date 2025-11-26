@@ -1,0 +1,47 @@
+struct PackedItem {
+    uint8 a : 1;
+    
+    uint8 b : 1;
+    
+    @pad(2)
+    uint8 c : 4;
+}
+
+
+struct TelemetryHeader {
+    @const(0xBE) 
+    uint8 magic_byte;
+    
+    uint8 version;
+    
+    uint16 packet_id;
+    
+    uint32 timestamp;
+}
+
+struct GPSData {
+    int32 latitude;
+    int32 longitude;
+    float altitude;
+}
+
+packet SensorPacket {
+    TelemetryHeader header;
+    
+    GPSData gps;
+    
+    @big_endian
+    uint16 sensor_count;
+    
+    uint8 sensor_ids[] prefix uint8;
+    
+    string description until 0x00 max 64;
+    
+    float battery_voltage;
+    
+    @const(0xDE) 
+    uint8 footer_marker;
+    
+    @count(2)
+    PackedItem items[2];
+}

@@ -206,7 +206,9 @@ Token lexer_next(Lexer* lexer) {
 
         if (is_alpha_c(c)) {
             token.type = TOK_IDENTIFIER;
-            while (is_alpha_c(*lexer->current) || is_digit_c(*lexer->current)) lexer->current++;
+            while (is_alpha_c(*lexer->current) || is_digit_c(*lexer->current)) {
+                lexer->current++;
+            }
             token.length = (int)(lexer->current - token.start);
             return token;
         }
@@ -282,128 +284,232 @@ void parse_field(Parser* p) {
     if (p->had_error) return;
 
     // Decorators
-    uint32_t array_count = 0;
-    int has_count = 0;
+    uint32_t array_fixed_count = 0; // Fixed array size from [N]
+    int has_fixed_array_count = 0; // Flag for fixed array
     uint32_t const_val = 0;
     int has_const = 0;
+    int is_big_endian_field = 0; // Flag for @big_endian field decorator
     
     while (p->current.type == TOK_AT) {
         advance(p); 
         Token dec_name = p->current;
         consume(p, TOK_IDENTIFIER, "Expect decorator name");
-        consume(p, TOK_LPAREN, "Expect (");
         
-        if (match_keyword(dec_name, "count")) {
-            Token num = p->current;
-            consume(p, TOK_NUMBER, "Expect count number");
-            array_count = parse_number(num);
-            has_count = 1;
-        } else if (match_keyword(dec_name, "const")) {
-            Token num = p->current;
-            consume(p, TOK_NUMBER, "Expect const value");
-            const_val = parse_number(num);
-            has_const = 1;
+        // Handle decorators without arguments
+        if (match_keyword(dec_name, "big_endian")) {
+            is_big_endian_field = 1;
+            // No arguments, so just advance past decorator name
+        } else if (match_keyword(dec_name, "fill")) {
+            // @fill takes no arguments, it just aligns to the next byte
+            buf_push(p->target, OP_ALIGN_FILL);
         } else {
-            while (p->current.type != TOK_RPAREN && p->current.type != TOK_EOF) advance(p);
+             // Decorators with arguments
+            consume(p, TOK_LPAREN, "Expect ("); 
+            if (match_keyword(dec_name, "count")) {
+                Token num = p->current;
+                consume(p, TOK_NUMBER, "Expect count number");
+                array_fixed_count = parse_number(num);
+                has_fixed_array_count = 1;
+            } else if (match_keyword(dec_name, "const")) {
+                Token num = p->current;
+                consume(p, TOK_NUMBER, "Expect const value");
+                const_val = parse_number(num);
+                has_const = 1;
+            } else if (match_keyword(dec_name, "pad")) {
+                Token num = p->current;
+                consume(p, TOK_NUMBER, "Expect pad bits");
+                uint32_t pad_bits = parse_number(num);
+                buf_push(p->target, OP_ALIGN_PAD);
+                buf_push(p->target, (uint8_t)pad_bits);
+            } else {
+                while (p->current.type != TOK_RPAREN && p->current.type != TOK_EOF) advance(p);
+            }
+            consume(p, TOK_RPAREN, "Expect )");
         }
-        consume(p, TOK_RPAREN, "Expect )");
     }
 
+    // 1. Parse Type (e.g., uint8 or string)
     Token type_tok = p->current;
     consume(p, TOK_IDENTIFIER, "Expect field type");
 
+    // 2. Parse Name
     Token name_tok = p->current;
     consume(p, TOK_IDENTIFIER, "Expect field name");
-    
     uint16_t key_id = strtab_add(&p->strtab, name_tok.start, name_tok.length);
 
-    // Array Suffix [N]
-    if (p->current.type == TOK_LBRACKET) {
-        advance(p);
-        Token num = p->current;
-        consume(p, TOK_NUMBER, "Expect array size");
-        consume(p, TOK_RBRACKET, "Expect ]");
-        array_count = parse_number(num);
-        has_count = 1;
-    } 
-    
-    if (has_count) {
-         buf_push(p->target, OP_ARR_FIXED);
-         buf_push_u16(p->target, (uint16_t)array_count);
+    uint8_t bit_width = 0;
+    if (p->current.type == TOK_COLON) {
+        advance(p); // consume ':'
+        Token bits = p->current;
+        consume(p, TOK_NUMBER, "Expect bit width");
+        bit_width = (uint8_t)parse_number(bits);
     }
 
-    // Handle @const
+    // 3. Check for Array suffix (e.g., uint8[] or uint8[3]) and related prefix/until/max modifiers
+    int is_array_field = 0;
+    int is_variable_array = 0; // Flag for [] (variable) vs [N] (fixed)
+    uint8_t arr_prefix_op = OP_NOOP;
+    uint8_t str_prefix_op = OP_NOOP;
+    uint16_t max_len = 255; // Default max_len for STR_NULL if not specified
+    
+    // Check for array suffix
+    if (p->current.type == TOK_LBRACKET) {
+        advance(p); // consume '['
+        is_array_field = 1;
+
+        if (p->current.type == TOK_RBRACKET) { // empty [] for variable length
+            advance(p); // consume ']'
+            is_variable_array = 1;
+        } else { // [N] for fixed length
+            Token num = p->current;
+            consume(p, TOK_NUMBER, "Expect array size");
+            array_fixed_count = parse_number(num);
+            has_fixed_array_count = 1;
+            consume(p, TOK_RBRACKET, "Expect ]"); // consume ']'
+        }
+    }
+    
+    // Check for 'prefix' keyword (for variable arrays or strings) or 'until/max' for strings
+    if (match_keyword(p->current, "prefix")) {
+        advance(p); // consume 'prefix'
+        Token ptype = p->current;
+        consume(p, TOK_IDENTIFIER, "Expect prefix type"); // Consumes prefix type
+        
+        if (is_variable_array) { // Variable Array prefix
+            if (match_keyword(ptype, "uint8") || match_keyword(ptype, "u8")) arr_prefix_op = OP_ARR_PRE_U8;
+            else if (match_keyword(ptype, "uint16") || match_keyword(ptype, "u16")) arr_prefix_op = OP_ARR_PRE_U16;
+            else if (match_keyword(ptype, "uint32") || match_keyword(ptype, "u32")) arr_prefix_op = OP_ARR_PRE_U32;
+            else parser_error(p, "Invalid prefix type for variable array");
+        } else if (match_keyword(type_tok, "string")) { // String prefix
+            if (match_keyword(ptype, "uint8") || match_keyword(ptype, "u8")) str_prefix_op = OP_STR_PRE_U8;
+            else if (match_keyword(ptype, "uint16") || match_keyword(ptype, "u16")) str_prefix_op = OP_STR_PRE_U16;
+            else if (match_keyword(ptype, "uint32") || match_keyword(ptype, "u32")) str_prefix_op = OP_STR_PRE_U32;
+            else parser_error(p, "Invalid prefix type for string");
+        } else {
+            parser_error(p, "Prefix keyword used for non-variable-array/non-string type");
+        }
+    } else if (match_keyword(type_tok, "string")) { // Check for 'until' or 'max' only if it's a string and no prefix
+        if (match_keyword(p->current, "until")) {
+            advance(p); consume(p, TOK_NUMBER, "Expect val"); // For now, ignoring value. Assuming 0x00
+        }
+        if (match_keyword(p->current, "max")) {
+            advance(p);
+            Token max_tok = p->current;
+            consume(p, TOK_NUMBER, "Expect max length");
+            max_len = (uint16_t)parse_number(max_tok);
+        }
+    }
+
+    // Emit Endianness for this field if specified
+    if (is_big_endian_field) {
+        buf_push(p->target, OP_SET_ENDIAN_BE);
+    }
+
+
+    // Emit Array / String prefix Opcodes (these emit BEFORE the actual field)
+    if (arr_prefix_op != OP_NOOP) {
+        buf_push(p->target, arr_prefix_op);
+        buf_push_u16(p->target, key_id); // KeyID for the count field
+    } else if (has_fixed_array_count && is_array_field) { // has_count from decorator or fixed [N]
+        buf_push(p->target, OP_ARR_FIXED);
+        buf_push_u16(p->target, key_id); // KeyID for the array
+        buf_push_u16(p->target, (uint16_t)array_fixed_count);
+    } else if (str_prefix_op != OP_NOOP) {
+        buf_push(p->target, str_prefix_op);
+        buf_push_u16(p->target, key_id);
+    }
+
+    // Handle @const (Const has higher precedence for emission, but applied to the underlying type)
     if (has_const) {
-        // Assume u16 for now or based on type
-        // Logic: Emit OP_CONST_CHECK Type Val
         uint8_t type_op = OP_IO_U16; // Default to U16
         if (match_keyword(type_tok, "uint8") || match_keyword(type_tok, "byte")) type_op = OP_IO_U8;
-        else if (match_keyword(type_tok, "uint32") || match_keyword(type_tok, "u32")) type_op = OP_IO_U32; // Not supported in VM yet for const
+        else if (match_keyword(type_tok, "uint32") || match_keyword(type_tok, "u32")) type_op = OP_IO_U32;
+        else if (match_keyword(type_tok, "uint64") || match_keyword(type_tok, "u64")) type_op = OP_IO_U64;
         
         buf_push(p->target, OP_CONST_CHECK);
         buf_push(p->target, type_op);
         if (type_op == OP_IO_U8) buf_push(p->target, (uint8_t)const_val);
-        else buf_push_u16(p->target, (uint16_t)const_val);
-        
-        // Const fields usually don't map to a KeyID if they are hidden/hardcoded.
-        // But if the user defined a field name, they might expect it in JSON?
-        // If it's strictly const check, it usually doesn't produce JSON output unless specifically requested.
-        // For now, OP_CONST_CHECK advances cursor but does NOT invoke callback.
-        // So it won't appear in JSON. This is correct for magic bytes.
+        else if (type_op == OP_IO_U16) buf_push_u16(p->target, (uint16_t)const_val);
+        else if (type_op == OP_IO_U32) buf_push_u32(p->target, const_val);
+        else parser_error(p, "Const type not yet supported for u64"); // Simple consts for now
     } else {
-        // Standard Field
-        
-        // Check if type is a struct
+        // Standard Field emission
         StructDef* sdef = reg_find(&p->registry, type_tok.start, type_tok.length);
         
         if (sdef) {
-            // Nested Struct
             buf_push(p->target, OP_ENTER_STRUCT);
             buf_push_u16(p->target, key_id);
+            // printf("COMPILER_DEBUG: Appending struct '%s' bytecode (size %zu) to target (current size %zu)\n", sdef->name, sdef->bytecode.size, p->target->size);
             buf_append(p->target, sdef->bytecode.data, sdef->bytecode.size);
+            // printf("COMPILER_DEBUG: After append, target size %zu\n", p->target->size);
             buf_push(p->target, OP_EXIT_STRUCT);
         } 
         else if (match_keyword(type_tok, "string")) {
-            uint16_t max_len = 255;
-            if (match_keyword(p->current, "until")) {
-                advance(p); consume(p, TOK_NUMBER, "Expect val");
+            // Only emit OP_STR_NULL if no prefix (prefix already handled above)
+            if (str_prefix_op == OP_NOOP) { 
+                // String properties (until, max) need to be handled here.
+                // Re-parsing this seems duplicative, the state should have been captured.
+                // For now, these are ignored if string is prefix type.
+                buf_push(p->target, OP_STR_NULL);
+                buf_push_u16(p->target, key_id);
+                buf_push_u16(p->target, max_len); // Use default max_len 255 if not specified
             }
-            if (match_keyword(p->current, "max")) {
-                advance(p);
-                Token max_tok = p->current;
-                consume(p, TOK_NUMBER, "Expect max length");
-                max_len = (uint16_t)parse_number(max_tok);
-            }
-            buf_push(p->target, OP_STR_NULL);
-            buf_push_u16(p->target, key_id);
-            buf_push_u16(p->target, max_len);
         } else {
             // Primitive
             uint8_t op = OP_NOOP;
-            if (match_keyword(type_tok, "uint8") || match_keyword(type_tok, "byte")) op = OP_IO_U8;
-            else if (match_keyword(type_tok, "uint16") || match_keyword(type_tok, "u16")) op = OP_IO_U16;
-            else if (match_keyword(type_tok, "uint32") || match_keyword(type_tok, "u32")) op = OP_IO_U32;
-            else if (match_keyword(type_tok, "uint64") || match_keyword(type_tok, "u64")) op = OP_IO_U64;
-            else if (match_keyword(type_tok, "int8") || match_keyword(type_tok, "i8")) op = OP_IO_I8;
-            else if (match_keyword(type_tok, "int16") || match_keyword(type_tok, "i16")) op = OP_IO_I16;
-            else if (match_keyword(type_tok, "int32") || match_keyword(type_tok, "i32")) op = OP_IO_I32;
-            else if (match_keyword(type_tok, "int64") || match_keyword(type_tok, "i64")) op = OP_IO_I64;
-            else if (match_keyword(type_tok, "float") || match_keyword(type_tok, "f32")) op = OP_IO_F32;
-            else if (match_keyword(type_tok, "double") || match_keyword(type_tok, "f64")) op = OP_IO_F64;
-            else {
-                parser_error(p, "Unknown type");
-                return;
+            if (bit_width > 0) {
+                 if (match_keyword(type_tok, "uint8") || match_keyword(type_tok, "byte") ||
+                     match_keyword(type_tok, "uint16") || match_keyword(type_tok, "u16") ||
+                     match_keyword(type_tok, "uint32") || match_keyword(type_tok, "u32") ||
+                     match_keyword(type_tok, "uint64") || match_keyword(type_tok, "u64")) {
+                     op = OP_IO_BIT_U;
+                 }
+                 else if (match_keyword(type_tok, "int8") || match_keyword(type_tok, "i8") ||
+                          match_keyword(type_tok, "int16") || match_keyword(type_tok, "i16") ||
+                          match_keyword(type_tok, "int32") || match_keyword(type_tok, "i32") ||
+                          match_keyword(type_tok, "int64") || match_keyword(type_tok, "i64")) {
+                     op = OP_IO_BIT_I;
+                 }
+                 else {
+                     parser_error(p, "Bitfields only supported for integer types");
+                     return;
+                 }
+                 
+                 buf_push(p->target, op);
+                 buf_push_u16(p->target, key_id);
+                 buf_push(p->target, bit_width);
+            } else {
+                if (match_keyword(type_tok, "uint8") || match_keyword(type_tok, "byte")) op = OP_IO_U8;
+                else if (match_keyword(type_tok, "uint16") || match_keyword(type_tok, "u16")) op = OP_IO_U16;
+                else if (match_keyword(type_tok, "uint32") || match_keyword(type_tok, "u32")) op = OP_IO_U32;
+                else if (match_keyword(type_tok, "uint64") || match_keyword(type_tok, "u64")) op = OP_IO_U64;
+                else if (match_keyword(type_tok, "int8") || match_keyword(type_tok, "i8")) op = OP_IO_I8;
+                else if (match_keyword(type_tok, "int16") || match_keyword(type_tok, "i16")) op = OP_IO_I16;
+                else if (match_keyword(type_tok, "int32") || match_keyword(type_tok, "i32")) op = OP_IO_I32;
+                else if (match_keyword(type_tok, "int64") || match_keyword(type_tok, "i64")) op = OP_IO_I64;
+                else if (match_keyword(type_tok, "float") || match_keyword(type_tok, "f32")) op = OP_IO_F32;
+                else if (match_keyword(type_tok, "double") || match_keyword(type_tok, "f64")) op = OP_IO_F64;
+                else {
+                    parser_error(p, "Unknown type");
+                    return;
+                }
+                buf_push(p->target, op);
+                buf_push_u16(p->target, key_id);
             }
-            buf_push(p->target, op);
-            buf_push_u16(p->target, key_id);
         }
     }
     
-    if (has_count) {
+    // An array field (fixed or prefixed) needs an ARR_END.
+    if (is_array_field) { 
         buf_push(p->target, OP_ARR_END);
     }
 
     consume(p, TOK_SEMICOLON, "Expect ; after field");
+
+    // After emitting field ops, if endianness was set, reset it to default LE
+    if (is_big_endian_field) {
+        buf_push(p->target, OP_SET_ENDIAN_LE); // Reset to LE after field
+    }
 }
 
 void parse_block(Parser* p) {
@@ -437,18 +543,30 @@ void parse_top_level(Parser* p) {
         if (p->current.type == TOK_AT) {
             advance(p); 
             Token dec = p->current;
-            consume(p, TOK_IDENTIFIER, "Expect decorator");
-            consume(p, TOK_LPAREN, "Expect (");
-            if (match_keyword(dec, "version")) {
+            consume(p, TOK_IDENTIFIER, "Expect decorator name");
+            
+            // Handle global decorators without arguments
+            if (match_keyword(dec, "version")) { // Version has args
+                consume(p, TOK_LPAREN, "Expect (");
                 Token ver = p->current;
                 consume(p, TOK_NUMBER, "Expect version number");
                 uint32_t v = parse_number(ver);
                 buf_push(p->target, OP_META_VERSION);
                 buf_push(p->target, (uint8_t)v);
+                consume(p, TOK_RPAREN, "Expect )");
+            } else if (match_keyword(dec, "big_endian")) { // Global big_endian without args
+                buf_push(p->target, OP_SET_ENDIAN_BE);
+            } else if (match_keyword(dec, "little_endian") || match_keyword(dec, "le")) { // Global little_endian without args
+                buf_push(p->target, OP_SET_ENDIAN_LE);
             } else {
-                while (p->current.type != TOK_RPAREN) advance(p);
+                // Unknown decorator, skip until ')' if has args, or until next token.
+                // For now, assume it's a decorator with args we don't know, so skip ( ... )
+                if (p->current.type == TOK_LPAREN) {
+                    consume(p, TOK_LPAREN, "Expect (");
+                    while (p->current.type != TOK_RPAREN && p->current.type != TOK_EOF) advance(p);
+                    consume(p, TOK_RPAREN, "Expect )");
+                }
             }
-            consume(p, TOK_RPAREN, "Expect )");
         } else if (match_keyword(p->current, "struct")) {
             advance(p);
             parse_struct(p);
@@ -464,6 +582,7 @@ void parse_top_level(Parser* p) {
 // --- API Implementation ---
 
 int cnd_compile_file(const char* in_path, const char* out_path) {
+    setbuf(stdout, NULL); // Ensure debug prints are flushed immediately
     FILE* f = fopen(in_path, "rb");
     if (!f) { printf("Error opening input file: %s\n", in_path); return 1; }
     fseek(f, 0, SEEK_END);
