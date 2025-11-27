@@ -391,13 +391,14 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             }
             
             case OP_CONST_CHECK: {
+                uint16_t key = read_il_u16(ctx);
                 uint8_t type = read_il_u8(ctx);
                 uint64_t expected = 0;
                 int size = 0;
-                if (type == OP_IO_U8) { expected = read_il_u8(ctx); size=1; }
-                else if (type == OP_IO_U16) { expected = read_il_u16(ctx); size=2; }
-                else if (type == OP_IO_U32) { expected = read_il_u32(ctx); size=4; }
-                else if (type == OP_IO_U64) { expected = read_il_u64(ctx); size=8; }
+                if (type == OP_IO_U8 || type == OP_IO_I8) { expected = read_il_u8(ctx); size=1; }
+                else if (type == OP_IO_U16 || type == OP_IO_I16) { expected = read_il_u16(ctx); size=2; }
+                else if (type == OP_IO_U32 || type == OP_IO_I32) { expected = read_il_u32(ctx); size=4; }
+                else if (type == OP_IO_U64 || type == OP_IO_I64) { expected = read_il_u64(ctx); size=8; }
                 else { return CND_ERR_INVALID_OP; }
                 
                 if (ctx->cursor + size > ctx->data_len) return CND_ERR_OOB;
@@ -414,6 +415,12 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                     else if (size == 4) actual = read_u32(ctx->data_buffer + ctx->cursor, ctx->endianness);
                     else if (size == 8) actual = read_u64(ctx->data_buffer + ctx->cursor, ctx->endianness);
                     if (actual != expected) return CND_ERR_VALIDATION;
+
+                    // Notify host (Read-Only)
+                    if (size == 1) { uint8_t v = (uint8_t)actual; if (ctx->io_callback(ctx, key, type, &v) != CND_ERR_OK) return CND_ERR_CALLBACK; }
+                    else if (size == 2) { uint16_t v = (uint16_t)actual; if (ctx->io_callback(ctx, key, type, &v) != CND_ERR_OK) return CND_ERR_CALLBACK; }
+                    else if (size == 4) { uint32_t v = (uint32_t)actual; if (ctx->io_callback(ctx, key, type, &v) != CND_ERR_OK) return CND_ERR_CALLBACK; }
+                    else if (size == 8) { uint64_t v = actual; if (ctx->io_callback(ctx, key, type, &v) != CND_ERR_OK) return CND_ERR_CALLBACK; }
                 }
                 
                 ctx->cursor += size;

@@ -77,6 +77,7 @@ Decorators provide metadata and transformation logic.
 
 ### Validation & Constants
 *   `@const(value)`: Field must match this value.
+    *   **Note:** Constant fields are handled entirely by the VM. They are automatically written during encoding and verified during decoding. In **decode** mode, the value is reported to the callback (read-only).
 *   `@range(min, max)`: Value must be within range.
 
 ### Transformation

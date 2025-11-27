@@ -189,3 +189,104 @@ TEST_F(ConcordiaTest, ForwardDependency) {
     EXPECT_EQ(buffer[0], 1);
 }
 */
+
+TEST_F(ConcordiaTest, TelemetryPacketEncodeDecode) {
+    // Compile the Telemetry packet definition
+    CompileAndLoad(
+        "packet Telemetry {"
+        "  @const(0xCAFE) uint16 sync_word;"
+        "  float temperature;"
+        "  @count(3) uint8 sensors[3];"
+        "  uint8 status : 1;"
+        "  uint8 error  : 1;"
+        "  uint8 mode   : 6;"
+        "}"
+    );
+
+    // Prepare test data
+    // Note: @const fields are handled internally by the VM and do not trigger callbacks.
+    // So we start with Key 1 (temperature).
+    
+    int idx = 0;
+    g_test_data[idx].key = 1; // temperature
+    g_test_data[idx].f64_val = 23.5f;
+    idx++;
+    
+    g_test_data[idx].key = 2; // sensors[0]
+    g_test_data[idx].u64_val = 10;
+    idx++;
+    g_test_data[idx].key = 2; // sensors[1]
+    g_test_data[idx].u64_val = 20;
+    idx++;
+    g_test_data[idx].key = 2; // sensors[2]
+    g_test_data[idx].u64_val = 30;
+    idx++;
+    
+    g_test_data[idx].key = 3; // status
+    g_test_data[idx].u64_val = 1;
+    idx++;
+    g_test_data[idx].key = 4; // error
+    g_test_data[idx].u64_val = 0;
+    idx++;
+    g_test_data[idx].key = 5; // mode
+    g_test_data[idx].u64_val = 42;
+    idx++;
+
+    // ENCODE
+    // Note: In ENCODE mode, @const fields are written automatically by the VM and do not trigger callbacks.
+    TestContext tctx = {true, 0};
+    memset(buffer, 0, sizeof(buffer));
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, &tctx);
+    cnd_error_t err = cnd_execute(&ctx);
+    EXPECT_EQ(err, CND_ERR_OK);
+    
+    // Verify Sync Word in Buffer (Little Endian 0xCAFE -> FE CA)
+    EXPECT_EQ((uint8_t)buffer[0], 0xFE);
+    EXPECT_EQ((uint8_t)buffer[1], 0xCA);
+
+    // DECODE
+    // Note: In DECODE mode, @const fields are validated by the VM, but ALSO reported to the callback (Read-Only).
+    // So we need to update the test data to expect Key 0 (sync_word) first.
+    
+    clear_test_data();
+    idx = 0;
+    g_test_data[idx].key = 0; // sync_word
+    g_test_data[idx].u64_val = 0xCAFE;
+    idx++;
+    g_test_data[idx].key = 1; // temperature
+    g_test_data[idx].f64_val = 23.5f;
+    idx++;
+    g_test_data[idx].key = 2; // sensors[0]
+    g_test_data[idx].u64_val = 10;
+    idx++;
+    g_test_data[idx].key = 2; // sensors[1]
+    g_test_data[idx].u64_val = 20;
+    idx++;
+    g_test_data[idx].key = 2; // sensors[2]
+    g_test_data[idx].u64_val = 30;
+    idx++;
+    g_test_data[idx].key = 3; // status
+    g_test_data[idx].u64_val = 1;
+    idx++;
+    g_test_data[idx].key = 4; // error
+    g_test_data[idx].u64_val = 0;
+    idx++;
+    g_test_data[idx].key = 5; // mode
+    g_test_data[idx].u64_val = 42;
+    idx++;
+
+    tctx.tape_index = 0;
+    cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, sizeof(buffer), test_io_callback, &tctx);
+    err = cnd_execute(&ctx);
+    EXPECT_EQ(err, CND_ERR_OK);
+
+    // Check decoded values
+    EXPECT_EQ(g_test_data[0].u64_val, 0xCAFE); // sync_word
+    EXPECT_FLOAT_EQ((float)g_test_data[1].f64_val, 23.5f); // temperature
+    EXPECT_EQ(g_test_data[2].u64_val, 10); // sensors[0]
+    EXPECT_EQ(g_test_data[3].u64_val, 20); // sensors[1]
+    EXPECT_EQ(g_test_data[4].u64_val, 30); // sensors[2]
+    EXPECT_EQ(g_test_data[5].u64_val, 1); // status
+    EXPECT_EQ(g_test_data[6].u64_val, 0); // error
+    EXPECT_EQ(g_test_data[7].u64_val, 42); // mode
+}

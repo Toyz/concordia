@@ -79,7 +79,7 @@ TEST_F(ConcordiaTest, Constants) {
     
     uint8_t il[] = { 
         OP_CONST_WRITE, OP_IO_U8, 0xAA,
-        OP_CONST_CHECK, OP_IO_U8, 0xBB
+        OP_CONST_CHECK, 0x00, 0x00, OP_IO_U8, 0xBB
     };
     
     // ENCODE: Should write 0xAA and 0xBB
@@ -616,23 +616,24 @@ TEST_F(ConcordiaTest, ComplexIntegration) {
     
     EXPECT_EQ(g_test_data[0].key, 3); EXPECT_EQ(g_test_data[0].u64_val, 0x12345678); // Magic
     EXPECT_EQ(g_test_data[1].key, 4); EXPECT_EQ(g_test_data[1].u64_val, 0x0100);     // Version
-    EXPECT_EQ(g_test_data[2].key, 6); EXPECT_EQ(g_test_data[2].u64_val, 0xA);        // Flags
-    EXPECT_EQ(g_test_data[3].key, 7); EXPECT_EQ(g_test_data[3].u64_val, 0xFF);       // Aligned
-    EXPECT_EQ(g_test_data[4].key, 8); EXPECT_EQ(g_test_data[4].u64_val, 2);          // Count
+    EXPECT_EQ(g_test_data[2].key, 5); EXPECT_EQ(g_test_data[2].u64_val, 0xDEADBEEF); // Signature
+    EXPECT_EQ(g_test_data[3].key, 6); EXPECT_EQ(g_test_data[3].u64_val, 0xA);        // Flags
+    EXPECT_EQ(g_test_data[4].key, 7); EXPECT_EQ(g_test_data[4].u64_val, 0xFF);       // Aligned
+    EXPECT_EQ(g_test_data[5].key, 8); EXPECT_EQ(g_test_data[5].u64_val, 2);          // Count
     
     // Point 1
-    EXPECT_EQ(g_test_data[5].key, 1); EXPECT_EQ(g_test_data[5].u64_val, 10);         // x
-    EXPECT_EQ(g_test_data[6].key, 2); EXPECT_EQ(g_test_data[6].u64_val, 20);         // y
+    EXPECT_EQ(g_test_data[6].key, 1); EXPECT_EQ(g_test_data[6].u64_val, 10);         // x
+    EXPECT_EQ(g_test_data[7].key, 2); EXPECT_EQ(g_test_data[7].u64_val, 20);         // y
     
     // Point 2
-    EXPECT_EQ(g_test_data[7].key, 1); EXPECT_EQ(g_test_data[7].u64_val, 30);         // x
-    EXPECT_EQ(g_test_data[8].key, 2); EXPECT_EQ(g_test_data[8].u64_val, 40);         // y
+    EXPECT_EQ(g_test_data[8].key, 1); EXPECT_EQ(g_test_data[8].u64_val, 30);         // x
+    EXPECT_EQ(g_test_data[9].key, 2); EXPECT_EQ(g_test_data[9].u64_val, 40);         // y
     
-    EXPECT_EQ(g_test_data[9].key, 9); EXPECT_STREQ(g_test_data[9].string_val, "Test"); // Name
-    EXPECT_EQ(g_test_data[10].key, 10); EXPECT_NEAR(g_test_data[10].f64_val, 15.0, 0.001); // Sensor
+    EXPECT_EQ(g_test_data[10].key, 9); EXPECT_STREQ(g_test_data[10].string_val, "Test"); // Name
+    EXPECT_EQ(g_test_data[11].key, 10); EXPECT_NEAR(g_test_data[11].f64_val, 15.0, 0.001); // Sensor
     
     // Imported
     // imp_data (Key 11) is skipped by callback in DECODE too.
     // So next entry is imp_val (Key 0).
-    EXPECT_EQ(g_test_data[11].key, 0); EXPECT_EQ(g_test_data[11].u64_val, 0x9999); // imp_val
+    EXPECT_EQ(g_test_data[12].key, 0); EXPECT_EQ(g_test_data[12].u64_val, 0x9999); // imp_val
 }
