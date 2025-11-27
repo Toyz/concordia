@@ -6,6 +6,9 @@
 			"include": "#comments"
 		},
 		{
+			"include": "#enum-def"
+		},
+		{
 			"include": "#decorators"
 		},
 		{
@@ -40,6 +43,38 @@
 					"begin": "/\\*",
 					"end": "\\*/"
 				}
+			]
+		},
+		"enum-def": {
+			"begin": "\\b(enum)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+			"beginCaptures": {
+				"1": { "name": "keyword.control.cnd" },
+				"2": { "name": "entity.name.type.enum.cnd" }
+			},
+			"end": "\\}",
+			"patterns": [
+				{ "include": "#comments" },
+				{
+					"match": ":\\s*([a-zA-Z0-9_]+)",
+					"captures": {
+						"1": { "name": "storage.type.cnd" }
+					}
+				},
+				{ "include": "#numbers" },
+				{
+					"match": "([a-zA-Z_][a-zA-Z0-9_]*)\\s*(=)",
+					"captures": {
+						"1": { "name": "variable.other.enummember.cnd" },
+						"2": { "name": "keyword.operator.assignment.cnd" }
+					}
+				},
+				{
+					"match": "([a-zA-Z_][a-zA-Z0-9_]*)",
+					"captures": {
+						"1": { "name": "variable.other.enummember.cnd" }
+					}
+				},
+				{ "include": "#operators" }
 			]
 		},
 		"decorators": {

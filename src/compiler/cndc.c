@@ -22,6 +22,7 @@ int cnd_compile_file(const char* in_path, const char* out_path, int json_output)
     strtab_init(&p.strtab);
     strtab_init(&p.imports);
     reg_init(&p.registry);
+    enum_reg_init(&p.enums);
     p.had_error = 0;
     p.target = &p.global_bc;
     p.current_path = in_path;

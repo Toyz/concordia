@@ -764,4 +764,32 @@ static void BM_DecodeSimple(benchmark::State& state) {
 }
 BENCHMARK(BM_DecodeSimple);
 
+static void BM_EnumEncode(benchmark::State& state) {
+    std::vector<uint8_t> bytecode;
+    CompileSchema(
+        "enum Status : uint8 { Ok = 0, Error = 1, Unknown = 2 }"
+        "packet P { Status s; }", 
+        bytecode
+    );
+    
+    cnd_program program;
+    program.bytecode = bytecode.data();
+    program.bytecode_len = bytecode.size();
+    
+    uint8_t buffer[16];
+    cnd_vm_ctx ctx;
+    
+    // Simple callback that just writes 1 (Error)
+    auto cb = [](cnd_vm_ctx* ctx, uint16_t key, uint8_t type, void* ptr) -> cnd_error_t {
+        *(uint8_t*)ptr = 1;
+        return CND_ERR_OK;
+    };
+    
+    for (auto _ : state) {
+        cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), cb, NULL);
+        cnd_execute(&ctx);
+    }
+}
+BENCHMARK(BM_EnumEncode);
+
 BENCHMARK_MAIN();

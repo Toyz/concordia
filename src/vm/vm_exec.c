@@ -427,6 +427,43 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 break;
             }
 
+            case OP_ENUM_CHECK: {
+                uint8_t type = read_il_u8(ctx);
+                uint16_t count = read_il_u16(ctx);
+                bool found = false;
+                
+                #define CHECK_ENUM(size, ctype, READ_EXPR) \
+                    ctype actual = (READ_EXPR); \
+                    for (uint16_t i = 0; i < count; i++) { \
+                        ctype val = 0; \
+                        if (size == 1) val = (ctype)read_il_u8(ctx); \
+                        else if (size == 2) val = (ctype)read_il_u16(ctx); \
+                        else if (size == 4) val = (ctype)read_il_u32(ctx); \
+                        else if (size == 8) val = (ctype)read_il_u64(ctx); \
+                        if (actual == val) { \
+                            found = true; \
+                            ctx->ip += (count - 1 - i) * size; \
+                            break; \
+                        } \
+                    }
+
+                switch (type) {
+                    case OP_IO_U8:  { CHECK_ENUM(1, uint8_t, read_u8(ctx->data_buffer + ctx->cursor - 1)); break; }
+                    case OP_IO_I8:  { CHECK_ENUM(1, int8_t,  (int8_t)read_u8(ctx->data_buffer + ctx->cursor - 1)); break; }
+                    case OP_IO_U16: { CHECK_ENUM(2, uint16_t, read_u16(ctx->data_buffer + ctx->cursor - 2, ctx->endianness)); break; }
+                    case OP_IO_I16: { CHECK_ENUM(2, int16_t,  (int16_t)read_u16(ctx->data_buffer + ctx->cursor - 2, ctx->endianness)); break; }
+                    case OP_IO_U32: { CHECK_ENUM(4, uint32_t, read_u32(ctx->data_buffer + ctx->cursor - 4, ctx->endianness)); break; }
+                    case OP_IO_I32: { CHECK_ENUM(4, int32_t,  (int32_t)read_u32(ctx->data_buffer + ctx->cursor - 4, ctx->endianness)); break; }
+                    case OP_IO_U64: { CHECK_ENUM(8, uint64_t, read_u64(ctx->data_buffer + ctx->cursor - 8, ctx->endianness)); break; }
+                    case OP_IO_I64: { CHECK_ENUM(8, int64_t,  (int64_t)read_u64(ctx->data_buffer + ctx->cursor - 8, ctx->endianness)); break; }
+                    default: return CND_ERR_INVALID_OP;
+                }
+                #undef CHECK_ENUM
+                
+                if (!found) return CND_ERR_VALIDATION;
+                break;
+            }
+
             case OP_RANGE_CHECK: {
                 uint8_t type = read_il_u8(ctx);
                 switch (type) {

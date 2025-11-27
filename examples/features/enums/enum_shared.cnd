@@ -1,0 +1,6 @@
+// This enum is intended to be shared across multiple packets
+enum SharedStatus : uint8 {
+    Idle = 0,
+    Active = 1,
+    Fault = 2
+}

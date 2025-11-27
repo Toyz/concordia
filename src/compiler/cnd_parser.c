@@ -376,6 +376,7 @@ void parse_field(Parser* p) {
         if (has_range) { emit_range_check(p, type_op, range_min_tok, range_max_tok); }
     } else {
         StructDef* sdef = reg_find(&p->registry, type_tok.start, type_tok.length);
+        EnumDef* edef = enum_reg_find(&p->enums, type_tok.start, type_tok.length);
         
         if (sdef) {
             if (p->current_struct_name && 
@@ -393,7 +394,27 @@ void parse_field(Parser* p) {
             buf_push(p->target, OP_ENTER_STRUCT); buf_push_u16(p->target, key_id);
             buf_append(p->target, sdef->bytecode.data, sdef->bytecode.size);
             buf_push(p->target, OP_EXIT_STRUCT);
-        } 
+        } else if (edef) {
+            if (trans_type != CND_TRANS_NONE) { parser_error(p, "Cannot apply scale/transform to enum field"); }
+            if (has_crc) { parser_error(p, "Cannot apply CRC to enum field"); }
+            if (bit_width > 0) { parser_error(p, "Bitfields not supported for enum fields"); }
+            
+            buf_push(p->target, edef->underlying_type); buf_push_u16(p->target, key_id);
+            
+            // Emit Enum Validation
+            buf_push(p->target, OP_ENUM_CHECK);
+            buf_push(p->target, edef->underlying_type);
+            buf_push_u16(p->target, (uint16_t)edef->count);
+            for (size_t i = 0; i < edef->count; i++) {
+                int64_t val = edef->values[i].value;
+                if (edef->underlying_type == OP_IO_U8 || edef->underlying_type == OP_IO_I8) buf_push(p->target, (uint8_t)val);
+                else if (edef->underlying_type == OP_IO_U16 || edef->underlying_type == OP_IO_I16) buf_push_u16(p->target, (uint16_t)val);
+                else if (edef->underlying_type == OP_IO_U32 || edef->underlying_type == OP_IO_I32) buf_push_u32(p->target, (uint32_t)val);
+                else if (edef->underlying_type == OP_IO_U64 || edef->underlying_type == OP_IO_I64) buf_push_u64(p->target, (uint64_t)val);
+            }
+
+            if (has_range) { emit_range_check(p, edef->underlying_type, range_min_tok, range_max_tok); }
+        }
         else if (match_keyword(type_tok, "string")) {
             if (trans_type != CND_TRANS_NONE) { parser_error(p, "Cannot apply scale/offset/transform to string"); }
             if (has_range) { parser_error(p, "Cannot apply range check to string"); }
@@ -469,6 +490,61 @@ void parse_block(Parser* p) {
     consume(p, TOK_LBRACE, "Expect {");
     while (p->current.type != TOK_RBRACE && p->current.type != TOK_EOF && !p->had_error) {
         parse_field(p);
+    }
+    consume(p, TOK_RBRACE, "Expect }");
+}
+
+void parse_enum(Parser* p) {
+    Token name = p->current; consume(p, TOK_IDENTIFIER, "Expect enum name");
+    EnumDef* def = enum_reg_add(&p->enums, name.start, name.length);
+    
+    // Optional underlying type: enum MyEnum : uint8 { ... }
+    if (p->current.type == TOK_COLON) {
+        advance(p);
+        Token type_tok = p->current;
+        consume(p, TOK_IDENTIFIER, "Expect underlying type");
+        
+        if (match_keyword(type_tok, "uint8") || match_keyword(type_tok, "u8")) def->underlying_type = OP_IO_U8;
+        else if (match_keyword(type_tok, "int8") || match_keyword(type_tok, "i8")) def->underlying_type = OP_IO_I8;
+        else if (match_keyword(type_tok, "uint16") || match_keyword(type_tok, "u16")) def->underlying_type = OP_IO_U16;
+        else if (match_keyword(type_tok, "int16") || match_keyword(type_tok, "i16")) def->underlying_type = OP_IO_I16;
+        else if (match_keyword(type_tok, "uint32") || match_keyword(type_tok, "u32")) def->underlying_type = OP_IO_U32;
+        else if (match_keyword(type_tok, "int32") || match_keyword(type_tok, "i32")) def->underlying_type = OP_IO_I32;
+        else if (match_keyword(type_tok, "uint64") || match_keyword(type_tok, "u64")) def->underlying_type = OP_IO_U64;
+        else if (match_keyword(type_tok, "int64") || match_keyword(type_tok, "i64")) def->underlying_type = OP_IO_I64;
+        else parser_error(p, "Invalid underlying type for enum");
+    }
+
+    consume(p, TOK_LBRACE, "Expect {");
+    
+    int64_t next_val = 0;
+    
+    while (p->current.type != TOK_RBRACE && p->current.type != TOK_EOF && !p->had_error) {
+        Token val_name = p->current;
+        consume(p, TOK_IDENTIFIER, "Expect enum value name");
+        
+        int64_t val = next_val;
+        if (p->current.type == TOK_EQUALS) {
+            advance(p);
+            Token num = p->current;
+            consume(p, TOK_NUMBER, "Expect enum value");
+            val = parse_int64(num);
+        }
+        
+        // Store value
+        if (def->count >= def->capacity) {
+            def->capacity = (def->capacity == 0) ? 8 : def->capacity * 2;
+            def->values = realloc(def->values, def->capacity * sizeof(EnumValue));
+        }
+        def->values[def->count].name = malloc(val_name.length + 1);
+        memcpy(def->values[def->count].name, val_name.start, val_name.length);
+        def->values[def->count].name[val_name.length] = '\0';
+        def->values[def->count].value = val;
+        def->count++;
+        
+        next_val = val + 1;
+        
+        if (p->current.type == TOK_COMMA) advance(p);
     }
     consume(p, TOK_RBRACE, "Expect }");
 }
@@ -603,6 +679,8 @@ void parse_top_level(Parser* p) {
             }
         } else if (match_keyword(p->current, "struct")) {
             advance(p); parse_struct(p);
+        } else if (match_keyword(p->current, "enum")) {
+            advance(p); parse_enum(p);
         } else if (match_keyword(p->current, "packet")) {
             if (p->packet_count > 0) {
                 parser_error(p, "Only one packet definition allowed per file");

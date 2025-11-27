@@ -106,3 +106,36 @@ StructDef* reg_find(StructRegistry* r, const char* name, int len) {
     }
     return NULL;
 }
+
+// --- Enum Registry Implementation ---
+
+void enum_reg_init(EnumRegistry* r) {
+    r->count = 0;
+    r->capacity = 8;
+    r->defs = malloc(r->capacity * sizeof(EnumDef));
+}
+
+EnumDef* enum_reg_add(EnumRegistry* r, const char* name, int len) {
+    if (r->count >= r->capacity) {
+        r->capacity *= 2;
+        r->defs = realloc(r->defs, r->capacity * sizeof(EnumDef));
+    }
+    EnumDef* def = &r->defs[r->count++];
+    def->name = malloc(len + 1);
+    memcpy(def->name, name, len);
+    def->name[len] = '\0';
+    def->values = NULL;
+    def->count = 0;
+    def->capacity = 0;
+    def->underlying_type = OP_IO_U32; // Default
+    return def;
+}
+
+EnumDef* enum_reg_find(EnumRegistry* r, const char* name, int len) {
+    for (size_t i = 0; i < r->count; i++) {
+        if (strlen(r->defs[i].name) == len && strncmp(r->defs[i].name, name, len) == 0) {
+            return &r->defs[i];
+        }
+    }
+    return NULL;
+}

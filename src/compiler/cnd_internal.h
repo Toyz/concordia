@@ -28,7 +28,8 @@ typedef enum {
     TOK_SEMICOLON, // ;
     TOK_COLON,     // :
     TOK_COMMA,     // ,
-    TOK_AT         // @
+    TOK_AT,        // @
+    TOK_EQUALS     // =
 } TokenType;
 
 typedef struct {
@@ -90,6 +91,30 @@ void reg_init(StructRegistry* r);
 StructDef* reg_add(StructRegistry* r, const char* name, int len);
 StructDef* reg_find(StructRegistry* r, const char* name, int len);
 
+// --- Utils: Enum Registry ---
+typedef struct {
+    char* name;
+    int64_t value;
+} EnumValue;
+
+typedef struct {
+    char* name;
+    uint8_t underlying_type; // OP_IO_U8, OP_IO_I32, etc.
+    EnumValue* values;
+    size_t count;
+    size_t capacity;
+} EnumDef;
+
+typedef struct {
+    EnumDef* defs;
+    size_t count;
+    size_t capacity;
+} EnumRegistry;
+
+void enum_reg_init(EnumRegistry* r);
+EnumDef* enum_reg_add(EnumRegistry* r, const char* name, int len);
+EnumDef* enum_reg_find(EnumRegistry* r, const char* name, int len);
+
 // --- Parser ---
 typedef struct {
     Lexer lexer;
@@ -99,6 +124,7 @@ typedef struct {
     Buffer global_bc;   // Top-level packet bytecode
     StringTable strtab;
     StructRegistry registry;
+    EnumRegistry enums;
     StringTable imports; // Track imported files
     const char* current_path; // Current file path for relative imports
     const char* current_struct_name; // Name of the struct currently being parsed (for recursion check)

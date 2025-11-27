@@ -55,6 +55,11 @@ To run the performance benchmarks:
 A `.cnd` file can contain multiple `struct` definitions but only **one** `packet` definition.
 
 ```cnd
+enum Status : uint8 {
+    Ok = 0,
+    Error = 1
+}
+
 packet Telemetry {
     @const(0xCAFE)
     uint16 sync_word;
@@ -65,9 +70,10 @@ packet Telemetry {
     @count(3)
     uint8 sensors[3];
     
-    uint8 status : 1;
-    uint8 error  : 1;
-    uint8 mode   : 6;
+    Status status;
+    
+    uint8 flags : 4;
+    uint8 mode  : 4;
 }
 ```
 

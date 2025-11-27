@@ -40,6 +40,9 @@ typedef cnd_error_t (*cnd_io_cb)(
 );
 ```
 
+**Note on Enums:**
+Fields defined as `enum` in the schema are passed to the callback as their underlying integer type (e.g., `OP_IO_U32` or `OP_IO_U8`). The VM strictly enforces that the value matches one of the defined enum constants. If an invalid value is encountered during encoding or decoding, `cnd_execute` will return `CND_ERR_VALIDATION`.
+
 ### Example Callback
 
 ```c

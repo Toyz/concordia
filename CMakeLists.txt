@@ -81,6 +81,7 @@ add_executable(test_runner
     tests/extended_coverage_test.cpp
     tests/spec_coverage_test.cpp
     tests/match_rtt_test.cpp
+    tests/enum_test.cpp
 )
 target_link_libraries(test_runner concordia cnd_compiler gtest_main)
 
