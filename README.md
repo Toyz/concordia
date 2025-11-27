@@ -27,6 +27,7 @@ Converts human-readable schema files (`.cnd`) into binary Intermediate Language 
 **Example Schema (`example.cnd`):**
 ```cnd
 @version(1)
+@import("types.cnd")
 
 packet Status {
     uint16 voltage;

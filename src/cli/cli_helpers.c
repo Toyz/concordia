@@ -235,10 +235,16 @@ cnd_error_t json_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, voi
     // Now process the primitive/string value
     if (ctx->mode == CND_MODE_ENCODE) {
         if (!item_to_process) {
-            char* current_obj_str = cJSON_PrintUnformatted(current_obj_context);
-            printf("CALLBACK ERROR: ENCODE - Primitive/String '%s' not found in JSON (current_obj %s, key_name '%s'). Returning CND_ERR_CALLBACK.\n", key_name, current_obj_str, key_name);
-            free(current_obj_str);
-            return CND_ERR_CALLBACK; 
+            // If the field name starts with '_' we treat it as an intentionally empty/filled field
+            // (e.g., a filler created with @fill or a reserved/unused field). In that case we
+            // allow encoding to continue and treat the value as zero/empty. Otherwise, fail.
+            if (!(key_name && key_name[0] == '_')) {
+                char* current_obj_str = cJSON_PrintUnformatted(current_obj_context);
+                printf("CALLBACK ERROR: ENCODE - Primitive/String '%s' not found in JSON (current_obj %s, key_name '%s'). Returning CND_ERR_CALLBACK.\n", key_name, current_obj_str, key_name);
+                free(current_obj_str);
+                return CND_ERR_CALLBACK; 
+            }
+            // else: allow encoding and treat as implicit zero/empty (handled below per-type)
         }
 
         if (cJSON_IsArray(item_to_process)) { // Should not happen here if array_depth handles it for elements
@@ -248,24 +254,29 @@ cnd_error_t json_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, voi
         }
         
         switch (type) {
-            case OP_IO_U8:  *(uint8_t*)ptr  = (uint8_t)item_to_process->valueint; break;
-            case OP_IO_U16: *(uint16_t*)ptr = (uint16_t)item_to_process->valueint; break;
-            case OP_IO_U32: *(uint32_t*)ptr = (uint32_t)item_to_process->valueint; break;
-            case OP_IO_U64: *(uint64_t*)ptr = (uint64_t)item_to_process->valuedouble; break; 
-            case OP_IO_I8:  *(int8_t*)ptr   = (int8_t)item_to_process->valueint; break;
-            case OP_IO_I16: *(int16_t*)ptr  = (int16_t)item_to_process->valueint; break;
-            case OP_IO_I32: *(int32_t*)ptr  = (int32_t)item_to_process->valueint; break;
-            case OP_IO_I64: *(int64_t*)ptr  = (int64_t)item_to_process->valuedouble; break;
-            case OP_IO_F32: *(float*)ptr    = (float)item_to_process->valuedouble; break;
-            case OP_IO_F64: *(double*)ptr   = (double)item_to_process->valuedouble; break;
-            case OP_IO_BIT_U: *(uint64_t*)ptr = (uint64_t)item_to_process->valueint; break;
-            case OP_IO_BIT_I: *(int64_t*)ptr  = (int64_t)item_to_process->valueint; break;
+            case OP_IO_U8:  *(uint8_t*)ptr  = (uint8_t)(item_to_process ? item_to_process->valueint : 0); break;
+            case OP_IO_U16: *(uint16_t*)ptr = (uint16_t)(item_to_process ? item_to_process->valueint : 0); break;
+            case OP_IO_U32: *(uint32_t*)ptr = (uint32_t)(item_to_process ? item_to_process->valueint : 0); break;
+            case OP_IO_U64: *(uint64_t*)ptr = (uint64_t)(item_to_process ? item_to_process->valuedouble : 0.0); break; 
+            case OP_IO_I8:  *(int8_t*)ptr   = (int8_t)(item_to_process ? item_to_process->valueint : 0); break;
+            case OP_IO_I16: *(int16_t*)ptr  = (int16_t)(item_to_process ? item_to_process->valueint : 0); break;
+            case OP_IO_I32: *(int32_t*)ptr  = (int32_t)(item_to_process ? item_to_process->valueint : 0); break;
+            case OP_IO_I64: *(int64_t*)ptr  = (int64_t)(item_to_process ? item_to_process->valuedouble : 0.0); break;
+            case OP_IO_F32: *(float*)ptr    = (float)(item_to_process ? item_to_process->valuedouble : 0.0); break;
+            case OP_IO_F64: *(double*)ptr   = (double)(item_to_process ? item_to_process->valuedouble : 0.0); break;
+            case OP_IO_BIT_U: *(uint64_t*)ptr = (uint64_t)(item_to_process ? item_to_process->valueint : 0); break;
+            case OP_IO_BIT_I: *(int64_t*)ptr  = (int64_t)(item_to_process ? item_to_process->valueint : 0); break;
             case OP_STR_NULL: 
             case OP_STR_PRE_U8:
             case OP_STR_PRE_U16:
             case OP_STR_PRE_U32: {
-                if (cJSON_IsString(item_to_process)) {
+                if (item_to_process && cJSON_IsString(item_to_process)) {
                     *(const char**)ptr = item_to_process->valuestring;
+                } else if (item_to_process && cJSON_IsNumber(item_to_process)) {
+                    // Defensive: number provided where string expected - convert to simple string representation
+                    static char tmpbuf[64];
+                    snprintf(tmpbuf, sizeof(tmpbuf), "%lld", (long long)item_to_process->valueint);
+                    *(const char**)ptr = tmpbuf;
                 } else {
                     *(const char**)ptr = "";
                 }

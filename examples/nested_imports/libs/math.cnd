@@ -1,0 +1,6 @@
+@import("../shared/types.cnd")
+
+struct Rect {
+    Point min;
+    Point max;
+}

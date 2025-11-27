@@ -1,0 +1,32 @@
+/// Represents a 3D vector in space.
+/// Used for position, velocity, and acceleration vectors.
+struct Vector3 {
+    /// X component in meters
+    float x;
+    /// Y component in meters
+    float y;
+    /// Z component in meters
+    float z;
+}
+
+/// Telemetry packet sent by the navigation subsystem.
+/// Contains current position and velocity data.
+packet NavigationData {
+    /// Unique sequence number for this packet
+    uint32 sequence_id;
+
+    /// Current position relative to the launch pad
+    Vector3 position;
+
+    /// Current velocity vector
+    Vector3 velocity;
+
+    /// Status flags for the navigation system
+    /// [0] = IMU Healthy
+    /// [1] = GPS Locked
+    uint8 status_flags;
+}
+
+packet test {
+    Vector3 vec;
+}

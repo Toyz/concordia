@@ -1,0 +1,6 @@
+@import("player.cnd")
+
+packet GameState {
+    @count(4)
+    Player players[4];
+}

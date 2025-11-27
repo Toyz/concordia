@@ -21,7 +21,9 @@ int cmd_decode(int argc, char** argv) {
     io_ctx.array_depth = 0; // Initialize array depth
     
     cnd_vm_ctx vm;
-    cnd_init(&vm, CND_MODE_DECODE, il.bytecode, il.bytecode_len, bin_data, bin_len, json_io_callback, &io_ctx);
+    cnd_program program;
+    cnd_program_load(&program, il.bytecode, il.bytecode_len);
+    cnd_init(&vm, CND_MODE_DECODE, &program, bin_data, bin_len, json_io_callback, &io_ctx);
     
     cnd_error_t err = cnd_execute(&vm);
     if (err != CND_ERR_OK) {

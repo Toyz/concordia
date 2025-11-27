@@ -1,0 +1,50 @@
+{
+  "name": "concordia-lang",
+  "displayName": "Concordia language support",
+  "description": "",
+  "publisher": "Helba",
+  "version": "0.0.5",
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:concordia"
+  ],
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "configuration": {
+      "title": "Concordia",
+      "properties": {
+        "concordia.compilerPath": {
+          "type": "string",
+          "default": "cnd",
+          "description": "Path to the cnd compiler executable"
+        }
+      }
+    },
+    "languages": [{
+      "id": "concordia",
+      "aliases": ["Concordia", "cnd"],
+      "extensions": [".cnd"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "concordia",
+      "scopeName": "source.cnd",
+      "path": "./syntaxes/concordia.tmLanguage.json"
+    }]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "@types/node": "^16.x",
+    "typescript": "^4.9.3"
+  }
+}

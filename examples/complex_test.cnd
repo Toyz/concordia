@@ -1,14 +1,39 @@
+/*
+ * Complex Test Schema for Concordia
+ * Demonstrates advanced features:
+ * - Bitfields & Padding
+ * - Nested Structs
+ * - Decorators (@const, @range, @scale, @unit)
+ * - Variable Length Arrays
+ * - Imports (commented out for standalone test)
+ */
+
+// @import("shared/types.cnd")
+
 struct PackedItem {
+    // 1-bit flag
     uint8 a : 1;
     
+    // 1-bit flag
     uint8 b : 1;
     
+    // Explicit padding of 2 bits
     @pad(2)
+    
+    // Remaining 4 bits
     uint8 c : 4;
 }
 
+struct PackedFill {
+    uint8 a : 4;
+    
+    // @fill aligns to the next byte boundary
+    @fill
+    uint8 _unused : 4; 
+}
 
 struct TelemetryHeader {
+    // Constant value: 0xBE
     @const(0xBE) 
     uint8 magic_byte;
     
@@ -20,8 +45,13 @@ struct TelemetryHeader {
 }
 
 struct GPSData {
+    // Scaled integers for precision
+    @scale(0.0000001)
     int32 latitude;
+    
+    @scale(0.0000001)
     int32 longitude;
+    
     float altitude;
 }
 
@@ -30,18 +60,30 @@ packet SensorPacket {
     
     GPSData gps;
     
+    // Endianness override
     @big_endian
     uint16 sensor_count;
     
+    // Variable length array prefixed by uint8 count
     uint8 sensor_ids[] prefix uint8;
     
+    // Null-terminated string with max length
     string description until 0x00 max 64;
     
+    // Range validation
+    @range(0.0, 14.0)
     float battery_voltage;
     
+    // Optional field (only parsed if data remains)
+    @optional
+    string debug_note max 32;
+
     @const(0xDE) 
     uint8 footer_marker;
     
+    // Fixed size array of structs
     @count(2)
     PackedItem items[2];
+    
+    PackedFill filler;
 }

@@ -1,5 +1,7 @@
 # Build directories
 build/
+dist/
+out/
 bin/
 lib/
 

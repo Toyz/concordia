@@ -1,0 +1,11 @@
+struct DisplayConfig {
+    uint8 visible : 1;
+    uint8 grayscale : 1;
+    uint8 brightness : 6;
+}
+
+struct StatusFlags {
+    uint8 is_ready : 1;
+    @fill
+    uint8 check_byte;
+}

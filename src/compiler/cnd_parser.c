@@ -1,0 +1,573 @@
+#include "cnd_internal.h"
+
+void parser_error(Parser* p, const char* msg) {
+    if (p->json_output) {
+        // JSON format: {"file": "...", "line": N, "message": "...", "token": "..."}
+        // We use manual JSON construction to avoid dependency on cJSON in the compiler core
+        printf("{\"file\": \"%s\", \"line\": %d, \"message\": \"%s\", \"token\": \"%.*s\"}\n",
+            p->current_path, p->current.line, msg, p->current.length, p->current.start);
+    } else {
+        printf("Error at line %d: %s (Token: '%.*s')\n", 
+            p->current.line, msg, p->current.length, p->current.start);
+    }
+    p->had_error = 1;
+}
+
+void advance(Parser* p) {
+    p->previous = p->current;
+    p->current = lexer_next(&p->lexer);
+}
+
+void consume(Parser* p, TokenType type, const char* msg) {
+    if (p->current.type == type) {
+        advance(p);
+        return;
+    }
+    parser_error(p, msg);
+}
+
+int match_keyword(Token t, const char* kw) {
+    if (t.type != TOK_IDENTIFIER) return 0;
+    if (strlen(kw) != t.length) return 0;
+    return strncmp(t.start, kw, t.length) == 0;
+}
+
+uint32_t parse_number(Token t) {
+    char buf[64];
+    if (t.length >= 63) return 0;
+    memcpy(buf, t.start, t.length);
+    buf[t.length] = '\0';
+    return (uint32_t)strtoul(buf, NULL, 0); 
+}
+
+int64_t parse_int64(Token t) {
+    char buf[64];
+    if (t.length >= 63) return 0;
+    memcpy(buf, t.start, t.length);
+    buf[t.length] = '\0';
+    return (int64_t)strtoll(buf, NULL, 0); 
+}
+
+double parse_double(Token t) {
+    char buf[64];
+    if (t.length >= 63) return 0.0;
+    memcpy(buf, t.start, t.length);
+    buf[t.length] = '\0';
+    return strtod(buf, NULL);
+}
+
+void emit_range_check(Parser* p, uint8_t type_op, Token min_tok, Token max_tok) {
+    // Validate range
+    if (type_op == OP_IO_U8 || type_op == OP_IO_U16 || type_op == OP_IO_U32) {
+        uint32_t min = parse_number(min_tok);
+        uint32_t max = parse_number(max_tok);
+        if (min > max) { parser_error(p, "Range min > max"); return; }
+    } else if (type_op == OP_IO_I8 || type_op == OP_IO_I16 || type_op == OP_IO_I32 || type_op == OP_IO_I64) {
+        int64_t min = parse_int64(min_tok);
+        int64_t max = parse_int64(max_tok);
+        if (min > max) { parser_error(p, "Range min > max"); return; }
+    } else if (type_op == OP_IO_U64) {
+        uint64_t min = (uint64_t)parse_int64(min_tok);
+        uint64_t max = (uint64_t)parse_int64(max_tok);
+        if (min > max) { parser_error(p, "Range min > max"); return; }
+    } else if (type_op == OP_IO_F32 || type_op == OP_IO_F64) {
+        double min = parse_double(min_tok);
+        double max = parse_double(max_tok);
+        if (min > max) { parser_error(p, "Range min > max"); return; }
+    }
+
+    buf_push(p->target, OP_RANGE_CHECK);
+    buf_push(p->target, type_op);
+    
+    if (type_op == OP_IO_U8) {
+        buf_push(p->target, (uint8_t)parse_number(min_tok));
+        buf_push(p->target, (uint8_t)parse_number(max_tok));
+    } else if (type_op == OP_IO_U16) {
+        buf_push_u16(p->target, (uint16_t)parse_number(min_tok));
+        buf_push_u16(p->target, (uint16_t)parse_number(max_tok));
+    } else if (type_op == OP_IO_U32) {
+        buf_push_u32(p->target, parse_number(min_tok));
+        buf_push_u32(p->target, parse_number(max_tok));
+    } else if (type_op == OP_IO_I8) {
+        buf_push(p->target, (uint8_t)(int8_t)parse_int64(min_tok));
+        buf_push(p->target, (uint8_t)(int8_t)parse_int64(max_tok));
+    } else if (type_op == OP_IO_I16) {
+        buf_push_u16(p->target, (uint16_t)(int16_t)parse_int64(min_tok));
+        buf_push_u16(p->target, (uint16_t)(int16_t)parse_int64(max_tok));
+    } else if (type_op == OP_IO_I32) {
+        buf_push_u32(p->target, (uint32_t)(int32_t)parse_int64(min_tok));
+        buf_push_u32(p->target, (uint32_t)(int32_t)parse_int64(max_tok));
+    } else if (type_op == OP_IO_F32) {
+        float fmin = (float)parse_double(min_tok);
+        float fmax = (float)parse_double(max_tok);
+        uint32_t imin, imax;
+        memcpy(&imin, &fmin, 4);
+        memcpy(&imax, &fmax, 4);
+        buf_push_u32(p->target, imin);
+        buf_push_u32(p->target, imax);
+    } else if (type_op == OP_IO_U64) {
+        buf_push_u64(p->target, (uint64_t)parse_int64(min_tok));
+        buf_push_u64(p->target, (uint64_t)parse_int64(max_tok));
+    } else if (type_op == OP_IO_I64) {
+        buf_push_u64(p->target, (uint64_t)parse_int64(min_tok));
+        buf_push_u64(p->target, (uint64_t)parse_int64(max_tok));
+    } else if (type_op == OP_IO_F64) {
+        double dmin = parse_double(min_tok);
+        double dmax = parse_double(max_tok);
+        uint64_t imin, imax;
+        memcpy(&imin, &dmin, 8);
+        memcpy(&imax, &dmax, 8);
+        buf_push_u64(p->target, imin);
+        buf_push_u64(p->target, imax);
+    }
+}
+
+void parse_field(Parser* p) {
+    if (p->had_error) return;
+
+    // Decorator State Variables
+    uint32_t array_fixed_count = 0;
+    int has_fixed_array_count = 0;
+    uint64_t const_val = 0;
+    int has_const = 0;
+    int is_big_endian_field = 0;
+    
+    int has_range = 0;
+    Token range_min_tok = {0};
+    Token range_max_tok = {0};
+    
+    // Transform state
+    cnd_trans_t trans_type = CND_TRANS_NONE;
+    double trans_scale = 1.0;
+    double trans_offset = 0.0;
+    int64_t trans_int_val = 0;
+    
+    // CRC State
+    int has_crc = 0;
+    uint32_t crc_width = 0;
+    uint32_t crc_poly = 0;
+    uint32_t crc_init = 0;
+    uint32_t crc_xor = 0;
+    uint8_t crc_flags = 0;
+
+    // Jump Patching State for @depends_on
+    // size_t jump_patches[8]; // Max 8 pending jumps
+    // int jump_count = 0;
+    
+    while (p->current.type == TOK_AT) {
+        advance(p); // Consume the '@'
+        Token dec_name_token = p->current; // Save token of decorator name
+        consume(p, TOK_IDENTIFIER, "Expect decorator name");
+        
+        if (match_keyword(dec_name_token, "big_endian") || match_keyword(dec_name_token, "be")) {
+            is_big_endian_field = 1;
+        } else if (match_keyword(dec_name_token, "little_endian") || match_keyword(dec_name_token, "le")) {
+             is_big_endian_field = 0;
+        } else if (match_keyword(dec_name_token, "fill")) {
+            uint8_t fill_val = 0;
+            if (p->current.type == TOK_LPAREN) {
+                advance(p);
+                Token num = p->current;
+                consume(p, TOK_NUMBER, "Expect fill bit value (0 or 1)");
+                fill_val = (uint8_t)parse_number(num);
+                if (fill_val > 1) {
+                    parser_error(p, "Fill bit must be 0 or 1");
+                }
+                consume(p, TOK_RPAREN, "Expect )");
+            }
+            buf_push(p->target, OP_ALIGN_FILL);
+            buf_push(p->target, fill_val);
+        } else if (match_keyword(dec_name_token, "crc_refin")) {
+            crc_flags |= 1;
+        } else if (match_keyword(dec_name_token, "crc_refout")) {
+            crc_flags |= 2;
+        } else if (match_keyword(dec_name_token, "optional")) {
+            buf_push(p->target, OP_MARK_OPTIONAL);
+        } else if (match_keyword(dec_name_token, "unit")) {
+            consume(p, TOK_LPAREN, "Expect (");
+            consume(p, TOK_STRING, "Expect unit string");
+            consume(p, TOK_RPAREN, "Expect )");
+            // Metadata ignored for now
+        } else { 
+            consume(p, TOK_LPAREN, "Expect ("); 
+            if (match_keyword(dec_name_token, "count")) {
+                Token num = p->current; consume(p, TOK_NUMBER, "Expect count number");
+                array_fixed_count = parse_number(num); has_fixed_array_count = 1;
+            } else if (match_keyword(dec_name_token, "const") || match_keyword(dec_name_token, "match")) {
+                Token num = p->current; consume(p, TOK_NUMBER, "Expect const/match value");
+                const_val = (uint64_t)parse_int64(num); has_const = 1;
+            } else if (match_keyword(dec_name_token, "pad")) {
+                Token num = p->current; consume(p, TOK_NUMBER, "Expect pad bits");
+                uint32_t pad_bits = parse_number(num); buf_push(p->target, OP_ALIGN_PAD); buf_push(p->target, (uint8_t)pad_bits);
+            } else if (match_keyword(dec_name_token, "range")) {
+                range_min_tok = p->current; if (range_min_tok.type == TOK_NUMBER) advance(p); else consume(p, TOK_NUMBER, "Expect min");
+                consume(p, TOK_COMMA, "Expect ,");
+                range_max_tok = p->current; if (range_max_tok.type == TOK_NUMBER) advance(p); else consume(p, TOK_NUMBER, "Expect max");
+                has_range = 1;
+            } else if (match_keyword(dec_name_token, "crc")) {
+                Token num = p->current; consume(p, TOK_NUMBER, "Expect width");
+                crc_width = parse_number(num); has_crc = 1;
+                if (crc_width == 16) { crc_poly = 0x1021; crc_init = 0xFFFF; crc_xor = 0; crc_flags = 0; } 
+                else if (crc_width == 32) { crc_poly = 0x04C11DB7; crc_init = 0xFFFFFFFF; crc_xor = 0xFFFFFFFF; crc_flags = 3; }
+            } else if (match_keyword(dec_name_token, "crc_poly")) {
+                Token num = p->current; consume(p, TOK_NUMBER, "Expect poly"); crc_poly = parse_number(num);
+            } else if (match_keyword(dec_name_token, "crc_init")) {
+                Token num = p->current; consume(p, TOK_NUMBER, "Expect init"); crc_init = parse_number(num);
+            } else if (match_keyword(dec_name_token, "crc_xor")) {
+                Token num = p->current; consume(p, TOK_NUMBER, "Expect xor"); crc_xor = parse_number(num);
+            } else if (match_keyword(dec_name_token, "scale")) {
+                Token num = p->current; if (num.type == TOK_NUMBER) advance(p); else consume(p, TOK_NUMBER, "Expect scale factor");
+                trans_type = CND_TRANS_SCALE_F64; trans_scale = parse_double(num);
+            } else if (match_keyword(dec_name_token, "offset")) {
+                Token num = p->current; if (num.type == TOK_NUMBER) advance(p); else consume(p, TOK_NUMBER, "Expect offset value");
+                if (trans_type != CND_TRANS_SCALE_F64) { trans_type = CND_TRANS_SCALE_F64; trans_scale = 1.0; } trans_offset = parse_double(num);
+            } else if (match_keyword(dec_name_token, "mul")) {
+                Token num = p->current; if (num.type == TOK_NUMBER) advance(p); else consume(p, TOK_NUMBER, "Expect mul value");
+                trans_type = CND_TRANS_MUL_I64; trans_int_val = parse_int64(num);
+            } else if (match_keyword(dec_name_token, "div")) {
+                Token num = p->current; if (num.type == TOK_NUMBER) advance(p); else consume(p, TOK_NUMBER, "Expect div value");
+                trans_type = CND_TRANS_DIV_I64; trans_int_val = parse_int64(num);
+            } else if (match_keyword(dec_name_token, "add")) {
+                Token num = p->current; if (num.type == TOK_NUMBER) advance(p); else consume(p, TOK_NUMBER, "Expect add value");
+                trans_type = CND_TRANS_ADD_I64; trans_int_val = parse_int64(num);
+            } else if (match_keyword(dec_name_token, "sub")) {
+                Token num = p->current; if (num.type == TOK_NUMBER) advance(p); else consume(p, TOK_NUMBER, "Expect sub value");
+                trans_type = CND_TRANS_SUB_I64; trans_int_val = parse_int64(num);
+            } else { 
+                parser_error(p, "Unknown decorator");
+                while (p->current.type != TOK_RPAREN && p->current.type != TOK_EOF) advance(p);
+            }
+            consume(p, TOK_RPAREN, "Expect )");
+        }
+    } 
+
+    // Emit CRC
+    if (has_crc) {
+        // Do nothing here, wait until type is parsed
+    }
+    
+    // Emit Transform Op
+    if (trans_type == CND_TRANS_SCALE_F64) {
+        buf_push(p->target, OP_SCALE_LIN);
+        buf_push_u64(p->target, *(uint64_t*)&trans_scale);
+        buf_push_u64(p->target, *(uint64_t*)&trans_offset);
+    } else if (trans_type == CND_TRANS_MUL_I64) {
+        buf_push(p->target, OP_TRANS_MUL); buf_push_u64(p->target, (uint64_t)trans_int_val);
+    } else if (trans_type == CND_TRANS_DIV_I64) {
+        buf_push(p->target, OP_TRANS_DIV); buf_push_u64(p->target, (uint64_t)trans_int_val);
+    } else if (trans_type == CND_TRANS_ADD_I64) {
+        buf_push(p->target, OP_TRANS_ADD); buf_push_u64(p->target, (uint64_t)trans_int_val);
+    } else if (trans_type == CND_TRANS_SUB_I64) {
+        buf_push(p->target, OP_TRANS_SUB); buf_push_u64(p->target, (uint64_t)trans_int_val);
+    }
+
+    Token type_tok = p->current;
+    consume(p, TOK_IDENTIFIER, "Expect field type");
+
+    Token name_tok = p->current;
+    consume(p, TOK_IDENTIFIER, "Expect field name");
+    uint16_t key_id = strtab_add(&p->strtab, name_tok.start, name_tok.length);
+
+    uint8_t bit_width = 0;
+    if (p->current.type == TOK_COLON) {
+        advance(p); consume(p, TOK_NUMBER, "Expect bit width");
+        bit_width = (uint8_t)parse_number(p->previous);
+    }
+
+    int is_array_field = 0; 
+    int is_variable_array = 0;
+    uint8_t arr_prefix_op = OP_NOOP;
+    uint8_t str_prefix_op = OP_NOOP;
+    uint16_t max_len = 255;
+    
+    if (p->current.type == TOK_LBRACKET) {
+        advance(p); is_array_field = 1;
+        if (p->current.type == TOK_RBRACKET) { advance(p); is_variable_array = 1; } 
+        else {
+            Token num = p->current; consume(p, TOK_NUMBER, "Expect array size");
+            array_fixed_count = parse_number(num); has_fixed_array_count = 1;
+            consume(p, TOK_RBRACKET, "Expect ]");
+        }
+    }
+    
+    if (match_keyword(p->current, "prefix")) {
+        advance(p); Token ptype = p->current; consume(p, TOK_IDENTIFIER, "Expect prefix type");
+        if (is_variable_array) {
+            if (match_keyword(ptype, "uint8") || match_keyword(ptype, "u8")) arr_prefix_op = OP_ARR_PRE_U8;
+            else if (match_keyword(ptype, "uint16") || match_keyword(ptype, "u16")) arr_prefix_op = OP_ARR_PRE_U16;
+            else if (match_keyword(ptype, "uint32") || match_keyword(ptype, "u32")) arr_prefix_op = OP_ARR_PRE_U32;
+            else parser_error(p, "Invalid prefix type for variable array");
+        } else if (match_keyword(type_tok, "string")) {
+            if (match_keyword(ptype, "uint8") || match_keyword(ptype, "u8")) str_prefix_op = OP_STR_PRE_U8;
+            else if (match_keyword(ptype, "uint16") || match_keyword(ptype, "u16")) str_prefix_op = OP_STR_PRE_U16;
+            else if (match_keyword(ptype, "uint32") || match_keyword(ptype, "u32")) str_prefix_op = OP_STR_PRE_U32;
+            else parser_error(p, "Invalid prefix type for string");
+        } else { parser_error(p, "Prefix keyword used for non-variable-array/non-string type"); }
+    } else if (match_keyword(type_tok, "string")) {
+        if (match_keyword(p->current, "until")) { advance(p); consume(p, TOK_NUMBER, "Expect val"); }
+        if (match_keyword(p->current, "max")) { advance(p); Token max_tok = p->current; consume(p, TOK_NUMBER, "Expect max length"); max_len = (uint16_t)parse_number(max_tok); }
+    }
+
+    if (is_big_endian_field) { buf_push(p->target, OP_SET_ENDIAN_BE); }
+
+    if (arr_prefix_op != OP_NOOP) {
+        buf_push(p->target, arr_prefix_op); buf_push_u16(p->target, key_id);
+    } else if (has_fixed_array_count && is_array_field) {
+        buf_push(p->target, OP_ARR_FIXED); buf_push_u16(p->target, key_id);
+        buf_push_u16(p->target, (uint16_t)array_fixed_count);
+    } else if (str_prefix_op != OP_NOOP) {
+        buf_push(p->target, str_prefix_op); buf_push_u16(p->target, key_id);
+    }
+
+    if (has_const) {
+        uint8_t type_op = OP_IO_U16;
+        if (match_keyword(type_tok, "uint8") || match_keyword(type_tok, "byte") || match_keyword(type_tok, "u8")) type_op = OP_IO_U8;
+        else if (match_keyword(type_tok, "uint16") || match_keyword(type_tok, "u16")) type_op = OP_IO_U16;
+        else if (match_keyword(type_tok, "uint32") || match_keyword(type_tok, "u32")) type_op = OP_IO_U32;
+        else if (match_keyword(type_tok, "uint64") || match_keyword(type_tok, "u64")) type_op = OP_IO_U64;
+        
+        buf_push(p->target, OP_CONST_CHECK); buf_push(p->target, type_op);
+        if (type_op == OP_IO_U8) buf_push(p->target, (uint8_t)const_val);
+        else if (type_op == OP_IO_U16) buf_push_u16(p->target, (uint16_t)const_val);
+        else if (type_op == OP_IO_U32) buf_push_u32(p->target, (uint32_t)const_val);
+        else if (type_op == OP_IO_U64) buf_push_u64(p->target, const_val);
+        
+        if (has_range) { emit_range_check(p, type_op, range_min_tok, range_max_tok); }
+    } else {
+        StructDef* sdef = reg_find(&p->registry, type_tok.start, type_tok.length);
+        
+        if (sdef) {
+            if (p->current_struct_name && 
+                type_tok.length == p->current_struct_name_len && 
+                strncmp(type_tok.start, p->current_struct_name, type_tok.length) == 0) {
+                parser_error(p, "Recursive struct definition detected");
+                return;
+            }
+            
+            if (trans_type != CND_TRANS_NONE) { parser_error(p, "Cannot apply scale/transform to struct field"); }
+            if (has_range) { parser_error(p, "Cannot apply range check to struct field"); }
+            if (has_crc) { parser_error(p, "Cannot apply CRC to struct field"); }
+            if (bit_width > 0) { parser_error(p, "Bitfields not supported for struct fields"); }
+
+            buf_push(p->target, OP_ENTER_STRUCT); buf_push_u16(p->target, key_id);
+            buf_append(p->target, sdef->bytecode.data, sdef->bytecode.size);
+            buf_push(p->target, OP_EXIT_STRUCT);
+        } 
+        else if (match_keyword(type_tok, "string")) {
+            if (trans_type != CND_TRANS_NONE) { parser_error(p, "Cannot apply scale/offset/transform to string"); }
+            if (has_range) { parser_error(p, "Cannot apply range check to string"); }
+            if (has_crc) { parser_error(p, "Cannot apply CRC to string"); }
+            if (bit_width > 0) { parser_error(p, "Bitfields only supported for integer types"); }
+
+            if (str_prefix_op == OP_NOOP) { 
+                buf_push(p->target, OP_STR_NULL); buf_push_u16(p->target, key_id); buf_push_u16(p->target, max_len);
+            }
+        } else {
+            uint8_t op = OP_NOOP;
+            if (bit_width > 0) {
+                 if (match_keyword(type_tok, "uint8") || match_keyword(type_tok, "byte") || match_keyword(type_tok, "u8") ||
+                     match_keyword(type_tok, "uint16") || match_keyword(type_tok, "u16") ||
+                     match_keyword(type_tok, "uint32") || match_keyword(type_tok, "u32") ||
+                     match_keyword(type_tok, "uint64") || match_keyword(type_tok, "u64")) {
+                     op = OP_IO_BIT_U;
+                 }
+                 else if (match_keyword(type_tok, "int8") || match_keyword(type_tok, "i8") ||
+                          match_keyword(type_tok, "int16") || match_keyword(type_tok, "i16") ||
+                          match_keyword(type_tok, "int32") || match_keyword(type_tok, "i32") ||
+                          match_keyword(type_tok, "int64") || match_keyword(type_tok, "i64")) {
+                     op = OP_IO_BIT_I;
+                 }
+                 else { parser_error(p, "Bitfields only supported for integer types"); return; }
+                 
+                 buf_push(p->target, op); buf_push_u16(p->target, key_id); buf_push(p->target, bit_width);
+            } else {
+                if (match_keyword(type_tok, "uint8") || match_keyword(type_tok, "byte") || match_keyword(type_tok, "u8")) op = OP_IO_U8;
+                else if (match_keyword(type_tok, "uint16") || match_keyword(type_tok, "u16")) op = OP_IO_U16;
+                else if (match_keyword(type_tok, "uint32") || match_keyword(type_tok, "u32")) op = OP_IO_U32;
+                else if (match_keyword(type_tok, "uint64") || match_keyword(type_tok, "u64")) op = OP_IO_U64;
+                else if (match_keyword(type_tok, "int8") || match_keyword(type_tok, "i8")) op = OP_IO_I8;
+                else if (match_keyword(type_tok, "int16") || match_keyword(type_tok, "i16")) op = OP_IO_I16;
+                else if (match_keyword(type_tok, "int32") || match_keyword(type_tok, "i32")) op = OP_IO_I32;
+                else if (match_keyword(type_tok, "int64") || match_keyword(type_tok, "i64")) op = OP_IO_I64;
+                else if (match_keyword(type_tok, "float") || match_keyword(type_tok, "f32")) op = OP_IO_F32;
+                else if (match_keyword(type_tok, "double") || match_keyword(type_tok, "f64")) op = OP_IO_F64;
+                else { parser_error(p, "Unknown type"); return; }
+                
+                if (has_crc) {
+                     if (crc_width == 16) {
+                         if (op != OP_IO_U16) parser_error(p, "CRC16 requires uint16 type");
+                         buf_push(p->target, OP_CRC_16);
+                         buf_push_u16(p->target, (uint16_t)crc_poly);
+                         buf_push_u16(p->target, (uint16_t)crc_init);
+                         buf_push_u16(p->target, (uint16_t)crc_xor);
+                         buf_push(p->target, crc_flags);
+                     } else if (crc_width == 32) {
+                         if (op != OP_IO_U32) parser_error(p, "CRC32 requires uint32 type");
+                         buf_push(p->target, OP_CRC_32);
+                         buf_push_u32(p->target, crc_poly);
+                         buf_push_u32(p->target, crc_init);
+                         buf_push_u32(p->target, crc_xor);
+                         buf_push(p->target, crc_flags);
+                     }
+                } else {
+                    buf_push(p->target, op); buf_push_u16(p->target, key_id);
+                    if (has_range) { emit_range_check(p, op, range_min_tok, range_max_tok); }
+                }
+            }
+        }
+    }
+    
+    if (is_array_field) { buf_push(p->target, OP_ARR_END); }
+
+    consume(p, TOK_SEMICOLON, "Expect ; after field");
+
+    if (is_big_endian_field) { buf_push(p->target, OP_SET_ENDIAN_LE); }
+}
+
+void parse_block(Parser* p) {
+    consume(p, TOK_LBRACE, "Expect {");
+    while (p->current.type != TOK_RBRACE && p->current.type != TOK_EOF && !p->had_error) {
+        parse_field(p);
+    }
+    consume(p, TOK_RBRACE, "Expect }");
+}
+
+void parse_struct(Parser* p) {
+    Token name = p->current; consume(p, TOK_IDENTIFIER, "Expect struct name");
+    StructDef* def = reg_add(&p->registry, name.start, name.length);
+    
+    const char* prev_name = p->current_struct_name;
+    int prev_len = p->current_struct_name_len;
+    p->current_struct_name = name.start;
+    p->current_struct_name_len = name.length;
+
+    Buffer* prev = p->target; p->target = &def->bytecode;
+    parse_block(p);
+    p->target = prev;
+
+    p->current_struct_name = prev_name;
+    p->current_struct_name_len = prev_len;
+}
+
+void parse_packet(Parser* p) {
+    Token name = p->current; consume(p, TOK_IDENTIFIER, "Expect packet name");
+    parse_block(p);
+}
+
+// Helper to resolve path relative to base
+char* resolve_path(const char* base, const char* rel) {
+    // Find last slash in base
+    const char* last_slash = strrchr(base, '/');
+    const char* last_backslash = strrchr(base, '\\');
+    const char* slash = (last_slash > last_backslash) ? last_slash : last_backslash;
+    
+    size_t base_len = 0;
+    if (slash) {
+        base_len = slash - base + 1;
+    }
+    
+    size_t rel_len = strlen(rel);
+    char* path = (char*)malloc(base_len + rel_len + 1);
+    if (base_len > 0) memcpy(path, base, base_len);
+    memcpy(path + base_len, rel, rel_len);
+    path[base_len + rel_len] = '\0';
+    return path;
+}
+
+void parse_import(Parser* p) {
+    consume(p, TOK_LPAREN, "Expect ( after @import");
+    Token path_tok = p->current;
+    consume(p, TOK_STRING, "Expect file path string");
+    consume(p, TOK_RPAREN, "Expect ) after import path");
+    
+    // Extract string content (Lexer already removed quotes)
+    char rel_path[256];
+    int len = path_tok.length;
+    if (len >= 256) { parser_error(p, "Import path too long"); return; }
+    memcpy(rel_path, path_tok.start, len);
+    rel_path[len] = '\0';
+    
+    char* full_path = resolve_path(p->current_path, rel_path);
+    
+    // Check if already imported
+    for (size_t i = 0; i < p->imports.count; i++) {
+        if (strcmp(p->imports.strings[i], full_path) == 0) {
+            free(full_path);
+            return; // Already imported
+        }
+    }
+    
+    // Add to imports
+    strtab_add(&p->imports, full_path, (int)strlen(full_path));
+    
+    // Read file
+    FILE* f = fopen(full_path, "rb");
+    if (!f) {
+        char msg[512];
+        snprintf(msg, sizeof(msg), "Could not open imported file: %s", full_path);
+        parser_error(p, msg);
+        free(full_path);
+        return;
+    }
+    
+    fseek(f, 0, SEEK_END); long size = ftell(f); fseek(f, 0, SEEK_SET);
+    char* source = (char*)malloc(size + 1); fread(source, 1, size, f); source[size] = '\0';
+    fclose(f);
+    
+    // Save state
+    Lexer old_lexer = p->lexer;
+    Token old_cur = p->current;
+    Token old_prev = p->previous;
+    const char* old_path = p->current_path;
+    
+    // Switch state
+    lexer_init(&p->lexer, source);
+    p->current_path = full_path;
+    
+    advance(p);
+    parse_top_level(p);
+    
+    // Restore state
+    p->lexer = old_lexer;
+    p->current = old_cur;
+    p->previous = old_prev;
+    p->current_path = old_path;
+    
+    free(source);
+    free(full_path);
+}
+
+void parse_top_level(Parser* p) {
+    while (p->current.type != TOK_EOF && !p->had_error) {
+        if (p->current.type == TOK_AT) {
+            advance(p); 
+            Token dec = p->current; consume(p, TOK_IDENTIFIER, "Expect decorator name");
+            
+            if (match_keyword(dec, "version")) {
+                consume(p, TOK_LPAREN, "Expect ("); Token ver = p->current; consume(p, TOK_NUMBER, "Expect version number");
+                uint32_t v = parse_number(ver); buf_push(p->target, OP_META_VERSION); buf_push(p->target, (uint8_t)v);
+                consume(p, TOK_RPAREN, "Expect )");
+            } else if (match_keyword(dec, "import")) {
+                parse_import(p);
+            } else if (match_keyword(dec, "big_endian")) {
+                buf_push(p->target, OP_SET_ENDIAN_BE);
+            } else if (match_keyword(dec, "little_endian") || match_keyword(dec, "le")) {
+                buf_push(p->target, OP_SET_ENDIAN_LE);
+            } else {
+                if (p->current.type == TOK_LPAREN) {
+                    consume(p, TOK_LPAREN, "Expect (");
+                    while (p->current.type != TOK_RPAREN && p->current.type != TOK_EOF) advance(p);
+                    consume(p, TOK_RPAREN, "Expect )");
+                }
+            }
+        } else if (match_keyword(p->current, "struct")) {
+            advance(p); parse_struct(p);
+        } else if (match_keyword(p->current, "packet")) {
+            advance(p); parse_packet(p);
+        } else if (p->current.type == TOK_SEMICOLON) {
+            advance(p); // Ignore top-level semicolons
+        } else {
+            parser_error(p, "Unexpected token");
+        }
+    }
+}

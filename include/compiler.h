@@ -3,8 +3,20 @@
 
 #include <stdbool.h>
 
-// Compiles a .cnd file at in_path to a .il file at out_path.
-// Returns 0 on success, non-zero on error.
-int cnd_compile_file(const char* in_path, const char* out_path);
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// Compile a .cnd file to a .il file
+// Returns 0 on success, non-zero on error
+int cnd_compile_file(const char* in_path, const char* out_path, int json_output);
+
+// Format a .cnd file
+// If out_path is NULL, prints to stdout
+int cnd_format_file(const char* in_path, const char* out_path);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

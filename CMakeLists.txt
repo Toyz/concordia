@@ -37,14 +37,48 @@ endif()
 add_library(concordia src/vm/vm_exec.c src/vm/vm_io.c)
 
 # Compiler Library
-add_library(cnd_compiler src/compiler/cndc.c)
+add_library(cnd_compiler 
+    src/compiler/cndc.c
+    src/compiler/cnd_utils.c
+    src/compiler/cnd_lexer.c
+    src/compiler/cnd_parser.c
+    src/compiler/cnd_fmt.c
+)
 
 add_executable(hexview src/tools/hexview.c)
 
 # Main CLI Tool (cnd)
-add_executable(cnd src/cli/main.c src/cli/cli_helpers.c src/cli/cmd_compile.c src/cli/cmd_encode.c src/cli/cmd_decode.c)
+add_executable(cnd src/cli/main.c src/cli/cli_helpers.c src/cli/cmd_compile.c src/cli/cmd_encode.c src/cli/cmd_decode.c src/cli/cmd_fmt.c)
 target_link_libraries(cnd concordia cnd_compiler cjson)
 
 # Test Executable
-add_executable(test_runner tests/main_test.cpp)
-target_link_libraries(test_runner concordia gtest_main)
+add_executable(test_runner 
+    tests/test_common.cpp
+    tests/vm_core_test.cpp
+    tests/vm_bitfield_test.cpp
+    tests/vm_safety_test.cpp
+    tests/vm_features_test.cpp
+    tests/compiler_test.cpp 
+    tests/lexer_test.cpp
+    tests/import_test.cpp
+    tests/validation_test.cpp
+    tests/extended_test.cpp
+    tests/spec_coverage_test.cpp
+    tests/match_rtt_test.cpp
+)
+target_link_libraries(test_runner concordia cnd_compiler gtest_main)
+
+# --- Installation ---
+
+include(GNUInstallDirs)
+
+install(TARGETS cnd hexview
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(TARGETS concordia cnd_compiler
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

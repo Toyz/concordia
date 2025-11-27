@@ -6,6 +6,8 @@
 // IL Reading
 uint16_t read_il_u16(cnd_vm_ctx* ctx);
 uint8_t read_il_u8(cnd_vm_ctx* ctx);
+uint32_t read_il_u32(cnd_vm_ctx* ctx);
+uint64_t read_il_u64(cnd_vm_ctx* ctx);
 
 // Data Reading
 uint8_t read_u8(const uint8_t* buf);

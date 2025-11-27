@@ -4,16 +4,34 @@
 // --- IL Access ---
 
 uint16_t read_il_u16(cnd_vm_ctx* ctx) {
-    if (ctx->ip + 2 > ctx->il_len) return 0; 
-    uint16_t val = ctx->il_code[ctx->ip] | (ctx->il_code[ctx->ip + 1] << 8);
+    if (ctx->ip + 2 > ctx->program->bytecode_len) return 0; 
+    uint16_t val = ctx->program->bytecode[ctx->ip] | (ctx->program->bytecode[ctx->ip + 1] << 8);
     ctx->ip += 2;
     return val;
 }
 
 uint8_t read_il_u8(cnd_vm_ctx* ctx) {
-    if (ctx->ip + 1 > ctx->il_len) return 0; 
-    uint8_t val = ctx->il_code[ctx->ip];
+    if (ctx->ip + 1 > ctx->program->bytecode_len) return 0; 
+    uint8_t val = ctx->program->bytecode[ctx->ip];
     ctx->ip += 1;
+    return val;
+}
+
+uint32_t read_il_u32(cnd_vm_ctx* ctx) {
+    if (ctx->ip + 4 > ctx->program->bytecode_len) return 0;
+    uint32_t val = ctx->program->bytecode[ctx->ip] | 
+                   (ctx->program->bytecode[ctx->ip + 1] << 8) | 
+                   (ctx->program->bytecode[ctx->ip + 2] << 16) | 
+                   (ctx->program->bytecode[ctx->ip + 3] << 24);
+    ctx->ip += 4;
+    return val;
+}
+
+uint64_t read_il_u64(cnd_vm_ctx* ctx) {
+    if (ctx->ip + 8 > ctx->program->bytecode_len) return 0;
+    uint64_t val = 0;
+    for(int i=0; i<8; i++) val |= ((uint64_t)ctx->program->bytecode[ctx->ip + i] << (i*8));
+    ctx->ip += 8;
     return val;
 }
 

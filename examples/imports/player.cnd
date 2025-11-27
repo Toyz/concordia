@@ -1,0 +1,7 @@
+@import("vector.cnd")
+
+struct Player {
+    uint32 id;
+    Vector3 position;
+    Vector3 velocity;
+}

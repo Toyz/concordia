@@ -190,11 +190,10 @@ telemetry StatusPacket {
 | `@scale(factor)` | Apply scaling |
 | `@unit("unit")` | Metadata for docs/UI |
 | `@optional` | Optional field |
-| `@string_encoding("utf-8")` | String encoding |
-| `@depends_on(field)` | Conditional inclusion |
 | `@crc16` | CRC validation or generation |
 | `@count(n)` | Fixed array size |
 | `@pad(n)` | Explicit padding (bits or bytes) |
+| `@import("file")` | Import definitions from another file |
 
 ---
 

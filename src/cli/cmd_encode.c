@@ -27,24 +27,26 @@ int cmd_encode(int argc, char** argv) {
     io_ctx.array_depth = 0; // Initialize array depth
     
     cnd_vm_ctx vm;
-    cnd_init(&vm, CND_MODE_ENCODE, il.bytecode, il.bytecode_len, buffer, sizeof(buffer), json_io_callback, &io_ctx);
+    cnd_program program;
+    cnd_program_load(&program, il.bytecode, il.bytecode_len);
+    cnd_init(&vm, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), json_io_callback, &io_ctx);
     
     cnd_error_t err = cnd_execute(&vm);
-    fprintf(stderr, "DEBUG: cnd_execute returned %d\n", err);
+    //fprintf(stderr, "DEBUG: cnd_execute returned %d\n", err);
     if (err != CND_ERR_OK) {
         fprintf(stderr, "VM Error: %d\n", err);
         return 1;
     }
     
-    fprintf(stderr, "DEBUG: Writing file...\n");
+    // fprintf(stderr, "DEBUG: Writing file...\n");
     size_t final_len = vm.cursor;
     if (vm.bit_offset > 0) final_len++;
     write_file_bytes(argv[4], buffer, final_len);
-    fprintf(stderr, "Encoded %zu bytes to %s\n", final_len, argv[4]);
+    // fprintf(stderr, "Encoded %zu bytes to %s\n", final_len, argv[4]);
     
-    fprintf(stderr, "DEBUG: Cleaning up...\n");
+    // fprintf(stderr, "DEBUG: Cleaning up...\n");
     cJSON_Delete(root);
     free_il(&il);
-    fprintf(stderr, "DEBUG: Done.\n");
+    // fprintf(stderr, "DEBUG: Done.\n");
     return 0;
 }

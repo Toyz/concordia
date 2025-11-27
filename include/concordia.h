@@ -56,6 +56,12 @@ extern "C" {
 #define OP_RANGE_CHECK      0x42
 #define OP_SCALE_LIN        0x43
 #define OP_CRC_16           0x44
+#define OP_TRANS_ADD        0x45
+#define OP_TRANS_SUB        0x46
+#define OP_TRANS_MUL        0x47
+#define OP_TRANS_DIV        0x48
+#define OP_CRC_32           0x49
+#define OP_MARK_OPTIONAL    0x4A
 
 // Category F: Control Flow
 #define OP_JUMP_IF_NOT      0x50
@@ -80,6 +86,15 @@ typedef enum {
     CND_BE = 1  // Big Endian
 } cnd_endian_t;
 
+typedef enum {
+    CND_TRANS_NONE = 0,
+    CND_TRANS_SCALE_F64, // Linear Float Scale (y = mx + c)
+    CND_TRANS_ADD_I64,
+    CND_TRANS_SUB_I64,
+    CND_TRANS_MUL_I64,
+    CND_TRANS_DIV_I64
+} cnd_trans_t;
+
 #define CND_MAX_LOOP_DEPTH 8
 
 typedef struct {
@@ -100,11 +115,15 @@ typedef cnd_error_t (*cnd_io_cb)(
     void* data_ptr       // Pointer to read from or write to
 );
 
+typedef struct {
+    const uint8_t* bytecode;    // Pointer to IL Bytecode
+    size_t bytecode_len;        // Length of IL Bytecode
+} cnd_program;
+
 typedef struct cnd_vm_ctx_t {
     // --- Configuration ---
     cnd_mode_t mode;            // Operation mode
-    const uint8_t* il_code;     // Pointer to IL Bytecode
-    size_t il_len;              // Length of IL Bytecode
+    const cnd_program* program; // Pointer to the program being executed
     
     uint8_t* data_buffer;       // Pointer to Binary Data Buffer (Read for Decode, Write for Encode)
     size_t data_len;            // Total size of data buffer (for bounds checking)
@@ -118,6 +137,14 @@ typedef struct cnd_vm_ctx_t {
     uint8_t bit_offset;         // 0-7, for bitfields
     cnd_endian_t endianness;    // Current Endianness state
     
+    // Scaling / Transformation State (reset after each IO)
+    cnd_trans_t trans_type;
+    double trans_f_factor;
+    double trans_f_offset;
+    int64_t trans_i_val;
+    
+    bool is_next_optional;      // If true, OOB reads return 0 instead of error
+
     cnd_loop_frame loop_stack[CND_MAX_LOOP_DEPTH];
     uint8_t loop_depth;
 } cnd_vm_ctx;
@@ -125,11 +152,17 @@ typedef struct cnd_vm_ctx_t {
 // --- 3. Public API ---
 
 /**
+ * Load a program from a byte array.
+ * This does not copy data; it just sets up the program struct.
+ */
+void cnd_program_load(cnd_program* program, const uint8_t* bytecode, size_t len);
+
+/**
  * Initialize a VM context.
  */
 void cnd_init(cnd_vm_ctx* ctx,
               cnd_mode_t mode,
-              const uint8_t* il, size_t il_len, 
+              const cnd_program* program,
               uint8_t* data, size_t data_len,
               cnd_io_cb cb, void* user);
 

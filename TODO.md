@@ -33,6 +33,7 @@
 ### Infrastructure
 - [x] **Build System**: CMake 3.14+ with `FetchContent` for dependencies.
 - [x] **Testing**: Google Test integration.
+- [x] **Compiler Tests**: Unit tests for the compiler logic (`cnd_compile_file`).
 - [x] **Dependencies**: cJSON (for CLI) and GoogleTest (for Unit Tests).
 - [x] **Code Organization**: VM logic refactored into `src/vm/` directory.
 
@@ -41,20 +42,24 @@
 ## 🚧 Remaining / Todo
 
 ### 1. Advanced Data Types
-- [ ] **Signed Bitfields**: Implement sign-extension logic for `IO_BIT_I`.
+- [x] **Signed Bitfields**: Implement sign-extension logic for `IO_BIT_I`.
 
 ### 2. Validation & Transformation
-- [ ] **Range Checking**: Implement `RANGE_CHECK` opcode and `@range(min, max)` compiler support.
-- [ ] **Scaling**: Implement `SCALE_LIN` opcode and `@scale(factor)` / `@offset(val)` compiler support (Raw <-> Engineering value conversion).
-- [ ] **CRC/Checksum**: Implement `CRC_16` opcode for integrity verification.
+- [x] **Range Checking**: Implement `RANGE_CHECK` opcode and `@range(min, max)` compiler support.
+- [x] **Scaling**: Implement `SCALE_LIN` opcode and `@scale(factor)` / `@offset(val)` compiler support (Raw <-> Engineering value conversion). Supports both Float (linear) and Integer (mul, div, add, sub) transforms.
+- [x] **CRC/Checksum**: Implement `CRC_16` opcode for integrity verification.
 
 ### 3. Control Flow
-- [ ] **Conditionals**: Implement `JUMP_IF_NOT` opcode and `@depends_on(field)` decorator logic in compiler to allow optional fields.
+- [x] **Conditionals**: Implement `JUMP_IF_NOT` opcode and `@depends_on(field)` decorator logic in compiler to allow optional fields.
 
 ### 4. CLI & JSON Improvements
 - [x] **Robust Array Handling**: Improve `json_io_callback` to correctly track array indices during loops. This will likely involve making the `IOCtx` more stateful for array elements.
 - [ ] **Hex/Binary Output**: Add options to output binary data as Hex strings in JSON for `uint8[]` blobs.
+- [x] **Refactor VM Architecture**: Separate 'Program' (Code) from 'Context' (State) to support concurrent execution and shared resources.
 
 ### 5. Documentation & Examples
-- [ ] **Language Guide**: Detailed documentation of the `.cnd` syntax.
-- [ ] **Host Integration Guide**: Example C++ dispatcher loop for embedded targets.
+- [x] **Language Guide**: Detailed documentation of the `.cnd` syntax.
+- [x] **Host Integration Guide**: Example C++ dispatcher loop for embedded targets.
+
+### 6. Compiler Enhancements
+- [x] **Imports**: Add `@import("file.cnd")` support to allow splitting definitions across multiple files. The compiler should resolve these and emit a single `.il` file containing all necessary bytecode.
