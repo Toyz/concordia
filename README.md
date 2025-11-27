@@ -1,60 +1,106 @@
-# Concordia Protocol Tools
+# Concordia
 
-This repository contains the reference implementation of the Concordia Protocol, including the IL Virtual Machine and the Schema Compiler.
+![CI](https://github.com/username/concordia/actions/workflows/ci.yml/badge.svg)
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Standard](https://img.shields.io/badge/standard-C99-green.svg)
 
-## Build
+**The Universal Binary Protocol for Aerospace and Embedded Systems.**
 
-Requirements: CMake 3.14+, C99 Compiler (GCC/Clang/MSVC), C++14 Compiler (for Tests).
+Concordia is a schema-driven, IL-based serialization framework designed for environments where reliability, bandwidth, and flexibility are critical. It decouples data definition from data processing, allowing you to update packet structures in orbit without reflashing flight software.
+
+---
+
+## Key Features
+
+*   **Zero Allocation & Zero Copy:** The VM acts as a "Virtual DMA," moving data directly between the wire and your C structs. No intermediate objects, no `malloc`.
+*   **Hot Reloadable:** Logic is data. Update your telemetry definitions by uploading a tiny `.il` file. The VM adapts instantly.
+*   **Isomorphic:** The exact same VM code runs on your microcontroller (C), your ground station (C++/Go), and your web dashboard (WASM).
+*   **Bit-Perfect Control:** Explicit support for bitfields, endianness, padding, and alignment. You control every bit on the wire.
+*   **Language Agnostic:** Bindings for C, C++, Go, and WebAssembly included.
+
+## Installation
+
+### Requirements
+*   CMake 3.14+
+*   C99 Compiler (GCC, Clang, MSVC)
+
+### Build from Source
 
 ```bash
-mkdir build
-cd build
+git clone https://github.com/username/concordia.git
+cd concordia
+mkdir build && cd build
 cmake ..
 cmake --build .
 ```
 
-## Components
+This will build:
+*   `cnd`: The CLI tool for compiling schemas.
+*   `concordia`: The static library for the VM.
+*   `test_runner`: The unit test suite.
 
-### 1. The Compiler (`cndc`)
+## Usage
 
-Converts human-readable schema files (`.cnd`) into binary Intermediate Language (`.il`) files.
+### 1. Define a Schema (`telemetry.cnd`)
 
-**Usage:**
-```bash
-./cndc <input.cnd> <output.il>
-```
-
-**Example Schema (`example.cnd`):**
 ```cnd
-@version(1)
-@import("types.cnd")
+packet Telemetry {
+    @const(0xCAFE)
+    uint16 sync_word;
 
-packet Status {
-    uint16 voltage;
+    @unit("Celsius")
+    float temperature;
+
     @count(3)
     uint8 sensors[3];
-    string log until 0x00 max 32;
+    
+    uint8 status : 1;
+    uint8 error  : 1;
+    uint8 mode   : 6;
 }
 ```
 
-### 2. The Virtual Machine (`libconcordia`)
-
-A header-only/static library for embedding in flight software or ground stations.
-
-*   **Header:** `include/concordia.h`
-*   **Source:** `src/vm.c`
-
-**Features:**
-*   Zero Memory Allocation (uses provided buffers).
-*   Portable C99.
-*   Endianness aware.
-*   Bitfield support.
-
-## Testing
-
-The project uses **Google Test** for unit and integration testing.
-CMake will automatically download and build Google Test via `FetchContent`.
+### 2. Compile to IL
 
 ```bash
-./test_runner
+./cnd compile telemetry.cnd telemetry.il
 ```
+
+### 3. Run in your Application (C Example)
+
+```c
+// Load the IL
+cnd_program_load(&prog, il_data, il_size);
+
+// Initialize VM (Zero-Copy)
+cnd_init(&ctx, CND_MODE_ENCODE, &prog, buffer, 128, my_callback, &my_struct);
+
+// Execute
+cnd_execute(&ctx);
+```
+
+## Project Structure
+
+*   `src/compiler`: The `cnd` compiler source (DSL -> IL).
+*   `src/vm`: The lightweight Virtual Machine (IL -> Binary).
+*   `include/`: Public headers.
+*   `demos/`: Examples in C, C++, Go, and WASM.
+*   `editors/`: VS Code extension for syntax highlighting and IntelliSense.
+*   `docs/`: Detailed documentation.
+
+## Documentation
+
+*   [Language Guide](docs/LANGUAGE_GUIDE.md): Learn the `.cnd` syntax.
+*   [Host Integration](docs/HOST_INTEGRATION.md): How to embed the VM in your C/C++ app.
+*   [Specification](SPEC.md): Deep dive into the architecture and IL opcodes.
+
+## Demos
+
+Check out the `demos/` folder for complete working examples:
+*   **C/C++**: Basic encoding/decoding.
+*   **Go**: Using `cgo` for static linking.
+*   **WASM**: Running the VM in a browser.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
