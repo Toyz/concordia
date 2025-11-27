@@ -82,3 +82,10 @@ install(TARGETS concordia cnd_compiler
 )
 
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+# --- Demos ---
+add_executable(demo_c demos/demo_c.c)
+target_link_libraries(demo_c concordia)
+
+add_executable(demo_cpp demos/demo_cpp.cpp)
+target_link_libraries(demo_cpp concordia)

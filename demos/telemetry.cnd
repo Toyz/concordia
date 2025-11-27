@@ -1,0 +1,15 @@
+packet Telemetry {
+    /// Unique ID of the device
+    uint32 device_id;
+
+    /// Temperature in Celsius
+    float temperature;
+
+    /// Battery level (0-100)
+    uint8 battery_level;
+
+    /// Status flags
+    /// [0] = Connected
+    /// [1] = Error
+    uint8 status;
+}
