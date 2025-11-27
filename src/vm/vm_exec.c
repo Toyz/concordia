@@ -303,6 +303,41 @@ void cnd_program_load(cnd_program* program, const uint8_t* bytecode, size_t len)
     if (!program) return;
     program->bytecode = bytecode;
     program->bytecode_len = len;
+    program->string_table = NULL;
+    program->string_count = 0;
+}
+
+cnd_error_t cnd_program_load_il(cnd_program* program, const uint8_t* image, size_t len) {
+    if (!program || !image) return CND_ERR_INVALID_OP;
+    
+    // Header Check: "CNDIL" (5 bytes) + Ver (1 byte) + StrCount (2) + StrOff (4) + BCOff (4) = 16 bytes
+    if (len < 16) return CND_ERR_OOB;
+    if (memcmp(image, "CNDIL", 5) != 0) return CND_ERR_INVALID_OP;
+    if (image[5] != 1) return CND_ERR_INVALID_OP; // Version check
+
+    uint16_t str_count = image[6] | (image[7] << 8);
+    uint32_t str_offset = image[8] | (image[9] << 8) | (image[10] << 16) | (image[11] << 24);
+    uint32_t bc_offset = image[12] | (image[13] << 8) | (image[14] << 16) | (image[15] << 24);
+
+    if (str_offset > len || bc_offset > len) return CND_ERR_OOB;
+    
+    program->string_table = (const char*)(image + str_offset);
+    program->string_count = str_count;
+    program->bytecode = image + bc_offset;
+    program->bytecode_len = len - bc_offset;
+    
+    return CND_ERR_OK;
+}
+
+const char* cnd_get_key_name(const cnd_program* program, uint16_t key_id) {
+    if (!program || !program->string_table || key_id >= program->string_count) return NULL;
+    
+    const char* ptr = program->string_table;
+    for (uint16_t i = 0; i < key_id; i++) {
+        while (*ptr) ptr++; // Skip current string
+        ptr++; // Skip null terminator
+    }
+    return ptr;
 }
 
 void cnd_init(cnd_vm_ctx* ctx, 
@@ -816,10 +851,14 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
 
             case OP_ARR_FIXED: {
                 uint16_t key = read_il_u16(ctx);
-                uint16_t count = read_il_u16(ctx);
+                uint32_t count = read_il_u32(ctx);
                 // printf("VM_DEBUG: Calling callback for ARR_FIXED (Key %d)\n", key);
                 if (ctx->mode == CND_MODE_ENCODE) {
                      // Notify host about array start so it can push context
+                     uint16_t c = (uint16_t)count; // Callback expects u16? No, ptr to void.
+                     // We should probably pass u32, but for now let's cast or ensure callback handles it.
+                     // The callback signature is (ctx, key, type, void*).
+                     // For ARR_FIXED, we pass pointer to count.
                      if (ctx->io_callback(ctx, key, opcode, &count) != CND_ERR_OK) return CND_ERR_CALLBACK;
                 } else {
                      // Notify host about array start

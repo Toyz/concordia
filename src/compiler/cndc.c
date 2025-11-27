@@ -24,6 +24,7 @@ int cnd_compile_file(const char* in_path, const char* out_path, int json_output)
     reg_init(&p.registry);
     enum_reg_init(&p.enums);
     p.had_error = 0;
+    p.error_count = 0;
     p.target = &p.global_bc;
     p.current_path = in_path;
     p.json_output = json_output;
@@ -37,7 +38,12 @@ int cnd_compile_file(const char* in_path, const char* out_path, int json_output)
     advance(&p); 
     parse_top_level(&p);
     
-    if (p.had_error) { free(source); buf_free(&p.global_bc); return 1; }
+    if (p.had_error) { 
+        if (!json_output) {
+            printf("\nCompilation failed with %d error%s.\n", p.error_count, p.error_count == 1 ? "" : "s");
+        }
+        free(source); buf_free(&p.global_bc); return 1; 
+    }
 
     FILE* out = fopen(out_path, "wb");
     if (!out) { 

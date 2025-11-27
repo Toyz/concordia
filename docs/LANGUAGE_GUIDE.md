@@ -105,7 +105,6 @@ Decorators provide metadata and transformation logic.
 ### Transformation
 *   `@scale(factor)`: Multiply raw value by factor (e.g., `raw * 0.1`).
 *   `@offset(value)`: Add offset to raw value.
-*   `@unit("string")`: Metadata for display units.
 
 ### Layout
 *   `@big_endian`, `@little_endian`: Set byte order.
@@ -133,7 +132,6 @@ packet Telemetry {
     uint16 id;
 
     @scale(0.01)
-    @unit("volts")
     uint16 voltage;
 
     @optional

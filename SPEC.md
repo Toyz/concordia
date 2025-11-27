@@ -153,11 +153,9 @@ command SetNavigation {
   byte payload[] prefix uint16; // 16 bits (len) + (len * 8 bits)
 
   @scale(0.1)
-  @unit("seconds")
   uint32 duration; // 32 bits
 
   @optional
-  @string_encoding("ascii")
   string comment until 0x00 max 64; // Variable length + 8 bits (null), max 64 bytes
 }
 ```
@@ -175,7 +173,6 @@ telemetry StatusPacket {
   uint16 voltage_mv;
 
   @scale(0.01)
-  @unit("Celsius")
   float temperature;
 
   Vector3 velocity;
@@ -184,7 +181,6 @@ telemetry StatusPacket {
   uint8 sensor_status[3];
 
   // Null-terminated string
-  @string_encoding("ascii")
   string status until 0x00 max 32;
 
   // Length-prefixed string (uint8 length)

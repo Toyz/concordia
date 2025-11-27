@@ -29,7 +29,8 @@ typedef enum {
     TOK_COLON,     // :
     TOK_COMMA,     // ,
     TOK_AT,        // @
-    TOK_EQUALS     // =
+    TOK_EQUALS,    // =
+    TOK_ERROR      // Lexer error
 } TokenType;
 
 typedef struct {
@@ -130,6 +131,7 @@ typedef struct {
     const char* current_struct_name; // Name of the struct currently being parsed (for recursion check)
     int current_struct_name_len;
     int had_error;
+    int error_count; // Total number of errors encountered
     int json_output; // Flag for JSON error output
     int packet_count; // Track number of packets defined
 } Parser;

@@ -1,21 +1,65 @@
 #include "cnd_internal.h"
 
+// ANSI Color Codes
+#define COLOR_RESET   "\033[0m"
+#define COLOR_RED     "\033[31m"
+#define COLOR_BOLD    "\033[1m"
+#define COLOR_CYAN    "\033[36m"
+
 void parser_error(Parser* p, const char* msg) {
+    p->had_error = 1;
+    p->error_count++;
+
     if (p->json_output) {
         // JSON format: {"file": "...", "line": N, "message": "...", "token": "..."}
         // We use manual JSON construction to avoid dependency on cJSON in the compiler core
         printf("{\"file\": \"%s\", \"line\": %d, \"message\": \"%s\", \"token\": \"%.*s\"}\n",
             p->current_path, p->current.line, msg, p->current.length, p->current.start);
     } else {
-        printf("Error at line %d: %s (Token: '%.*s')\n", 
-            p->current.line, msg, p->current.length, p->current.start);
+        // Calculate line start to determine column
+        const char* line_start = p->current.start;
+        while (line_start > p->lexer.source && *(line_start - 1) != '\n' && *(line_start - 1) != '\r') {
+            line_start--;
+        }
+        int col = (int)(p->current.start - line_start) + 1;
+
+        // Standard error format: file:line:col: error: message
+        // With colors: Bold File, Red Error
+        printf(COLOR_BOLD "%s:%d:%d: " COLOR_RED "error: " COLOR_RESET COLOR_BOLD "%s" COLOR_RESET "\n", 
+            p->current_path, p->current.line, col, msg);
+        
+        // Print source line context
+        const char* line_end = p->current.start;
+        while (*line_end && *line_end != '\n' && *line_end != '\r') {
+            line_end++;
+        }
+        
+        int line_len = (int)(line_end - line_start);
+        if (line_len > 0) {
+            printf("    %.*s\n", line_len, line_start);
+            printf("    ");
+            for(int i=0; i<col-1; i++) {
+                if (line_start[i] == '\t') printf("\t");
+                else printf(" ");
+            }
+            
+            // Print squiggles
+            printf(COLOR_RED "^");
+            int len = p->current.length;
+            if (len < 1) len = 1;
+            for(int i=1; i<len; i++) printf("~");
+            printf(COLOR_RESET "\n");
+        }
     }
-    p->had_error = 1;
 }
 
 void advance(Parser* p) {
     p->previous = p->current;
-    p->current = lexer_next(&p->lexer);
+    for (;;) {
+        p->current = lexer_next(&p->lexer);
+        if (p->current.type != TOK_ERROR) break;
+        parser_error(p, "Unexpected character");
+    }
 }
 
 void consume(Parser* p, TokenType type, const char* msg) {
@@ -185,7 +229,7 @@ void parse_field(Parser* p) {
             buf_push(p->target, OP_MARK_OPTIONAL);
         } else { 
             consume(p, TOK_LPAREN, "Expect ("); 
-            if (match_keyword(dec_name_token, "count")) {
+            if (match_keyword(dec_name_token, "count") || match_keyword(dec_name_token, "len")) {
                 Token num = p->current; consume(p, TOK_NUMBER, "Expect count number");
                 array_fixed_count = parse_number(num); has_fixed_array_count = 1;
             } else if (match_keyword(dec_name_token, "const") || match_keyword(dec_name_token, "match")) {
@@ -274,6 +318,7 @@ void parse_field(Parser* p) {
     uint8_t arr_prefix_op = OP_NOOP;
     uint8_t str_prefix_op = OP_NOOP;
     uint16_t max_len = 255;
+    int has_until = 0;
     
     if (p->current.type == TOK_LBRACKET) {
         advance(p); is_array_field = 1;
@@ -287,7 +332,7 @@ void parse_field(Parser* p) {
     
     if (match_keyword(p->current, "prefix")) {
         advance(p); Token ptype = p->current; consume(p, TOK_IDENTIFIER, "Expect prefix type");
-        if (is_variable_array) {
+        if (is_variable_array && !has_fixed_array_count) {
             if (match_keyword(ptype, "uint8") || match_keyword(ptype, "u8")) arr_prefix_op = OP_ARR_PRE_U8;
             else if (match_keyword(ptype, "uint16") || match_keyword(ptype, "u16")) arr_prefix_op = OP_ARR_PRE_U16;
             else if (match_keyword(ptype, "uint32") || match_keyword(ptype, "u32")) arr_prefix_op = OP_ARR_PRE_U32;
@@ -299,8 +344,14 @@ void parse_field(Parser* p) {
             else parser_error(p, "Invalid prefix type for string");
         } else { parser_error(p, "Prefix keyword used for non-variable-array/non-string type"); }
     } else if (match_keyword(type_tok, "string")) {
-        if (match_keyword(p->current, "until")) { advance(p); consume(p, TOK_NUMBER, "Expect val"); }
+        if (match_keyword(p->current, "until")) { advance(p); consume(p, TOK_NUMBER, "Expect val"); has_until = 1; }
         if (match_keyword(p->current, "max")) { advance(p); Token max_tok = p->current; consume(p, TOK_NUMBER, "Expect max length"); max_len = (uint16_t)parse_number(max_tok); }
+    }
+
+    if (is_array_field && match_keyword(type_tok, "string")) {
+        if (str_prefix_op == OP_NOOP && !has_until) {
+            parser_error(p, "String arrays must specify 'prefix' or 'until'");
+        }
     }
 
     if (is_big_endian_field) { buf_push(p->target, OP_SET_ENDIAN_BE); }
@@ -309,8 +360,10 @@ void parse_field(Parser* p) {
         buf_push(p->target, arr_prefix_op); buf_push_u16(p->target, key_id);
     } else if (has_fixed_array_count && is_array_field) {
         buf_push(p->target, OP_ARR_FIXED); buf_push_u16(p->target, key_id);
-        buf_push_u16(p->target, (uint16_t)array_fixed_count);
-    } else if (str_prefix_op != OP_NOOP) {
+        buf_push_u32(p->target, array_fixed_count);
+    } 
+    
+    if (str_prefix_op != OP_NOOP) {
         buf_push(p->target, str_prefix_op); buf_push_u16(p->target, key_id);
     }
 

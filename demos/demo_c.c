@@ -23,8 +23,11 @@ typedef struct {
 cnd_error_t my_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
     TelemetryData* data = (TelemetryData*)ctx->user_ptr;
 
-    // Debug print
-    // printf("IO Callback: Key %d, Type %d\n", key_id, type);
+    // Debug print with Key Name lookup
+    const char* key_name = cnd_get_key_name(ctx->program, key_id);
+    if (key_name) {
+        printf("IO Callback: Key '%s' (%d), Type %d\n", key_name, key_id, type);
+    }
 
     switch (key_id) {
         case 0: // device_id (uint32)
@@ -77,13 +80,12 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Parse IL Header to find Bytecode
-    // Header: Magic(5) Ver(1) StrCount(2) StrOffset(4) BytecodeOffset(4)
-    if (file_size < 16) { printf("Invalid IL file\n"); return 1; }
-    uint32_t bytecode_offset = *(uint32_t*)(file_data + 12);
-    
+    // Parse IL Header and Load Program
     cnd_program program;
-    cnd_program_load(&program, file_data + bytecode_offset, file_size - bytecode_offset);
+    if (cnd_program_load_il(&program, file_data, file_size) != CND_ERR_OK) {
+        printf("Invalid IL file format\n");
+        return 1;
+    }
 
     // --- ENCODE ---
     printf("--- Encoding ---\n");
