@@ -16,17 +16,11 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            artifact_name: cnd
-            asset_name: cnd-linux-amd64
-            build_path: build/cnd
+            asset_name: concordia-linux-amd64.tar.gz
           - os: windows-latest
-            artifact_name: cnd.exe
-            asset_name: cnd-windows-amd64.exe
-            build_path: build/Release/cnd.exe
+            asset_name: concordia-windows-amd64.zip
           - os: macos-latest
-            artifact_name: cnd
-            asset_name: cnd-macos-amd64
-            build_path: build/cnd
+            asset_name: concordia-macos-amd64.tar.gz
 
     steps:
     - uses: actions/checkout@v4
@@ -35,16 +29,21 @@ jobs:
       run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
     - name: Build
-      run: cmake --build build --config Release --target cnd
+      run: cmake --build build --config Release
 
-    - name: Rename Artifact
-      shell: bash
+    - name: Install to Staging
+      run: cmake --install build --config Release --prefix staging
+
+    - name: Archive Release (Unix)
+      if: runner.os != 'Windows'
       run: |
-        if [ "${{ runner.os }}" == "Windows" ]; then
-          mv ${{ matrix.build_path }} ${{ matrix.asset_name }}
-        else
-          mv ${{ matrix.build_path }} ${{ matrix.asset_name }}
-        fi
+        cd staging
+        tar -czvf ../${{ matrix.asset_name }} *
+
+    - name: Archive Release (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        Compress-Archive -Path staging\* -DestinationPath ${{ matrix.asset_name }}
 
     - name: Upload Release Asset
       uses: softprops/action-gh-release@v2
