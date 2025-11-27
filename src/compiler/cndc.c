@@ -28,6 +28,7 @@ int cnd_compile_file(const char* in_path, const char* out_path, int json_output)
     p.json_output = json_output;
     p.current_struct_name = NULL;
     p.current_struct_name_len = 0;
+    p.packet_count = 0;
     
     // Add main file to imports to prevent self-import
     strtab_add(&p.imports, in_path, (int)strlen(in_path));
@@ -59,7 +60,7 @@ int cnd_compile_file(const char* in_path, const char* out_path, int json_output)
     fwrite(p.global_bc.data, 1, p.global_bc.size, out);
     
     fclose(out);
-    if (!json_output) {
+    if (json_output == 0) {
         printf("Successfully compiled %s to %s\n", in_path, out_path);
         printf("  Strings: %zu\n", p.strtab.count);
         printf("  Bytecode: %zu bytes\n", p.global_bc.size);

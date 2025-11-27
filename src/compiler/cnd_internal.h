@@ -105,6 +105,7 @@ typedef struct {
     int current_struct_name_len;
     int had_error;
     int json_output; // Flag for JSON error output
+    int packet_count; // Track number of packets defined
 } Parser;
 
 void parser_error(Parser* p, const char* msg);

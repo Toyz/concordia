@@ -242,3 +242,16 @@ TEST_F(CompilerTest, InvalidFillParam) {
     
     EXPECT_NE(res, 0);
 }
+
+TEST_F(CompilerTest, MultiplePacketsFail) {
+    WriteSource(
+        "packet A { uint8 x; }"
+        "packet B { uint8 y; }"
+    );
+    
+    testing::internal::CaptureStdout();
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+    testing::internal::GetCapturedStdout();
+    
+    EXPECT_NE(res, 0);
+}

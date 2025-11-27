@@ -29,7 +29,8 @@ This document outlines the design of a schema-driven, IL-based system for encodi
 
 ## 2. DSL Language Features
 
-The DSL is designed to be explicit about data layout. It supports the following types with strict bit-widths:
+The DSL is designed to be explicit about data layout. It supports the following types with strict bit-widths.
+A single `.cnd` file may contain multiple `struct` definitions but is limited to **one** `packet` definition to ensure a clear 1:1 mapping between a schema file and a message type.
 
 | Category | Type Names | Size (bits) | Description |
 |---|---|---|---|
@@ -188,7 +189,6 @@ telemetry StatusPacket {
 | `@little_endian` / `@big_endian` | Byte order override |
 | `@range(min, max)` | Input validation |
 | `@scale(factor)` | Apply scaling |
-| `@unit("unit")` | Metadata for docs/UI |
 | `@optional` | Optional field |
 | `@crc16` | CRC validation or generation |
 | `@count(n)` | Fixed array size |

@@ -18,6 +18,13 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+# Google Benchmark
+FetchContent_Declare(
+  benchmark
+  URL https://github.com/google/benchmark/archive/refs/heads/main.zip
+)
+FetchContent_MakeAvailable(benchmark)
+
 # cJSON
 FetchContent_Declare(
   cjson
@@ -63,10 +70,15 @@ add_executable(test_runner
     tests/import_test.cpp
     tests/validation_test.cpp
     tests/extended_test.cpp
+    tests/extended_coverage_test.cpp
     tests/spec_coverage_test.cpp
     tests/match_rtt_test.cpp
 )
 target_link_libraries(test_runner concordia cnd_compiler gtest_main)
+
+# --- Benchmarks ---
+add_executable(vm_benchmark benchmarks/vm_benchmark.cpp)
+target_link_libraries(vm_benchmark concordia cnd_compiler benchmark::benchmark)
 
 # --- Installation ---
 

@@ -27,7 +27,7 @@ Concordia is a schema-driven, IL-based serialization framework designed for envi
 ### Build from Source
 
 ```bash
-git clone https://github.com/username/concordia.git
+git clone https://github.com/Toyz/concordia.git
 cd concordia
 mkdir build && cd build
 cmake ..
@@ -38,17 +38,28 @@ This will build:
 *   `cnd`: The CLI tool for compiling schemas.
 *   `concordia`: The static library for the VM.
 *   `test_runner`: The unit test suite.
+*   `vm_benchmark`: Performance benchmarks.
+
+### Running Benchmarks
+
+To run the performance benchmarks:
+
+```bash
+./build/vm_benchmark
+```
 
 ## Usage
 
 ### 1. Define a Schema (`telemetry.cnd`)
+
+A `.cnd` file can contain multiple `struct` definitions but only **one** `packet` definition.
 
 ```cnd
 packet Telemetry {
     @const(0xCAFE)
     uint16 sync_word;
 
-    @unit("Celsius")
+    /// Temperature in Celsius
     float temperature;
 
     @count(3)

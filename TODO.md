@@ -63,3 +63,8 @@
 
 ### 6. Compiler Enhancements
 - [x] **Imports**: Add `@import("file.cnd")` support to allow splitting definitions across multiple files. The compiler should resolve these and emit a single `.il` file containing all necessary bytecode.
+
+### 7. Enums
+- [ ] **Enum Support**: Add `enum` keyword to define named constants.
+- [ ] **Type Safety**: Ensure enum values are validated against defined constants.
+- [ ] **Backing Type**: Allow specifying the underlying integer type (e.g., `enum Status : uint8`).

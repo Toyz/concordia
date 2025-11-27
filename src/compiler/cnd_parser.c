@@ -183,11 +183,6 @@ void parse_field(Parser* p) {
             crc_flags |= 2;
         } else if (match_keyword(dec_name_token, "optional")) {
             buf_push(p->target, OP_MARK_OPTIONAL);
-        } else if (match_keyword(dec_name_token, "unit")) {
-            consume(p, TOK_LPAREN, "Expect (");
-            consume(p, TOK_STRING, "Expect unit string");
-            consume(p, TOK_RPAREN, "Expect )");
-            // Metadata ignored for now
         } else { 
             consume(p, TOK_LPAREN, "Expect ("); 
             if (match_keyword(dec_name_token, "count")) {
@@ -563,6 +558,10 @@ void parse_top_level(Parser* p) {
         } else if (match_keyword(p->current, "struct")) {
             advance(p); parse_struct(p);
         } else if (match_keyword(p->current, "packet")) {
+            if (p->packet_count > 0) {
+                parser_error(p, "Only one packet definition allowed per file");
+            }
+            p->packet_count++;
             advance(p); parse_packet(p);
         } else if (p->current.type == TOK_SEMICOLON) {
             advance(p); // Ignore top-level semicolons

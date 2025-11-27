@@ -43,6 +43,22 @@ protected:
     std::vector<uint8_t> il_buffer; // To hold IL data during tests
     TestContext tctx;
 
+    bool Compile(const char* source) {
+        const char* tmp_src = "temp_test.cnd";
+        const char* tmp_il = "temp_test.il";
+        
+        std::ofstream out(tmp_src);
+        out << source;
+        out.close();
+        
+        int res = cnd_compile_file(tmp_src, tmp_il, 0);
+        
+        remove(tmp_src);
+        remove(tmp_il);
+        
+        return res == 0;
+    }
+
     void CompileAndLoad(const char* source) {
         tctx.use_tape = false;
         tctx.tape_index = 0;

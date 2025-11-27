@@ -15,6 +15,8 @@ A Concordia file (`.cnd`) consists of `struct` and `packet` definitions.
 
 ### Packets
 A `packet` is the top-level unit of data. It represents a complete message.
+**Note:** A `.cnd` file can contain only **one** `packet` definition.
+
 ```cnd
 packet MyPacket {
     uint8 id;
