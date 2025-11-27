@@ -3,9 +3,9 @@
 #include <string.h>
 #include <stdint.h>
 #include <cJSON.h>
-#include "../../include/concordia.h"
-#include "../../include/compiler.h"
-#include "../../include/cli_helpers.h" // Include the common helpers header
+#include "concordia.h"
+#include "compiler.h"
+#include "cli_helpers.h" // Include the common helpers header
 
 // --- Forward Declarations for CLI Commands ---
 // These are now defined in separate .c files

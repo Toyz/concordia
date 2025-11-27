@@ -2,10 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include "../../include/cli_helpers.h"
+#include "cli_helpers.h"
 #include <cJSON.h> // Include cJSON specifically here for its types
-#include "../../include/concordia.h" // For CND_ERR_OOB etc.
-#include "../../include/compiler.h" // For cnd_compile_file
+#include "concordia.h" // For CND_ERR_OOB etc.
+#include "compiler.h" // For cnd_compile_file
 
 // --- Helper: File IO ---
 

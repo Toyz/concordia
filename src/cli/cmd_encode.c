@@ -1,4 +1,4 @@
-#include "../../include/cli_helpers.h"
+#include "cli_helpers.h"
 
 int cmd_encode(int argc, char** argv) {
     if (argc < 5) {

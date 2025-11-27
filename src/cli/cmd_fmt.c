@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "../../include/compiler.h"
+#include "compiler.h"
 
 int cmd_fmt(int argc, char** argv) {
     if (argc < 3) {

@@ -1,4 +1,4 @@
-#include "../../include/cli_helpers.h"
+#include "cli_helpers.h"
 
 // Defined in src/compiler/cndc.c
 extern int cnd_compile_file(const char* in_path, const char* out_path, int json_output);

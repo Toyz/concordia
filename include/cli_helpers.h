@@ -6,8 +6,8 @@
 #include <string.h>
 #include <stdint.h>
 #include <cJSON.h>
-#include "../../include/concordia.h"
-#include "../../include/compiler.h"
+#include "concordia.h"
+#include "compiler.h"
 
 // --- Helper: File IO ---
 uint8_t* read_file_bytes(const char* path, size_t* out_len);

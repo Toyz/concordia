@@ -1,7 +1,7 @@
 #ifndef VM_INTERNAL_H
 #define VM_INTERNAL_H
 
-#include "../../include/concordia.h"
+#include "concordia.h"
 
 // IL Reading
 uint16_t read_il_u16(cnd_vm_ctx* ctx);

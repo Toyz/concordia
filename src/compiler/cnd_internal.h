@@ -6,8 +6,8 @@
 #include <string.h>
 #include <stdint.h>
 #include <ctype.h>
-#include "../../include/concordia.h"
-#include "../../include/compiler.h"
+#include "concordia.h"
+#include "compiler.h"
 
 #ifdef __cplusplus
 extern "C" {

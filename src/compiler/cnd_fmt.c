@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include "../../include/compiler.h"
+#include "compiler.h"
 #include "cnd_internal.h"
 
 // --- Formatting Lexer ---
