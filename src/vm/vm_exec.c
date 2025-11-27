@@ -80,10 +80,7 @@
       if (ctx->cursor + (size) > ctx->data_len) { \
           if (ctx->is_next_optional) { \
               ctx->is_next_optional = false; \
-              double val = 0; \
-              /* Assuming callback handles F64/F32 via OP_IO_... */ \
-              /* If F32, we pass float pointer? No, test callback uses casts. */ \
-              /* Let's zero init and pass pointer. */ \
+              ctype val = 0; \
               if (ctx->io_callback(ctx, key, opcode, &val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
               break; \
           } \
