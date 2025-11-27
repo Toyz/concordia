@@ -1,6 +1,6 @@
 # Concordia
 
-![CI](https://github.com/username/concordia/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/Toyz/concordia/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Standard](https://img.shields.io/badge/standard-C99-green.svg)
 
