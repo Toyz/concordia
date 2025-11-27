@@ -102,3 +102,29 @@ TEST_F(EnumTest, EnumImport) {
     
     remove("enum_def.cnd");
 }
+
+TEST_F(EnumTest, EnumEndianness) {
+    CompileAndLoad(
+        "enum E : uint16 { Val = 0x1234 }"
+        "packet P {"
+        "  @big_endian E be;"
+        "  @little_endian E le;"
+        "}"
+    );
+
+    g_test_data[0].key = 0; g_test_data[0].u64_val = 0x1234;
+    g_test_data[1].key = 1; g_test_data[1].u64_val = 0x1234;
+
+    memset(buffer, 0, sizeof(buffer));
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, &tctx);
+    cnd_error_t err = cnd_execute(&ctx);
+    EXPECT_EQ(err, CND_ERR_OK);
+
+    // Big Endian: 0x12 0x34
+    EXPECT_EQ(buffer[0], 0x12);
+    EXPECT_EQ(buffer[1], 0x34);
+
+    // Little Endian: 0x34 0x12
+    EXPECT_EQ(buffer[2], 0x34);
+    EXPECT_EQ(buffer[3], 0x12);
+}
