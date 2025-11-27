@@ -8,6 +8,23 @@ export function registerCompletionProviders(context: vscode.ExtensionContext, mo
     vscode.languages.registerCompletionItemProvider(mode, {
       provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
         const linePrefix = document.lineAt(position).text.substr(0, position.character);
+
+        // Enum underlying type completion
+        // Matches: "enum Name :" or "enum Name : "
+        if (/enum\s+\w+\s*:\s*$/.test(linePrefix)) {
+          const intTypes = [
+            'uint8', 'u8', 'byte',
+            'int8', 'i8',
+            'uint16', 'u16',
+            'int16', 'i16',
+            'uint32', 'u32',
+            'int32', 'i32',
+            'uint64', 'u64',
+            'int64', 'i64'
+          ].map(t => new vscode.CompletionItem(t, vscode.CompletionItemKind.Class));
+          return intTypes;
+        }
+
         if (linePrefix.trim().endsWith('@')) {
           return undefined; // Let the decorator provider handle this
         }
@@ -31,12 +48,17 @@ export function registerCompletionProviders(context: vscode.ExtensionContext, mo
         packetSnippet.insertText = new vscode.SnippetString('packet ${1:Name} {\n\t$0\n}');
         packetSnippet.detail = 'Define a new packet';
 
+        const enumSnippet = new vscode.CompletionItem('enum', vscode.CompletionItemKind.Snippet);
+        enumSnippet.insertText = new vscode.SnippetString('enum ${1:Name} : ${2:uint32} {\n\t${3:Member} = ${4:0}\n}');
+        enumSnippet.detail = 'Define a new enum';
+
         // Dynamic: Scan for user-defined structs/packets in the current file AND imported files
         const symbols = scanSymbols(document.fileName, new Set(), document.getText());
         const userTypes = symbols
           .filter(s => s.kind !== 'packet') // Packets cannot be used as types
           .map(s => {
-            const item = new vscode.CompletionItem(s.name, vscode.CompletionItemKind.Struct);
+            const kind = s.kind === 'enum' ? vscode.CompletionItemKind.Enum : vscode.CompletionItemKind.Struct;
+            const item = new vscode.CompletionItem(s.name, kind);
             item.detail = `Defined in ${path.basename(s.file)}`;
             if (s.doc) {
               item.documentation = new vscode.MarkdownString(s.doc);
@@ -44,9 +66,9 @@ export function registerCompletionProviders(context: vscode.ExtensionContext, mo
             return item;
           });
 
-        return [...keywords, ...types, ...userTypes, structSnippet, packetSnippet];
+        return [...keywords, ...types, ...userTypes, structSnippet, packetSnippet, enumSnippet];
       }
-    })
+    }, ':')
   );
 
   // IntelliSense - Decorators

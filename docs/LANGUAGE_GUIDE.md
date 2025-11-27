@@ -38,6 +38,28 @@ packet Path {
 }
 ```
 
+### Enums
+An `enum` defines a set of named constants.
+```cnd
+// Default underlying type is uint32
+enum Color {
+    Red = 1,
+    Green = 2,
+    Blue = 3
+}
+
+// Explicit underlying type
+enum Status : uint8 {
+    Ok = 0,
+    Error = 1
+}
+
+packet Telemetry {
+    Color led_color;
+    Status system_status;
+}
+```
+
 ## 2. Data Types
 
 ### Integers

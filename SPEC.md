@@ -38,8 +38,26 @@ A single `.cnd` file may contain multiple `struct` definitions but is limited to
 | **Signed Integers** | `int8`, `int16`, `int32`, `int64` | 8, 16, 32, 64 | Two's complement signed integers |
 | **Floating Point** | `float`, `double` | 32, 64 | IEEE 754 single/double precision |
 | **Text** | `string` | Variable | ASCII/UTF-8 text (null-terminated or prefixed) |
-| **Complex** | `struct`, `type[]` | Variable | Nested structures or arrays (fixed or prefixed) |
+| **Complex** | `struct`, `enum`, `type[]` | Variable | Nested structures, enumerations, or arrays |
 | **Bitfields** | `uintX:N` | N bits | Packed bitfields (e.g., `uint8:3`) |
+
+### Example: Enum Definition
+
+Enums allow defining named constants with an optional underlying integer type. If no type is specified, `uint32` is used.
+
+```il
+enum Status : uint8 {
+  Ok = 0,
+  Error = 1,
+  Unknown = 2
+}
+
+enum Color {
+  Red = 1,
+  Green = 2,
+  Blue = 3
+}
+```
 
 ### Example: Struct Definition
 

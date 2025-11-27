@@ -1,0 +1,20 @@
+@import("enum_shared.cnd")
+
+// Local enum definition (defaults to uint32)
+enum CommandType {
+    Ping = 1,
+    GetTelemetry = 2,
+    SetMode = 3
+}
+
+packet CommandPacket {
+    // Use the local enum
+    CommandType type;
+
+    // Use the imported enum
+    SharedStatus current_status;
+
+    // Enum with explicit range validation
+    @range(1, 3)
+    CommandType validated_type;
+}

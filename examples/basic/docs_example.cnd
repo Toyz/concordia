@@ -26,7 +26,3 @@ packet NavigationData {
     /// [1] = GPS Locked
     uint8 status_flags;
 }
-
-packet test {
-    Vector3 vec;
-}

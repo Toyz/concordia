@@ -62,6 +62,7 @@ extern "C" {
 #define OP_TRANS_DIV        0x48
 #define OP_CRC_32           0x49
 #define OP_MARK_OPTIONAL    0x4A
+#define OP_ENUM_CHECK       0x4B
 
 // Category F: Control Flow
 #define OP_JUMP_IF_NOT      0x50

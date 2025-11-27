@@ -1,12 +1,12 @@
 {
     "bounds": {
-        "min": { "x": 0, "y": 0 },
-        "max": { "x": 1920, "y": 1080 }
+        "min": { "x": 0.0, "y": 0.0 },
+        "max": { "x": 1920.0, "y": 1080.0 }
     },
     "config": {
         "visible": 1,
         "grayscale": 0,
-        "brightness": 45
+        "brightness": 50
     },
     "status": {
         "is_ready": 1,
