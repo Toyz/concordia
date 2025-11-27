@@ -1,0 +1,22 @@
+{
+  "header": {
+    "version": 2,
+    "packet_id": 1024,
+    "timestamp": 1678886400
+  },
+  "gps": {
+    "latitude": 34000000,
+    "longitude": -118000000,
+    "altitude": 150.5
+  },
+  "sensor_count": 3,
+  "sensor_ids": [10, 20, 30],
+  "description": "Complex sensor test packet",
+  "battery_voltage": 3.7,
+  "items": [
+      { "a": 1, "b": 0, "c": 15 },
+      { "a": 0, "b": 1, "c": 7 }
+  ]
+  ,
+  "filler": { "a": 9 }
+}

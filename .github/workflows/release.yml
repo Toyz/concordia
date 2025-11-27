@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build Release (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset_name: concordia-linux-amd64.tar.gz
+          - os: windows-latest
+            asset_name: concordia-windows-amd64.zip
+          - os: macos-latest
+            asset_name: concordia-macos-amd64.tar.gz
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Configure CMake
+      run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build
+      run: cmake --build build --config Release
+
+    - name: Install to Staging
+      run: cmake --install build --config Release --prefix staging
+
+    - name: Archive Release (Unix)
+      if: runner.os != 'Windows'
+      run: |
+        cd staging
+        tar -czvf ../${{ matrix.asset_name }} *
+
+    - name: Archive Release (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        Compress-Archive -Path staging\* -DestinationPath ${{ matrix.asset_name }}
+
+    - name: Upload Release Asset
+      uses: softprops/action-gh-release@v2
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: ${{ matrix.asset_name }}

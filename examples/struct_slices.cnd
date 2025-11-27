@@ -1,0 +1,28 @@
+struct Point {
+    int16 x;
+    int16 y;
+}
+
+struct Polygon {
+    // Array of structs
+    Point points[] prefix uint8; 
+}
+
+struct Color {
+    uint8 r;
+    uint8 g;
+    uint8 b;
+}
+
+struct ColoredPolygon {
+    Color color;
+    Polygon poly;
+}
+
+packet Scene {
+    uint16 scene_id;
+    // Slice of complex structs
+    ColoredPolygon shapes[] prefix uint16;
+    // CRC-16 Checksum
+    @crc(16) uint16 checksum;
+}

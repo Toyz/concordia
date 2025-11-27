@@ -1,0 +1,11 @@
+@import("libs/math.cnd")
+@import("shared/config.cnd")
+
+packet Canvas  {
+
+    Rect bounds;
+
+    DisplayConfig config;
+
+    StatusFlags status;
+}

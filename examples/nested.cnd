@@ -1,0 +1,11 @@
+struct Vec3 {
+    float x;
+    float y;
+    float z;
+}
+
+packet Position {
+    @const(0xAA) uint8 id;
+    Vec3 target;
+    float time;
+}

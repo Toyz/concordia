@@ -1,0 +1,111 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Concordia",
+	"patterns": [
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#decorators"
+		},
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#numbers"
+		},
+		{
+			"include": "#types"
+		},
+		{
+			"include": "#operators"
+		}
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.documentation.cnd",
+					"match": "///.*$"
+				},
+				{
+					"name": "comment.line.double-slash.cnd",
+					"match": "//.*$"
+				},
+				{
+					"name": "comment.block.cnd",
+					"begin": "/\\*",
+					"end": "\\*/"
+				}
+			]
+		},
+		"decorators": {
+			"name": "meta.decorator.cnd",
+			"match": "@[a-zA-Z_][a-zA-Z0-9_]*",
+			"captures": {
+				"0": {
+					"name": "entity.name.function.decorator.cnd"
+				}
+			}
+		},
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.cnd",
+					"match": "\\b(import|struct|packet|enum|const|prefix|until|max)\\b"
+				},
+				{
+					"name": "keyword.other.cnd",
+					"match": "\\b(true|false)\\b"
+				}
+			]
+		},
+		"strings": {
+			"name": "string.quoted.double.cnd",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.cnd",
+					"match": "\\\\."
+				}
+			]
+		},
+		"numbers": {
+			"patterns": [
+				{
+					"name": "constant.numeric.hex.cnd",
+					"match": "\\b0x[0-9a-fA-F]+\\b"
+				},
+				{
+					"name": "constant.numeric.float.cnd",
+					"match": "\\b[0-9]+\\.[0-9]+\\b"
+				},
+				{
+					"name": "constant.numeric.decimal.cnd",
+					"match": "\\b[0-9]+\\b"
+				}
+			]
+		},
+		"types": {
+			"patterns": [
+				{
+					"name": "storage.type.cnd",
+					"match": "\\b(bool|uint8|uint16|uint32|uint64|int8|int16|int32|int64|float32|float64|string|bytes|float|double|byte|u8|u16|u32|u64|i8|i16|i32|i64|f32|f64)\\b"
+				},
+				{
+					"name": "entity.name.type.cnd",
+					"match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
+				}
+			]
+		},
+		"operators": {
+			"name": "keyword.operator.cnd",
+			"match": "(=|:|;|,|\\{|\\}|\\[|\\]|\\.|\\*|\\(|\\))"
+		}
+	},
+	"scopeName": "source.cnd"
+}

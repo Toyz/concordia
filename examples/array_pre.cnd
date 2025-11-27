@@ -1,0 +1,3 @@
+packet VariableArrayTest {
+    uint8[] data prefix uint8;
+}
