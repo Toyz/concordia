@@ -119,6 +119,8 @@ typedef cnd_error_t (*cnd_io_cb)(
 typedef struct {
     const uint8_t* bytecode;    // Pointer to IL Bytecode
     size_t bytecode_len;        // Length of IL Bytecode
+    const char* string_table;   // Pointer to string table (packed null-terminated strings)
+    uint16_t string_count;      // Number of strings in the table
 } cnd_program;
 
 typedef struct cnd_vm_ctx_t {
@@ -153,10 +155,24 @@ typedef struct cnd_vm_ctx_t {
 // --- 3. Public API ---
 
 /**
- * Load a program from a byte array.
+ * Load a program from a byte array (Raw Bytecode).
  * This does not copy data; it just sets up the program struct.
+ * String table will be empty.
  */
 void cnd_program_load(cnd_program* program, const uint8_t* bytecode, size_t len);
+
+/**
+ * Load a program from a full IL binary image (Header + Strings + Bytecode).
+ * Parses the header to locate bytecode and string table.
+ * Returns CND_ERR_OK on success, or CND_ERR_INVALID_OP if header is invalid.
+ */
+cnd_error_t cnd_program_load_il(cnd_program* program, const uint8_t* image, size_t len);
+
+/**
+ * Get the string name for a given Key ID.
+ * Returns NULL if key_id is out of range or string table is missing.
+ */
+const char* cnd_get_key_name(const cnd_program* program, uint16_t key_id);
 
 /**
  * Initialize a VM context.

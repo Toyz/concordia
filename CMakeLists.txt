@@ -63,7 +63,7 @@ add_library(cnd_compiler
 add_executable(hexview src/tools/hexview.c)
 
 # Main CLI Tool (cnd)
-add_executable(cnd src/cli/main.c src/cli/cli_helpers.c src/cli/cmd_compile.c src/cli/cmd_encode.c src/cli/cmd_decode.c src/cli/cmd_fmt.c)
+add_executable(cnd src/cli/main.c src/cli/cli_helpers.c src/cli/cmd_compile.c src/cli/cmd_encode.c src/cli/cmd_decode.c src/cli/cmd_fmt.c src/cli/cmd_inspect.c)
 target_link_libraries(cnd concordia cnd_compiler cjson)
 
 # Test Executable
@@ -82,6 +82,7 @@ add_executable(test_runner
     tests/spec_coverage_test.cpp
     tests/match_rtt_test.cpp
     tests/enum_test.cpp
+    tests/string_array_test.cpp
 )
 target_link_libraries(test_runner concordia cnd_compiler gtest_main)
 

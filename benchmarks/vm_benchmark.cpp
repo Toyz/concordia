@@ -494,13 +494,13 @@ static cnd_error_t bench_io_callback_crc(cnd_vm_ctx* ctx, uint16_t key_id, uint8
 }
 
 static void BM_EncodeCRC(benchmark::State& state) {
-    std::vector<uint8_t> bytecode;
+    std::vector<uint8_t> il_image;
     CompileSchema(
         "packet P { string data prefix u16; @crc(32) uint32 crc; }", 
-        bytecode);
+        il_image);
     
     cnd_program program;
-    cnd_program_load(&program, bytecode.data(), bytecode.size());
+    cnd_program_load_il(&program, il_image.data(), il_image.size());
     
     CRCData d;
     memset(d.data, 0xAA, 1023);
@@ -519,13 +519,13 @@ static void BM_EncodeCRC(benchmark::State& state) {
 BENCHMARK(BM_EncodeCRC);
 
 static void BM_DecodeCRC(benchmark::State& state) {
-    std::vector<uint8_t> bytecode;
+    std::vector<uint8_t> il_image;
     CompileSchema(
         "packet P { string data prefix u16; @crc(32) uint32 crc; }", 
-        bytecode);
+        il_image);
     
     cnd_program program;
-    cnd_program_load(&program, bytecode.data(), bytecode.size());
+    cnd_program_load_il(&program, il_image.data(), il_image.size());
     
     CRCData d;
     memset(d.data, 0xAA, 1023);
@@ -569,11 +569,11 @@ static cnd_error_t bench_io_callback_string(cnd_vm_ctx* ctx, uint16_t key_id, ui
 }
 
 static void BM_EncodeString(benchmark::State& state) {
-    std::vector<uint8_t> bytecode;
-    CompileSchema("packet P { string s max 64; }", bytecode);
+    std::vector<uint8_t> il_image;
+    CompileSchema("packet P { string s max 64; }", il_image);
     
     cnd_program program;
-    cnd_program_load(&program, bytecode.data(), bytecode.size());
+    cnd_program_load_il(&program, il_image.data(), il_image.size());
     
     StringData d;
     strcpy(d.str, "Hello World! This is a benchmark string.");
@@ -590,11 +590,11 @@ static void BM_EncodeString(benchmark::State& state) {
 BENCHMARK(BM_EncodeString);
 
 static void BM_DecodeString(benchmark::State& state) {
-    std::vector<uint8_t> bytecode;
-    CompileSchema("packet P { string s max 64; }", bytecode);
+    std::vector<uint8_t> il_image;
+    CompileSchema("packet P { string s max 64; }", il_image);
     
     cnd_program program;
-    cnd_program_load(&program, bytecode.data(), bytecode.size());
+    cnd_program_load_il(&program, il_image.data(), il_image.size());
     
     StringData d;
     strcpy(d.str, "Hello World! This is a benchmark string.");
@@ -694,18 +694,8 @@ static void CompileSchema(const char* schema, std::vector<uint8_t>& bytecode) {
     fread(file_data.data(), 1, size, il);
     fclose(il);
 
-    // Parse header to get bytecode
-    // Header: Magic(5) Ver(1) StrCount(2) StrOffset(4) BytecodeOffset(4)
-    if (size < 16) {
-        fprintf(stderr, "Invalid IL file size\n");
-        exit(1);
-    }
-    uint32_t bytecode_offset = *(uint32_t*)(file_data.data() + 12);
-    if (bytecode_offset > size) {
-        fprintf(stderr, "Invalid bytecode offset\n");
-        exit(1);
-    }
-    bytecode.assign(file_data.begin() + bytecode_offset, file_data.end());
+    // Return full IL image
+    bytecode = file_data;
     
     remove("bench_temp.cnd");
     remove("bench_temp.il");
@@ -714,11 +704,11 @@ static void CompileSchema(const char* schema, std::vector<uint8_t>& bytecode) {
 // --- Benchmarks ---
 
 static void BM_EncodeSimple(benchmark::State& state) {
-    std::vector<uint8_t> bytecode;
-    CompileSchema("packet P { uint32 id; float val; uint8 data[16]; }", bytecode);
+    std::vector<uint8_t> il_image;
+    CompileSchema("packet P { uint32 id; float val; uint8 data[16]; }", il_image);
     
     cnd_program program;
-    cnd_program_load(&program, bytecode.data(), bytecode.size());
+    cnd_program_load_il(&program, il_image.data(), il_image.size());
     
     BenchContext bc;
     bc.data.id = 0x12345678;
@@ -737,11 +727,11 @@ static void BM_EncodeSimple(benchmark::State& state) {
 BENCHMARK(BM_EncodeSimple);
 
 static void BM_DecodeSimple(benchmark::State& state) {
-    std::vector<uint8_t> bytecode;
-    CompileSchema("packet P { uint32 id; float val; uint8 data[16]; }", bytecode);
+    std::vector<uint8_t> il_image;
+    CompileSchema("packet P { uint32 id; float val; uint8 data[16]; }", il_image);
     
     cnd_program program;
-    cnd_program_load(&program, bytecode.data(), bytecode.size());
+    cnd_program_load_il(&program, il_image.data(), il_image.size());
     
     BenchContext bc;
     bc.data.id = 0x12345678;
@@ -765,16 +755,15 @@ static void BM_DecodeSimple(benchmark::State& state) {
 BENCHMARK(BM_DecodeSimple);
 
 static void BM_EnumEncode(benchmark::State& state) {
-    std::vector<uint8_t> bytecode;
+    std::vector<uint8_t> il_image;
     CompileSchema(
         "enum Status : uint8 { Ok = 0, Error = 1, Unknown = 2 }"
         "packet P { Status s; }", 
-        bytecode
+        il_image
     );
     
     cnd_program program;
-    program.bytecode = bytecode.data();
-    program.bytecode_len = bytecode.size();
+    cnd_program_load_il(&program, il_image.data(), il_image.size());
     
     uint8_t buffer[16];
     cnd_vm_ctx ctx;
@@ -791,5 +780,107 @@ static void BM_EnumEncode(benchmark::State& state) {
     }
 }
 BENCHMARK(BM_EnumEncode);
+
+// --- String Array Benchmark ---
+
+struct StringArrayBenchContext {
+    const char* strings[10];
+    int count;
+    int current_idx;
+};
+
+static cnd_error_t bench_string_array_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
+    StringArrayBenchContext* bc = (StringArrayBenchContext*)ctx->user_ptr;
+    
+    if (type == OP_ARR_FIXED) {
+        bc->current_idx = 0;
+        return CND_ERR_OK;
+    }
+    if (type == OP_ARR_END) return CND_ERR_OK;
+
+    if (type == OP_STR_NULL || type == OP_STR_PRE_U8) {
+        if (ctx->mode == CND_MODE_ENCODE) {
+            if (bc->current_idx < bc->count) {
+                *(const char**)ptr = bc->strings[bc->current_idx];
+                bc->current_idx++;
+            }
+        } else {
+            // Decode: Just consume
+        }
+    }
+    return CND_ERR_OK;
+}
+
+static void BM_StringArray_Encode(benchmark::State& state) {
+    const char* schema = R"(
+        packet BenchPacket {
+            @count(5)
+            string items[] until 0;
+        }
+    )";
+    
+    std::vector<uint8_t> il_image;
+    CompileSchema(schema, il_image);
+    
+    cnd_program program;
+    cnd_program_load_il(&program, il_image.data(), il_image.size());
+    
+    StringArrayBenchContext bc;
+    bc.strings[0] = "StringOne";
+    bc.strings[1] = "StringTwo";
+    bc.strings[2] = "StringThree";
+    bc.strings[3] = "StringFour";
+    bc.strings[4] = "StringFive";
+    bc.count = 5;
+    
+    uint8_t buffer[256];
+    cnd_vm_ctx ctx;
+    
+    for (auto _ : state) {
+        bc.current_idx = 0;
+        cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), bench_string_array_callback, &bc);
+        cnd_execute(&ctx);
+    }
+}
+BENCHMARK(BM_StringArray_Encode);
+
+static void BM_StringArray_Decode(benchmark::State& state) {
+    const char* schema = R"(
+        packet BenchPacket {
+            @count(5)
+            string items[] until 0;
+        }
+    )";
+    
+    std::vector<uint8_t> il_image;
+    CompileSchema(schema, il_image);
+    
+    cnd_program program;
+    cnd_program_load_il(&program, il_image.data(), il_image.size());
+    
+    StringArrayBenchContext bc;
+    bc.strings[0] = "StringOne";
+    bc.strings[1] = "StringTwo";
+    bc.strings[2] = "StringThree";
+    bc.strings[3] = "StringFour";
+    bc.strings[4] = "StringFive";
+    bc.count = 5;
+    
+    uint8_t buffer[256];
+    cnd_vm_ctx ctx;
+    
+    // Pre-encode to get valid buffer
+    bc.current_idx = 0;
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), bench_string_array_callback, &bc);
+    cnd_execute(&ctx);
+    size_t encoded_size = ctx.cursor;
+    
+    for (auto _ : state) {
+        bc.current_idx = 0;
+        cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, encoded_size, bench_string_array_callback, &bc);
+        cnd_execute(&ctx);
+    }
+}
+BENCHMARK(BM_StringArray_Decode);
 
 BENCHMARK_MAIN();

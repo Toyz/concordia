@@ -18,6 +18,15 @@ Concordia is a schema-driven, IL-based serialization framework designed for envi
 *   **Bit-Perfect Control:** Explicit support for bitfields, endianness, padding, and alignment. You control every bit on the wire.
 *   **Language Agnostic:** Bindings for C, C++, Go, and WebAssembly included.
 
+## Safety & Reliability
+
+Concordia is engineered for hostile environments where stability is paramount.
+
+*   **Memory Safety:** The VM is sandboxed. It cannot read or write outside the bounds of the provided buffer or user context. All pointer arithmetic is internal and verified.
+*   **Deterministic Resource Usage:** No dynamic memory allocation (`malloc`) means no heap fragmentation or OOM crashes. Stack usage is fixed and predictable.
+*   **Stack Protection:** Recursion and loops are tracked on a fixed-size internal stack, preventing stack overflow crashes even with deeply nested structures.
+*   **Input Validation:** Implicit validation of enums, ranges, and array sizes ensures that your application logic only ever sees valid data.
+
 ## Installation
 
 ### Requirements

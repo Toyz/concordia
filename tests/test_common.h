@@ -82,16 +82,12 @@ protected:
         f.read((char*)file_data.data(), size);
         f.close();
         
-        // Parse Header (Skip to bytecode)
-        // Header: Magic(5) Ver(1) StrCount(2) StrOffset(4) BytecodeOffset(4)
-        ASSERT_GT(size, 16);
-        uint32_t bytecode_offset = *(uint32_t*)(file_data.data() + 12);
-        ASSERT_LT(bytecode_offset, size);
+        // Store full IL image
+        il_buffer = file_data;
         
-        size_t bytecode_len = size - bytecode_offset;
-        il_buffer.assign(file_data.begin() + bytecode_offset, file_data.end());
-        
-        cnd_program_load(&program, il_buffer.data(), il_buffer.size());
+        // Load using new API
+        cnd_error_t err = cnd_program_load_il(&program, il_buffer.data(), il_buffer.size());
+        ASSERT_EQ(err, CND_ERR_OK) << "Failed to load IL image";
         
         remove(tmp_src);
         remove(tmp_il);

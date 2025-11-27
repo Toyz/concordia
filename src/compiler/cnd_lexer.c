@@ -100,8 +100,8 @@ Token lexer_next(Lexer* lexer) {
             return token;
         }
         
-        printf("Lexer Error: Unexpected char '%c' line %d\n", c, lexer->line);
-        exit(1);
+        token.type = TOK_ERROR;
+        return token;
     }
     Token t = { TOK_EOF, lexer->current, 0, lexer->line };
     return t;
