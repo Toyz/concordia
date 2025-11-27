@@ -49,9 +49,11 @@ TEST_F(ConcordiaTest, MatchRTT_U8) {
     ASSERT_EQ(err, CND_ERR_OK);
     
     // Verify we got 'data' back
-    // 'magic' is validated silently, not returned to callback because there is no IO op for it.
-    EXPECT_EQ(g_test_data[0].key, 1);
-    EXPECT_EQ(g_test_data[0].u64_val, 0xFF);
+    // 'magic' is validated and now returned to callback (Read-Only Const).
+    EXPECT_EQ(g_test_data[0].key, 0);
+    EXPECT_EQ(g_test_data[0].u64_val, 0x42);
+    EXPECT_EQ(g_test_data[1].key, 1);
+    EXPECT_EQ(g_test_data[1].u64_val, 0xFF);
 
     // 3. DECODE (Failure)
     buffer[0] = 0x43; // Wrong magic

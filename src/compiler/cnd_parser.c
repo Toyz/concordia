@@ -316,16 +316,62 @@ void parse_field(Parser* p) {
 
     if (has_const) {
         uint8_t type_op = OP_IO_U16;
-        if (match_keyword(type_tok, "uint8") || match_keyword(type_tok, "byte") || match_keyword(type_tok, "u8")) type_op = OP_IO_U8;
-        else if (match_keyword(type_tok, "uint16") || match_keyword(type_tok, "u16")) type_op = OP_IO_U16;
-        else if (match_keyword(type_tok, "uint32") || match_keyword(type_tok, "u32")) type_op = OP_IO_U32;
-        else if (match_keyword(type_tok, "uint64") || match_keyword(type_tok, "u64")) type_op = OP_IO_U64;
+        int is_signed = 0;
+        int width = 0; // 1, 2, 4, 8
+        int found = 0;
+
+        #define CHECK_TYPE(t1, t2, t3, op, w, s) \
+            if (!found && (match_keyword(type_tok, t1) || (t2 && match_keyword(type_tok, t2)) || (t3 && match_keyword(type_tok, t3)))) { \
+                type_op = op; width = w; is_signed = s; found = 1; \
+            }
+
+        CHECK_TYPE("uint8", "byte", "u8", OP_IO_U8, 1, 0)
+        CHECK_TYPE("int8", "i8", NULL, OP_IO_I8, 1, 1)
+        CHECK_TYPE("uint16", "u16", NULL, OP_IO_U16, 2, 0)
+        CHECK_TYPE("int16", "i16", NULL, OP_IO_I16, 2, 1)
+        CHECK_TYPE("uint32", "u32", NULL, OP_IO_U32, 4, 0)
+        CHECK_TYPE("int32", "i32", NULL, OP_IO_I32, 4, 1)
+        CHECK_TYPE("uint64", "u64", NULL, OP_IO_U64, 8, 0)
+        CHECK_TYPE("int64", "i64", NULL, OP_IO_I64, 8, 1)
+
+        if (!found) {
+             parser_error(p, "Const not supported for this type");
+        }
+        #undef CHECK_TYPE
+
+        // Validation
+        if (is_signed) {
+            int64_t val_i64 = (int64_t)const_val;
+            int64_t min = 0, max = 0;
+            if (width == 1) { min = -128; max = 127; }
+            else if (width == 2) { min = -32768; max = 32767; }
+            else if (width == 4) { min = -2147483648LL; max = 2147483647LL; }
+            else { min = INT64_MIN; max = INT64_MAX; }
+            
+            if (val_i64 < min || val_i64 > max) {
+                parser_error(p, "Const value out of range for signed type");
+            }
+        } else {
+            uint64_t val_u64 = const_val;
+            uint64_t max = 0;
+            if (width == 1) max = 255;
+            else if (width == 2) max = 65535;
+            else if (width == 4) max = 4294967295ULL;
+            else max = UINT64_MAX;
+            
+            if (val_u64 > max) {
+                parser_error(p, "Const value out of range for unsigned type");
+            }
+        }
         
-        buf_push(p->target, OP_CONST_CHECK); buf_push(p->target, type_op);
-        if (type_op == OP_IO_U8) buf_push(p->target, (uint8_t)const_val);
-        else if (type_op == OP_IO_U16) buf_push_u16(p->target, (uint16_t)const_val);
-        else if (type_op == OP_IO_U32) buf_push_u32(p->target, (uint32_t)const_val);
-        else if (type_op == OP_IO_U64) buf_push_u64(p->target, const_val);
+        buf_push(p->target, OP_CONST_CHECK); 
+        buf_push_u16(p->target, key_id);
+        buf_push(p->target, type_op);
+        
+        if (type_op == OP_IO_U8 || type_op == OP_IO_I8) buf_push(p->target, (uint8_t)const_val);
+        else if (type_op == OP_IO_U16 || type_op == OP_IO_I16) buf_push_u16(p->target, (uint16_t)const_val);
+        else if (type_op == OP_IO_U32 || type_op == OP_IO_I32) buf_push_u32(p->target, (uint32_t)const_val);
+        else if (type_op == OP_IO_U64 || type_op == OP_IO_I64) buf_push_u64(p->target, const_val);
         
         if (has_range) { emit_range_check(p, type_op, range_min_tok, range_max_tok); }
     } else {

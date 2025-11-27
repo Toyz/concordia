@@ -79,3 +79,27 @@ TEST_F(ValidationTest, ArrayPrefixTypeMismatch) {
     // Prefix must be integer
     EXPECT_TRUE(CompileShouldFail("struct S { int arr[] prefix float; }"));
 }
+
+TEST_F(ValidationTest, ConstBounds_Uint8_TooLarge) {
+    EXPECT_TRUE(CompileShouldFail("packet P { @const(256) uint8 x; }"));
+}
+
+TEST_F(ValidationTest, ConstBounds_Uint8_Negative) {
+    EXPECT_TRUE(CompileShouldFail("packet P { @const(-1) uint8 x; }"));
+}
+
+TEST_F(ValidationTest, ConstBounds_Int8_TooLarge) {
+    EXPECT_TRUE(CompileShouldFail("packet P { @const(128) int8 x; }"));
+}
+
+TEST_F(ValidationTest, ConstBounds_Int8_TooSmall) {
+    EXPECT_TRUE(CompileShouldFail("packet P { @const(-129) int8 x; }"));
+}
+
+TEST_F(ValidationTest, ConstBounds_Uint16_TooLarge) {
+    EXPECT_TRUE(CompileShouldFail("packet P { @const(65536) uint16 x; }"));
+}
+
+TEST_F(ValidationTest, ConstBounds_Int16_TooLarge) {
+    EXPECT_TRUE(CompileShouldFail("packet P { @const(32768) int16 x; }"));
+}
