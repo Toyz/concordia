@@ -81,6 +81,24 @@ static const char* get_opcode_name(uint8_t op) {
         case OP_JUMP_IF_NOT: return "JUMP_IF_NOT";
         case OP_SWITCH: return "SWITCH";
         case OP_JUMP: return "JUMP";
+        case OP_LOAD_CTX: return "LOAD_CTX";
+        case OP_PUSH_IMM: return "PUSH_IMM";
+        case OP_POP: return "POP";
+        case OP_BIT_AND: return "BIT_AND";
+        case OP_BIT_OR: return "BIT_OR";
+        case OP_BIT_XOR: return "BIT_XOR";
+        case OP_BIT_NOT: return "BIT_NOT";
+        case OP_SHL: return "SHL";
+        case OP_SHR: return "SHR";
+        case OP_EQ: return "EQ";
+        case OP_NEQ: return "NEQ";
+        case OP_GT: return "GT";
+        case OP_LT: return "LT";
+        case OP_GTE: return "GTE";
+        case OP_LTE: return "LTE";
+        case OP_LOG_AND: return "LOG_AND";
+        case OP_LOG_OR: return "LOG_OR";
+        case OP_LOG_NOT: return "LOG_NOT";
         default: return "UNKNOWN";
     }
 }
@@ -303,6 +321,24 @@ int cmd_inspect(int argc, char** argv) {
                 case OP_JUMP: {
                     int32_t off = (int32_t)read_u32(&ptr, end);
                     printf(" Offset=%d", off);
+                    break;
+                }
+
+                case OP_JUMP_IF_NOT: {
+                    int32_t off = (int32_t)read_u32(&ptr, end);
+                    printf(" Offset=%d", off);
+                    break;
+                }
+
+                case OP_LOAD_CTX: {
+                    uint16_t k = read_u16(&ptr, end);
+                    printf(" KeyID=%d", k);
+                    break;
+                }
+
+                case OP_PUSH_IMM: {
+                    uint64_t v = read_u64(&ptr, end);
+                    printf(" Val=%llu", v);
                     break;
                 }
 
