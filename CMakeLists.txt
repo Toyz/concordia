@@ -85,6 +85,8 @@ add_executable(test_runner
     tests/string_array_test.cpp
     tests/vm_concurrency_test.cpp
     tests/bool_test.cpp
+    tests/switch_test.cpp
+    tests/enum_sugar_test.cpp
 )
 target_link_libraries(test_runner concordia cnd_compiler gtest_main)
 
@@ -113,3 +115,6 @@ target_link_libraries(demo_c concordia)
 
 add_executable(demo_cpp demos/demo_cpp.cpp)
 target_link_libraries(demo_cpp concordia)
+
+add_executable(kitchen_sink examples/kitchen_sink/kitchen_sink.c)
+target_link_libraries(kitchen_sink concordia cnd_compiler)

@@ -69,6 +69,10 @@ packet Telemetry {
 *   `uint32`, `u32`, `int32`, `i32`
 *   `uint64`, `u64`, `int64`, `i64`
 
+### Boolean
+*   `bool` (1 byte by default)
+*   `bool flag : 1` (1 bit when used in bitfields)
+
 ### Floating Point
 *   `float`, `f32` (32-bit IEEE 754)
 *   `double`, `f64` (64-bit IEEE 754)
@@ -87,9 +91,10 @@ Strings are ASCII or UTF-8 sequences.
 Pack multiple fields into a single integer type.
 ```cnd
 struct Flags {
-    uint8 enable : 1;
+    bool ready : 1;
+    bool error : 1;
     uint8 mode : 3;
-    uint8 reserved : 4;
+    uint8 reserved : 3;
 }
 ```
 
@@ -116,12 +121,54 @@ Decorators provide metadata and transformation logic.
 
 ## 4. Imports
 
-Split schemas into multiple files.
+Split schemas into multiple files. Imports are transitive.
+You can import other `.cnd` files containing `struct` or `enum` definitions.
+
 ```cnd
 @import("common/types.cnd")
+@import("common/enums.cnd")
+
+packet P {
+    SharedEnum status; // Defined in common/enums.cnd
+}
 ```
 
-## 5. Example
+## 5. Control Flow (Tagged Unions)
+
+Concordia supports polymorphic packets using `switch` statements (Tagged Unions). The structure of the packet can change based on the value of a previously defined field (the discriminator).
+
+### Syntax
+```cnd
+enum PacketType : uint8 {
+    STATUS = 1,
+    DATA = 2
+}
+
+packet Message {
+    PacketType type; // Discriminator
+
+    switch (type) {
+        case PacketType.STATUS: {
+            uint8 cpu_load;
+            uint8 battery_level;
+        }
+        case PacketType.DATA: {
+            uint16 payload_len;
+            uint8 payload[] prefix uint16;
+        }
+        default: {
+            // Optional default case
+            string error_msg max 64;
+        }
+    }
+}
+```
+
+*   **Discriminator:** Must be an integer primitive or an `enum`.
+*   **Cases:** Must match the type of the discriminator. You can use integer literals (`case 1:`) or Enum members (`case PacketType.STATUS:`).
+*   **Scope:** Each case block has its own scope. You can define single fields or blocks `{ ... }`.
+
+## 6. Example
 
 ```cnd
 packet Telemetry {

@@ -30,6 +30,7 @@ typedef enum {
     TOK_COMMA,     // ,
     TOK_AT,        // @
     TOK_EQUALS,    // =
+    TOK_DOT,       // .
     TOK_ERROR      // Lexer error
 } TokenType;
 
@@ -65,6 +66,8 @@ void buf_push_u16(Buffer* b, uint16_t val);
 void buf_push_u32(Buffer* b, uint32_t val);
 void buf_push_u64(Buffer* b, uint64_t val);
 void buf_write_u16_at(Buffer* b, size_t offset, uint16_t val);
+void buf_write_u32_at(Buffer* b, size_t offset, uint32_t val);
+size_t buf_current_offset(Buffer* b);
 
 // --- Utils: String Table ---
 typedef struct {

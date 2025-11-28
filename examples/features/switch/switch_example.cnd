@@ -1,0 +1,37 @@
+enum MsgType : uint8 {
+    PING = 1,
+    DATA = 2,
+    /// Special message type
+    STATUS = 3
+}
+
+struct DataPayload {
+    uint16 id;
+    uint8 values[4];
+}
+
+packet SwitchExample {
+    // 1. Simple Switch (Field selection based on version)
+    uint8 version;
+    switch (version) {
+        case 1: uint16 v1_field;
+        case 2: uint32 v2_field;
+        default: uint8 legacy_field;
+    }
+
+    // 2. Complex Switch (Enum + Structs/Blocks)
+    MsgType type;
+    switch (type) {
+        case 1: {
+            // Inline block for PING
+            uint32 timestamp;
+            uint8 sequence;
+        }
+        case 2: DataPayload data; // Struct
+        case MsgType.S: {
+            // Inline block with string
+            uint8 code;
+            string message max 64;
+        }
+    }
+}

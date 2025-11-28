@@ -1,0 +1,6 @@
+@import("my_enum.cnd")
+
+packet MainPacket {
+    Status current_status;
+    uint32 data_value;
+}

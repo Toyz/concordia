@@ -9,6 +9,7 @@ export interface SymbolDef {
   file: string;
   line: number;
   doc?: string;
+  members?: { name: string; doc?: string }[];
 }
 
 export function getCompilerPath(): string {

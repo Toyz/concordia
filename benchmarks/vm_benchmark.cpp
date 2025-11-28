@@ -883,4 +883,107 @@ static void BM_StringArray_Decode(benchmark::State& state) {
 }
 BENCHMARK(BM_StringArray_Decode);
 
+// --- Switch Benchmark ---
+
+struct SwitchBenchData {
+    uint8_t type;
+    uint64_t val;
+};
+
+static cnd_error_t bench_switch_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
+    SwitchBenchData* d = (SwitchBenchData*)ctx->user_ptr;
+    
+    if (type == OP_CTX_QUERY) { // Switch discriminator query
+        *(uint64_t*)ptr = d->type;
+        return CND_ERR_OK;
+    }
+    
+    // Fields: 0=type, 1=v1_field, 2=v2_field, 3=legacy
+    switch(key_id) {
+        case 0: // type
+            if (ctx->mode == CND_MODE_ENCODE) *(uint8_t*)ptr = d->type;
+            else d->type = *(uint8_t*)ptr;
+            break;
+        case 1: // v1_field
+        case 2: // v2_field
+        case 3: // legacy
+            if (ctx->mode == CND_MODE_ENCODE) {
+                if (type == OP_IO_U16) *(uint16_t*)ptr = (uint16_t)d->val;
+                else if (type == OP_IO_U32) *(uint32_t*)ptr = (uint32_t)d->val;
+                else if (type == OP_IO_U8) *(uint8_t*)ptr = (uint8_t)d->val;
+            } else {
+                if (type == OP_IO_U16) d->val = *(uint16_t*)ptr;
+                else if (type == OP_IO_U32) d->val = *(uint32_t*)ptr;
+                else if (type == OP_IO_U8) d->val = *(uint8_t*)ptr;
+            }
+            break;
+    }
+    return CND_ERR_OK;
+}
+
+static void BM_SwitchEncode(benchmark::State& state) {
+    std::vector<uint8_t> il_image;
+    CompileSchema(
+        "packet P {"
+        "  uint8 type;"
+        "  switch(type) {"
+        "    case 1: uint16 v1_field;"
+        "    case 2: uint32 v2_field;"
+        "    default: uint8 legacy;"
+        "  }"
+        "}", 
+        il_image
+    );
+    
+    cnd_program program;
+    cnd_program_load_il(&program, il_image.data(), il_image.size());
+    
+    SwitchBenchData d = { 2, 0xDEADBEEF };
+    
+    uint8_t buffer[128];
+    cnd_vm_ctx ctx;
+
+    for (auto _ : state) {
+        memset(buffer, 0, sizeof(buffer));
+        cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), bench_switch_callback, &d);
+        cnd_execute(&ctx);
+    }
+}
+BENCHMARK(BM_SwitchEncode);
+
+static void BM_SwitchDecode(benchmark::State& state) {
+    std::vector<uint8_t> il_image;
+    CompileSchema(
+        "packet P {"
+        "  uint8 type;"
+        "  switch(type) {"
+        "    case 1: uint16 v1_field;"
+        "    case 2: uint32 v2_field;"
+        "    default: uint8 legacy;"
+        "  }"
+        "}", 
+        il_image
+    );
+    
+    cnd_program program;
+    cnd_program_load_il(&program, il_image.data(), il_image.size());
+    
+    SwitchBenchData d = { 2, 0xDEADBEEF };
+    
+    uint8_t buffer[128];
+    cnd_vm_ctx ctx;
+    
+    // Pre-encode
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), bench_switch_callback, &d);
+    cnd_execute(&ctx);
+    size_t encoded_size = ctx.cursor;
+
+    for (auto _ : state) {
+        SwitchBenchData out_d;
+        cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, encoded_size, bench_switch_callback, &out_d);
+        cnd_execute(&ctx);
+    }
+}
+BENCHMARK(BM_SwitchDecode);
+
 BENCHMARK_MAIN();

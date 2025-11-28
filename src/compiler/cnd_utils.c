@@ -52,6 +52,18 @@ void buf_write_u16_at(Buffer* b, size_t offset, uint16_t val) {
     b->data[offset + 1] = (val >> 8) & 0xFF;
 }
 
+void buf_write_u32_at(Buffer* b, size_t offset, uint32_t val) {
+    if (offset + 4 > b->size) return;
+    b->data[offset] = val & 0xFF;
+    b->data[offset + 1] = (val >> 8) & 0xFF;
+    b->data[offset + 2] = (val >> 16) & 0xFF;
+    b->data[offset + 3] = (val >> 24) & 0xFF;
+}
+
+size_t buf_current_offset(Buffer* b) {
+    return b->size;
+}
+
 // --- String Table Implementation ---
 
 void strtab_init(StringTable* t) {

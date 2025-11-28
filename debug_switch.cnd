@@ -1,0 +1,8 @@
+packet SwitchPacket {
+  uint8 type;
+  switch (type) {
+    case 1: uint8 val_a;
+    case 2: uint16 val_b;
+    default: uint32 val_def;
+  }
+}

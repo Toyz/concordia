@@ -30,7 +30,8 @@ export function registerCompletionProviders(context: vscode.ExtensionContext, mo
         }
 
         const keywords = [
-          'import', 'const', 'enum', 'true', 'false', 'prefix', 'until', 'max'
+          'import', 'const', 'enum', 'true', 'false', 'prefix', 'until', 'max',
+          'switch', 'case', 'default'
         ].map(k => new vscode.CompletionItem(k, vscode.CompletionItemKind.Keyword));
 
         const types = [
@@ -91,5 +92,34 @@ export function registerCompletionProviders(context: vscode.ExtensionContext, mo
         return decorators;
       }
     }, '@')
+  );
+
+  // IntelliSense - Enum Values (Enum.Value)
+  context.subscriptions.push(
+    vscode.languages.registerCompletionItemProvider(mode, {
+      provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
+        const linePrefix = document.lineAt(position).text.substr(0, position.character);
+        
+        // Matches "EnumName."
+        const match = /([A-Z][a-zA-Z0-9_]*)\.$/.exec(linePrefix);
+        if (!match) return undefined;
+
+        const enumName = match[1];
+        const symbols = scanSymbols(document.fileName, new Set(), document.getText());
+        const enumDef = symbols.find(s => s.name === enumName && s.kind === 'enum');
+
+        if (enumDef && enumDef.members) {
+          return enumDef.members.map(m => {
+            const item = new vscode.CompletionItem(m.name, vscode.CompletionItemKind.EnumMember);
+            item.detail = `${enumName}.${m.name}`;
+            if (m.doc) {
+                item.documentation = new vscode.MarkdownString(m.doc);
+            }
+            return item;
+          });
+        }
+        return undefined;
+      }
+    }, '.')
   );
 }

@@ -17,6 +17,19 @@ Concordia is a schema-driven, IL-based serialization framework designed for envi
 *   **Isomorphic:** The exact same VM code runs on your microcontroller (C), your ground station (C++/Go), and your web dashboard (WASM).
 *   **Bit-Perfect Control:** Explicit support for bitfields, endianness, padding, and alignment. You control every bit on the wire.
 *   **Language Agnostic:** Bindings for C, C++, Go, and WebAssembly included.
+*   **Ultra-Compact:** The entire VM binary is ~90KB (Windows/Debug) and <10KB (Embedded/Release), making it ideal for constrained environments.
+
+### Comparison
+
+| Feature | Concordia | FlatBuffers | Protobuf |
+| :--- | :--- | :--- | :--- |
+| **Paradigm** | Schema-Driven VM | Offset-Based Access | Hydration / Parse |
+| **Runtime Footprint** | ~4KB (Static VM) | Varies (Generated Code) | High (Lib + Generated) |
+| **Wire Density** | Max (Pure Entropy) | Low (Offsets + Padding) | Med (Tag Overhead) |
+| **Hot Reload** | ✅ Yes (Upload IL) | ❌ No (Recompile Binary) | ❌ No (Recompile Binary) |
+| **Bit-Level Control** | ✅ Yes (Bitfields/Logic) | ❌ No (Byte Aligned) | ❌ No (Varints Only) |
+| **Safety** | ✅ Sandboxed (Bound/CRC) | ⚠️ Unsafe Pointers | ⚠️ Allocation/Complexity |
+| **Tooling Size** | 91KB (All-in-One) | ~2MB (Compiler) | ~20MB (Compiler) |
 
 ## Safety & Reliability
 

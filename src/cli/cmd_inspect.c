@@ -79,6 +79,8 @@ static const char* get_opcode_name(uint8_t op) {
         case OP_MARK_OPTIONAL: return "MARK_OPTIONAL";
         case OP_ENUM_CHECK: return "ENUM_CHECK";
         case OP_JUMP_IF_NOT: return "JUMP_IF_NOT";
+        case OP_SWITCH: return "SWITCH";
+        case OP_JUMP: return "JUMP";
         default: return "UNKNOWN";
     }
 }
@@ -288,6 +290,19 @@ int cmd_inspect(int argc, char** argv) {
                         else if (type == OP_IO_I64) printf("%lld", (int64_t)read_u64(&ptr, end));
                     }
                     printf("]");
+                    break;
+                }
+
+                case OP_SWITCH: {
+                    uint16_t k = read_u16(&ptr, end);
+                    uint32_t t = read_u32(&ptr, end);
+                    printf(" KeyID=%d TableOff=%u", k, t);
+                    break;
+                }
+
+                case OP_JUMP: {
+                    int32_t off = (int32_t)read_u32(&ptr, end);
+                    printf(" Offset=%d", off);
                     break;
                 }
 

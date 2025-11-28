@@ -90,7 +90,7 @@
 			"patterns": [
 				{
 					"name": "keyword.control.cnd",
-					"match": "\\b(import|struct|packet|enum|const|prefix|until|max)\\b"
+					"match": "\\b(import|struct|packet|enum|const|prefix|until|max|switch|case|default)\\b"
 				},
 				{
 					"name": "keyword.other.cnd",
