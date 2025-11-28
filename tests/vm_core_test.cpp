@@ -73,8 +73,8 @@ TEST_F(ConcordiaTest, Strings) {
 TEST_F(ConcordiaTest, Arrays) {
     g_test_data[0].key = 1; g_test_data[0].u64_val = 0xAA;
     g_test_data[1].key = 3; g_test_data[1].u64_val = 0; // Dummy entry for Array Key
-    // Added 0x03, 0x00 for Count=3 argument to OP_ARR_FIXED
-    uint8_t il[] = { OP_ARR_FIXED, 0x03, 0x00, 0x03, 0x00, OP_IO_U8, 0x01, 0x00, OP_ARR_END };
+    // Added 0x03, 0x00, 0x00, 0x00 for Count=3 argument to OP_ARR_FIXED (u32)
+    uint8_t il[] = { OP_ARR_FIXED, 0x03, 0x00, 0x03, 0x00, 0x00, 0x00, OP_IO_U8, 0x01, 0x00, OP_ARR_END };
     
     memset(buffer, 0, sizeof(buffer));
     cnd_program_load(&program, il, sizeof(il));
