@@ -1,6 +1,0 @@
-packet Telemetry {
-    uint32 device_id;
-    float temperature;
-    uint8 battery_level;
-    uint8 status;
-}

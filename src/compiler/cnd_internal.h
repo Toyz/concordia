@@ -19,6 +19,17 @@ typedef enum {
     TOK_IDENTIFIER,
     TOK_NUMBER,
     TOK_STRING,
+    
+    // Keywords
+    TOK_STRUCT,
+    TOK_PACKET,
+    TOK_ENUM,
+    TOK_SWITCH,
+    TOK_CASE,
+    TOK_DEFAULT,
+    TOK_TRUE,
+    TOK_FALSE,
+
     TOK_LBRACE,    // {
     TOK_RBRACE,    // }
     TOK_LBRACKET,  // [

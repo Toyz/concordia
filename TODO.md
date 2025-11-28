@@ -37,6 +37,12 @@
 - [x] **Dependencies**: cJSON (for CLI) and GoogleTest (for Unit Tests).
 - [x] **Code Organization**: VM logic refactored into `src/vm/` directory.
 
+### Language Features
+- [x] **`bool` Type**: Added explicit boolean type for byte-aligned and bitfields.
+- [x] **Lexer Refactoring**: Implemented keyword map for cleaner, more extensible lexing.
+- [x] **Enum Support**: Added `enum` keyword with underlying types, validation, and `Enum.Value` syntax sugar.
+- [x] **Tagged Unions (`switch`)**: Conditional field inclusion based on a discriminator, supporting integer and enum values, default cases, and nested usage.
+
 ---
 
 ## 🚧 Remaining / Todo
@@ -51,6 +57,47 @@
 
 ### 3. Control Flow
 - [x] **Conditionals**: Implement `JUMP_IF_NOT` opcode and `@depends_on(field)` decorator logic in compiler to allow optional fields.
+- [ ] **Conceptual: Conditional Field Inclusion (if/else)**:
+    This feature allows fields or blocks of fields to be conditionally included in the binary based on complex logic involving previous fields (bitwise operations, comparisons, etc.).
+    **Proposed Syntax**:
+    ```cnd
+    packet ConditionalData {
+        uint8 status_flags;
+        int16 temperature;
+
+        // Bitmask Check: Has GPS Data
+        if (status_flags & 0x01) {
+            Vec3 position;
+        }
+
+        // Complex Logic: "If high temp OR error mode"
+        if ((status_flags & 0x80) || temperature > 100) {
+            uint16 alarm_code;
+        }
+
+        // Range Check: "If value is within valid bounds"
+        if (pressure >= 0 && pressure <= 5000) {
+            uint8 valid_reading;
+        } else {
+            uint8 error_code;
+        }
+    }
+    ```
+    **Implementation Sketch**:
+    *   **Compiler**: 
+        *   Implement an expression parser to convert conditions into RPN (Reverse Polish Notation) bytecode.
+        *   **Operator Precedence**: Handle standard C-style precedence (e.g., `&` > `==` > `&&` > `||`) to ensure correct evaluation order.
+        *   **Branching**: Support `else` blocks by inserting unconditional jumps at the end of `if` blocks.
+    *   **VM Architecture**: Add a small "Expression Stack" (e.g., `uint64_t expr_stack[8]`) to the VM Context.
+    *   **New Opcodes**:
+        *   `OP_LOAD_CTX key`: Queries host for field value, pushes to stack.
+        *   `OP_PUSH_IMM val`: Pushes immediate constant to stack.
+        *   **ALU Operations**:
+            *   **Bitwise**: `OP_BIT_AND`, `OP_BIT_OR`, `OP_BIT_XOR`, `OP_BIT_NOT`, `OP_SHL`, `OP_SHR`
+            *   **Comparison**: `OP_EQ`, `OP_NEQ`, `OP_GT`, `OP_LT`, `OP_GTE`, `OP_LTE`
+            *   **Logical**: `OP_LOG_AND`, `OP_LOG_OR`, `OP_LOG_NOT`
+        *   `OP_JUMP_IF_FALSE off`: Pops top of stack; if 0 (false), jumps `off` bytes (skipping the block).
+        *   `OP_JUMP off`: Unconditional jump (used to skip `else` block after executing `if` block).
 
 ### 4. CLI & JSON Improvements
 - [x] **Robust Array Handling**: Improve `json_io_callback` to correctly track array indices during loops. This will likely involve making the `IOCtx` more stateful for array elements.
@@ -63,42 +110,3 @@
 
 ### 6. Compiler Enhancements
 - [x] **Imports**: Add `@import("file.cnd")` support to allow splitting definitions across multiple files. The compiler should resolve these and emit a single `.il` file containing all necessary bytecode.
-
-### 7. Enums
-- [x] **Enum Support**: Add `enum` keyword to define named constants.
-- [x] **Type Safety**: Ensure enum values are validated against defined constants.
-- [x] **Backing Type**: Allow specifying the underlying integer type (e.g., `enum Status : uint8`).
-
-### 8. Tagged Unions (OneOf)
-This feature allows conditional parsing based on the value of a previously decoded field (the "tag" or "discriminator"). This is essential for handling polymorphic packets where a header ID determines the payload structure.
-
-**Plan:**
-1.  **DSL Syntax**:
-    ```cnd
-    packet Polymorphic {
-        uint8 type_id;
-        // type_id can also be an Enum type.
-        switch (type_id) {
-            case 1: StatusPayload status; // Integer literal
-            case 2: DataPayload data;
-            // case PacketType.MSG: ...   // Enum member reference (Future)
-            default: void; // Optional default
-        }
-    }
-    ```
-2.  **Compiler Logic**:
-    *   Resolve `type_id` to ensure it refers to a valid integer or **Enum** field defined *previously* in the same scope.
-    *   If the field is an Enum, `case` values should be validated against that Enum's definitions.
-    *   Generate a Jump Table or a sequence of conditional jumps (`OP_JUMP_IF_EQ` or `OP_SWITCH`).
-    *   Structure:
-        *   `OP_SWITCH` + `KeyID` (of type_id) + `Count`
-        *   [Val1] [Offset1]
-        *   [Val2] [Offset2]
-        *   ...
-3.  **VM Execution**:
-    *   **New Opcode**: `OP_SWITCH`.
-    *   **Statelessness**: The VM generally doesn't store history. To evaluate `switch (type_id)`, the VM will invoke the `io_callback` with a special request (e.g., reuse `OP_IO_U8` but for the `type_id` key again) to "re-read" the value from the host context.
-    *   **Host Responsibility**: The Host (or JSON binding) must provide the value of `type_id` when requested. For JSON, this is easy (lookup key). For streaming decoding, the Host might need to cache the last header field.
-4.  **Safety**:
-    *   The VM calculates the jump target safely.
-    *   If the tag value matches no case and no default exists, the VM returns an error or skips (TBD).
