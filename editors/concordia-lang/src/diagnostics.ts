@@ -16,7 +16,8 @@ export function refreshDiagnostics(doc: vscode.TextDocument, collection: vscode.
 
 function runCompilerDiagnostics(compilerPath: string, filePath: string, collection: vscode.DiagnosticCollection) {
   const tempOut = path.join(path.dirname(filePath), 'temp.il');
-  const cmd = `${compilerPath} compile "${filePath}" "${tempOut}" --json`;
+  // Remove --json to get GCC-style output which includes column numbers
+  const cmd = `${compilerPath} compile "${filePath}" "${tempOut}"`;
 
   LOG_CHANNEL.appendLine(`Running diagnostics: ${cmd}`);
 
@@ -30,36 +31,36 @@ function runCompilerDiagnostics(compilerPath: string, filePath: string, collecti
 
     collection.clear();
 
-    const output = stdout.toString();
+    let output = stdout.toString();
+    // Strip ANSI color codes
+    output = output.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+
     if (!output.trim()) return;
 
     try {
       const lines = output.split('\n');
       const diagnostics: vscode.Diagnostic[] = [];
 
+      // Regex for GCC-style output: file:line:col: error: message
+      const errorRegex = /^(.+):(\d+):(\d+):\s+(?:error|warning):\s+(.+)$/;
+
       for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const msg = JSON.parse(line);
-          if (msg.error) {
-            LOG_CHANNEL.appendLine(`Compiler error: ${msg.error}`);
-            // vscode.window.showErrorMessage(msg.error); // Too noisy
-          } else if (msg.line) {
-            const lineNo = msg.line - 1;
-            const colNo = 0;
+        const match = line.trim().match(errorRegex);
+        if (match) {
+            const lineNo = parseInt(match[2]) - 1;
+            const colNo = parseInt(match[3]) - 1;
+            const message = match[4];
+
             const range = new vscode.Range(
-              lineNo, colNo,
-              lineNo, 1000
+                lineNo, colNo,
+                lineNo, 1000 // Highlight until end of line
             );
             const diagnostic = new vscode.Diagnostic(
-              range,
-              msg.message,
-              vscode.DiagnosticSeverity.Error
+                range,
+                message,
+                vscode.DiagnosticSeverity.Error
             );
             diagnostics.push(diagnostic);
-          }
-        } catch (e) {
-          LOG_CHANNEL.appendLine(`Non-JSON output: ${line}`);
         }
       }
 
