@@ -65,6 +65,40 @@
 - [x] **Imports**: Add `@import("file.cnd")` support to allow splitting definitions across multiple files. The compiler should resolve these and emit a single `.il` file containing all necessary bytecode.
 
 ### 7. Enums
-- [ ] **Enum Support**: Add `enum` keyword to define named constants.
-- [ ] **Type Safety**: Ensure enum values are validated against defined constants.
-- [ ] **Backing Type**: Allow specifying the underlying integer type (e.g., `enum Status : uint8`).
+- [x] **Enum Support**: Add `enum` keyword to define named constants.
+- [x] **Type Safety**: Ensure enum values are validated against defined constants.
+- [x] **Backing Type**: Allow specifying the underlying integer type (e.g., `enum Status : uint8`).
+
+### 8. Tagged Unions (OneOf)
+This feature allows conditional parsing based on the value of a previously decoded field (the "tag" or "discriminator"). This is essential for handling polymorphic packets where a header ID determines the payload structure.
+
+**Plan:**
+1.  **DSL Syntax**:
+    ```cnd
+    packet Polymorphic {
+        uint8 type_id;
+        // type_id can also be an Enum type.
+        switch (type_id) {
+            case 1: StatusPayload status; // Integer literal
+            case 2: DataPayload data;
+            // case PacketType.MSG: ...   // Enum member reference (Future)
+            default: void; // Optional default
+        }
+    }
+    ```
+2.  **Compiler Logic**:
+    *   Resolve `type_id` to ensure it refers to a valid integer or **Enum** field defined *previously* in the same scope.
+    *   If the field is an Enum, `case` values should be validated against that Enum's definitions.
+    *   Generate a Jump Table or a sequence of conditional jumps (`OP_JUMP_IF_EQ` or `OP_SWITCH`).
+    *   Structure:
+        *   `OP_SWITCH` + `KeyID` (of type_id) + `Count`
+        *   [Val1] [Offset1]
+        *   [Val2] [Offset2]
+        *   ...
+3.  **VM Execution**:
+    *   **New Opcode**: `OP_SWITCH`.
+    *   **Statelessness**: The VM generally doesn't store history. To evaluate `switch (type_id)`, the VM will invoke the `io_callback` with a special request (e.g., reuse `OP_IO_U8` but for the `type_id` key again) to "re-read" the value from the host context.
+    *   **Host Responsibility**: The Host (or JSON binding) must provide the value of `type_id` when requested. For JSON, this is easy (lookup key). For streaming decoding, the Host might need to cache the last header field.
+4.  **Safety**:
+    *   The VM calculates the jump target safely.
+    *   If the tag value matches no case and no default exists, the VM returns an error or skips (TBD).

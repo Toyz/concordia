@@ -1,0 +1,4 @@
+packet TestBool {
+    bool a;
+    bool b : 1;
+}

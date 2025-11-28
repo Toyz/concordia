@@ -50,6 +50,7 @@ static const char* get_opcode_name(uint8_t op) {
         case OP_IO_I64: return "IO_I64";
         case OP_IO_F32: return "IO_F32";
         case OP_IO_F64: return "IO_F64";
+        case OP_IO_BOOL: return "IO_BOOL";
         case OP_IO_BIT_U: return "IO_BIT_U";
         case OP_IO_BIT_I: return "IO_BIT_I";
         case OP_IO_BIT_BOOL: return "IO_BIT_BOOL";
@@ -157,6 +158,7 @@ int cmd_inspect(int argc, char** argv) {
                 case OP_IO_I64:
                 case OP_IO_F32:
                 case OP_IO_F64:
+                case OP_IO_BOOL:
                 case OP_ENTER_STRUCT:
                     printf(" KeyID=%d", read_u16(&ptr, end));
                     break;

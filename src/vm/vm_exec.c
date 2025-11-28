@@ -166,6 +166,17 @@
 
 // --- Loop Stack Helpers ---
 
+static void skip_loop_body(cnd_vm_ctx* ctx) {
+    int depth = 1;
+    while (ctx->ip < ctx->program->bytecode_len && depth > 0) {
+        uint8_t op = ctx->program->bytecode[ctx->ip];
+        if (op == OP_ARR_FIXED || op == OP_ARR_PRE_U8 || 
+            op == OP_ARR_PRE_U16 || op == OP_ARR_PRE_U32) depth++;
+        if (op == OP_ARR_END) depth--;
+        ctx->ip++; 
+    }
+}
+
 static bool loop_push(cnd_vm_ctx* ctx, size_t start_ip, uint32_t count) {
     if (ctx->loop_depth >= CND_MAX_LOOP_DEPTH) return false;
     ctx->loop_stack[ctx->loop_depth].start_ip = start_ip;
@@ -177,6 +188,63 @@ static bool loop_push(cnd_vm_ctx* ctx, size_t start_ip, uint32_t count) {
 static void loop_pop(cnd_vm_ctx* ctx) {
     if (ctx->loop_depth > 0) ctx->loop_depth--;
 }
+
+// --- Array/String Helpers ---
+
+#define HANDLE_ARRAY_PRE(size, ctype, READ_EXPR, WRITE_EXPR) \
+    { \
+        uint16_t key = read_il_u16(ctx); \
+        ctype count = 0; \
+        if (ctx->mode == CND_MODE_ENCODE) { \
+            if (ctx->io_callback(ctx, key, opcode, &count) != CND_ERR_OK) return CND_ERR_CALLBACK; \
+            if (ctx->cursor + (size) > ctx->data_len) return CND_ERR_OOB; \
+            WRITE_EXPR; \
+            ctx->cursor += (size); \
+        } else { \
+            if (ctx->cursor + (size) > ctx->data_len) return CND_ERR_OOB; \
+            count = (READ_EXPR); \
+            ctx->cursor += (size); \
+            if (ctx->io_callback(ctx, key, opcode, &count) != CND_ERR_OK) return CND_ERR_CALLBACK; \
+        } \
+        if (count > 0) { \
+            if (!loop_push(ctx, ctx->ip, (uint32_t)count)) return CND_ERR_OOB; \
+        } else { \
+             skip_loop_body(ctx); \
+        } \
+        break; \
+    }
+
+#define HANDLE_STRING_PRE(size, ctype, READ_EXPR, WRITE_EXPR) \
+    { \
+        uint16_t key = read_il_u16(ctx); \
+        const char* str = NULL; \
+        if (ctx->mode == CND_MODE_ENCODE) { \
+            if (ctx->io_callback(ctx, key, opcode, &str) != CND_ERR_OK) { \
+                if (ctx->is_next_optional) { \
+                    ctx->is_next_optional = false; \
+                    break; \
+                } \
+                return CND_ERR_CALLBACK; \
+            } \
+            size_t len = str ? strlen(str) : 0; \
+            ctype max_val = (ctype)-1; \
+            if (len > (size_t)max_val) len = (size_t)max_val; \
+            if (ctx->cursor + (size) + len > ctx->data_len) return CND_ERR_OOB; \
+            ctype len_val = (ctype)len; \
+            WRITE_EXPR; \
+            memcpy(ctx->data_buffer + ctx->cursor + (size), str, len); \
+            ctx->cursor += (size) + len; \
+        } else { \
+            if (ctx->cursor + (size) > ctx->data_len) return CND_ERR_OOB; \
+            ctype len_val = (READ_EXPR); \
+            if (ctx->cursor + (size) + len_val > ctx->data_len) return CND_ERR_OOB; \
+            const char* ptr = (const char*)(ctx->data_buffer + ctx->cursor + (size)); \
+            if (ctx->io_callback(ctx, key, opcode, (void*)ptr) != CND_ERR_OK) return CND_ERR_CALLBACK; \
+            ctx->cursor += (size) + len_val; \
+        } \
+        ctx->is_next_optional = false; \
+        break; \
+    }
 
 static int64_t sign_extend(uint64_t val, uint8_t bits) {
     if (bits >= 64) return (int64_t)val;
@@ -588,6 +656,32 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             case OP_IO_I32: HANDLE_PRIMITIVE(4, int32_t, (int32_t)read_u32(ctx->data_buffer + ctx->cursor, ctx->endianness), write_u32(ctx->data_buffer + ctx->cursor, (uint32_t)val, ctx->endianness));
             case OP_IO_I64: HANDLE_PRIMITIVE(8, int64_t, (int64_t)read_u64(ctx->data_buffer + ctx->cursor, ctx->endianness), write_u64(ctx->data_buffer + ctx->cursor, (uint64_t)val, ctx->endianness));
 
+            case OP_IO_BOOL: {
+                uint16_t key = read_il_u16(ctx);
+                if (ctx->cursor + 1 > ctx->data_len) {
+                    if (ctx->is_next_optional) {
+                        ctx->is_next_optional = false;
+                        uint8_t val = 0;
+                        if (ctx->io_callback(ctx, key, opcode, &val) != CND_ERR_OK) return CND_ERR_CALLBACK;
+                        break;
+                    }
+                    return CND_ERR_OOB;
+                }
+                uint8_t val = 0;
+                if (ctx->mode == CND_MODE_ENCODE) {
+                    if (ctx->io_callback(ctx, key, opcode, &val) != CND_ERR_OK) return CND_ERR_CALLBACK;
+                    if (val > 1) return CND_ERR_VALIDATION;
+                    write_u8(ctx->data_buffer + ctx->cursor, val);
+                } else {
+                    val = read_u8(ctx->data_buffer + ctx->cursor);
+                    if (val > 1) return CND_ERR_VALIDATION;
+                    if (ctx->io_callback(ctx, key, opcode, &val) != CND_ERR_OK) return CND_ERR_CALLBACK;
+                }
+                ctx->cursor += 1;
+                ctx->is_next_optional = false;
+                break;
+            }
+
             case OP_IO_F32: HANDLE_FLOAT(4, float, uint32_t, read_u32(ctx->data_buffer + ctx->cursor, ctx->endianness), write_u32(ctx->data_buffer + ctx->cursor, t, ctx->endianness));
             case OP_IO_F64: HANDLE_FLOAT(8, double, uint64_t, read_u64(ctx->data_buffer + ctx->cursor, ctx->endianness), write_u64(ctx->data_buffer + ctx->cursor, t, ctx->endianness));
 
@@ -606,6 +700,20 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                     if(ctx->io_callback(ctx,k,opcode,&v)) return CND_ERR_CALLBACK; 
                 } 
                 break; 
+            }
+            case OP_IO_BIT_BOOL: {
+                uint16_t k = read_il_u16(ctx);
+                uint8_t v = 0;
+                if (ctx->mode == CND_MODE_ENCODE) {
+                    if (ctx->io_callback(ctx, k, opcode, &v) != CND_ERR_OK) return CND_ERR_CALLBACK;
+                    if (v > 1) return CND_ERR_VALIDATION;
+                    write_bits(ctx, (uint64_t)v, 1);
+                } else {
+                    uint64_t raw = read_bits(ctx, 1);
+                    v = (uint8_t)raw;
+                    if (ctx->io_callback(ctx, k, opcode, &v) != CND_ERR_OK) return CND_ERR_CALLBACK;
+                }
+                break;
             }
             case OP_ALIGN_PAD: { uint8_t b=read_il_u8(ctx); for(int i=0;i<b;i++) { ctx->bit_offset++; if(ctx->bit_offset>=8){ctx->bit_offset=0; ctx->cursor++;} } break; } 
             case OP_ALIGN_FILL: { 
@@ -668,186 +776,13 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 break;
             }
 
-            case OP_STR_PRE_U8: {
-                uint16_t key = read_il_u16(ctx);
-                const char* str = NULL;
-                // printf("VM_DEBUG: Calling callback for STR_PRE_U8 (Key %d)\n", key);
-                if (ctx->mode == CND_MODE_ENCODE) {
-                    if (ctx->io_callback(ctx, key, opcode, &str) != CND_ERR_OK) {
-                        if (ctx->is_next_optional) {
-                            ctx->is_next_optional = false;
-                            break;
-                        }
-                        return CND_ERR_CALLBACK;
-                    }
-                    size_t len = str ? strlen(str) : 0;
-                    if (len > 255) len = 255;
-                    if (ctx->cursor + 1 + len > ctx->data_len) return CND_ERR_OOB;
-                    write_u8(ctx->data_buffer + ctx->cursor, (uint8_t)len);
-                    memcpy(ctx->data_buffer + ctx->cursor + 1, str, len);
-                    ctx->cursor += 1 + len;
-                } else {
-                    if (ctx->cursor + 1 > ctx->data_len) return CND_ERR_OOB;
-                    uint8_t len = read_u8(ctx->data_buffer + ctx->cursor);
-                    if (ctx->cursor + 1 + len > ctx->data_len) return CND_ERR_OOB;
-                    const char* ptr = (const char*)(ctx->data_buffer + ctx->cursor + 1);
-                    if (ctx->io_callback(ctx, key, opcode, (void*)ptr) != CND_ERR_OK) return CND_ERR_CALLBACK;
-                    ctx->cursor += 1 + len;
-                }
-                ctx->is_next_optional = false;
-                break;
-            }
+            case OP_STR_PRE_U8:  HANDLE_STRING_PRE(1, uint8_t,  read_u8(ctx->data_buffer + ctx->cursor), write_u8(ctx->data_buffer + ctx->cursor, len_val));
+            case OP_STR_PRE_U16: HANDLE_STRING_PRE(2, uint16_t, read_u16(ctx->data_buffer + ctx->cursor, ctx->endianness), write_u16(ctx->data_buffer + ctx->cursor, len_val, ctx->endianness));
+            case OP_STR_PRE_U32: HANDLE_STRING_PRE(4, uint32_t, read_u32(ctx->data_buffer + ctx->cursor, ctx->endianness), write_u32(ctx->data_buffer + ctx->cursor, len_val, ctx->endianness));
 
-            case OP_STR_PRE_U16: {
-                uint16_t key = read_il_u16(ctx);
-                const char* str = NULL;
-                // printf("VM_DEBUG: Calling callback for STR_PRE_U16 (Key %d)\n", key);
-                if (ctx->mode == CND_MODE_ENCODE) {
-                    if (ctx->io_callback(ctx, key, opcode, &str) != CND_ERR_OK) {
-                        if (ctx->is_next_optional) {
-                            ctx->is_next_optional = false;
-                            break;
-                        }
-                        return CND_ERR_CALLBACK;
-                    }
-                    size_t len = str ? strlen(str) : 0;
-                    if (len > 65535) len = 65535;
-                    if (ctx->cursor + 2 + len > ctx->data_len) return CND_ERR_OOB;
-                    write_u16(ctx->data_buffer + ctx->cursor, (uint16_t)len, ctx->endianness);
-                    memcpy(ctx->data_buffer + ctx->cursor + 2, str, len);
-                    ctx->cursor += 2 + len;
-                } else {
-                    if (ctx->cursor + 2 > ctx->data_len) return CND_ERR_OOB;
-                    uint16_t len = read_u16(ctx->data_buffer + ctx->cursor, ctx->endianness);
-                    if (ctx->cursor + 2 + len > ctx->data_len) return CND_ERR_OOB;
-                    const char* ptr = (const char*)(ctx->data_buffer + ctx->cursor + 2);
-                    if (ctx->io_callback(ctx, key, opcode, (void*)ptr) != CND_ERR_OK) return CND_ERR_CALLBACK;
-                    ctx->cursor += 2 + len;
-                }
-                ctx->is_next_optional = false;
-                break;
-            }
-
-            case OP_STR_PRE_U32: {
-                uint16_t key = read_il_u16(ctx);
-                const char* str = NULL;
-                // printf("VM_DEBUG: Calling callback for STR_PRE_U32 (Key %d)\n", key);
-                if (ctx->mode == CND_MODE_ENCODE) {
-                    if (ctx->io_callback(ctx, key, opcode, &str) != CND_ERR_OK) {
-                        if (ctx->is_next_optional) {
-                            ctx->is_next_optional = false;
-                            break;
-                        }
-                        return CND_ERR_CALLBACK;
-                    }
-                    size_t len = str ? strlen(str) : 0;
-                    // u32 limit
-                    if (ctx->cursor + 4 + len > ctx->data_len) return CND_ERR_OOB;
-                    write_u32(ctx->data_buffer + ctx->cursor, (uint32_t)len, ctx->endianness);
-                    memcpy(ctx->data_buffer + ctx->cursor + 4, str, len);
-                    ctx->cursor += 4 + len;
-                } else {
-                    if (ctx->cursor + 4 > ctx->data_len) return CND_ERR_OOB;
-                    uint32_t len = read_u32(ctx->data_buffer + ctx->cursor, ctx->endianness);
-                    if (ctx->cursor + 4 + len > ctx->data_len) return CND_ERR_OOB;
-                    const char* ptr = (const char*)(ctx->data_buffer + ctx->cursor + 4);
-                    if (ctx->io_callback(ctx, key, opcode, (void*)ptr) != CND_ERR_OK) return CND_ERR_CALLBACK;
-                    ctx->cursor += 4 + len;
-                }
-                ctx->is_next_optional = false;
-                break;
-            }
-
-            case OP_ARR_PRE_U8: {
-                uint16_t key = read_il_u16(ctx);
-                uint8_t count = 0;
-                // printf("VM_DEBUG: Calling callback for ARR_PRE_U8 (Key %d)\n", key);
-                if (ctx->mode == CND_MODE_ENCODE) {
-                    if (ctx->io_callback(ctx, key, opcode, &count) != CND_ERR_OK) return CND_ERR_CALLBACK;
-                    if (ctx->cursor + 1 > ctx->data_len) return CND_ERR_OOB;
-                    write_u8(ctx->data_buffer + ctx->cursor, count);
-                    ctx->cursor += 1;
-                } else {
-                    if (ctx->cursor + 1 > ctx->data_len) return CND_ERR_OOB;
-                    count = read_u8(ctx->data_buffer + ctx->cursor);
-                    ctx->cursor += 1;
-                    if (ctx->io_callback(ctx, key, opcode, &count) != CND_ERR_OK) return CND_ERR_CALLBACK; // Report count to Host
-                }
-                if (count > 0) {
-                    if (!loop_push(ctx, ctx->ip, count)) return CND_ERR_OOB;
-                } else {
-                     // Skip loop body if count is 0
-                     int depth = 1;
-                     while (ctx->ip < ctx->program->bytecode_len && depth > 0) {
-                         uint8_t op = ctx->program->bytecode[ctx->ip];
-                         if (op == OP_ARR_FIXED || op == OP_ARR_PRE_U8 || 
-                             op == OP_ARR_PRE_U16 || op == OP_ARR_PRE_U32) depth++;
-                         if (op == OP_ARR_END) depth--;
-                         ctx->ip++; 
-                     }
-                }
-                break;
-            }
-
-            case OP_ARR_PRE_U16: {
-                uint16_t key = read_il_u16(ctx);
-                uint16_t count = 0;
-                // printf("VM_DEBUG: Calling callback for ARR_PRE_U16 (Key %d)\n", key);
-                if (ctx->mode == CND_MODE_ENCODE) {
-                    if (ctx->io_callback(ctx, key, opcode, &count) != CND_ERR_OK) return CND_ERR_CALLBACK;
-                    if (ctx->cursor + 2 > ctx->data_len) return CND_ERR_OOB;
-                    write_u16(ctx->data_buffer + ctx->cursor, count, ctx->endianness);
-                    ctx->cursor += 2;
-                } else {
-                    if (ctx->cursor + 2 > ctx->data_len) return CND_ERR_OOB;
-                    count = read_u16(ctx->data_buffer + ctx->cursor, ctx->endianness);
-                    ctx->cursor += 2;
-                    if (ctx->io_callback(ctx, key, opcode, &count) != CND_ERR_OK) return CND_ERR_CALLBACK; // Report count to Host
-                }
-                if (count > 0) {
-                    if (!loop_push(ctx, ctx->ip, count)) return CND_ERR_OOB;
-                } else {
-                     int depth = 1;
-                     while (ctx->ip < ctx->program->bytecode_len && depth > 0) {
-                         uint8_t op = ctx->program->bytecode[ctx->ip];
-                         if (op == OP_ARR_FIXED || op == OP_ARR_PRE_U8 || 
-                             op == OP_ARR_PRE_U16 || op == OP_ARR_PRE_U32) depth++;
-                         if (op == OP_ARR_END) depth--;
-                         ctx->ip++; 
-                     }
-                }
-                break;
-            }
-
-            case OP_ARR_PRE_U32: {
-                uint16_t key = read_il_u16(ctx);
-                uint32_t count = 0;
-                // printf("VM_DEBUG: Calling callback for ARR_PRE_U32 (Key %d)\n", key);
-                if (ctx->mode == CND_MODE_ENCODE) {
-                    if (ctx->io_callback(ctx, key, opcode, &count) != CND_ERR_OK) return CND_ERR_CALLBACK;
-                    if (ctx->cursor + 4 > ctx->data_len) return CND_ERR_OOB;
-                    write_u32(ctx->data_buffer + ctx->cursor, count, ctx->endianness);
-                    ctx->cursor += 4;
-                } else {
-                    if (ctx->cursor + 4 > ctx->data_len) return CND_ERR_OOB;
-                    count = read_u32(ctx->data_buffer + ctx->cursor, ctx->endianness);
-                    ctx->cursor += 4;
-                    if (ctx->io_callback(ctx, key, opcode, &count) != CND_ERR_OK) return CND_ERR_CALLBACK; // Report count to Host
-                }
-                if (count > 0) {
-                    if (!loop_push(ctx, ctx->ip, count)) return CND_ERR_OOB;
-                } else {
-                     int depth = 1;
-                     while (ctx->ip < ctx->program->bytecode_len && depth > 0) {
-                         uint8_t op = ctx->program->bytecode[ctx->ip];
-                         if (op == OP_ARR_FIXED || op == OP_ARR_PRE_U8 || 
-                             op == OP_ARR_PRE_U16 || op == OP_ARR_PRE_U32) depth++;
-                         if (op == OP_ARR_END) depth--;
-                         ctx->ip++; 
-                     }
-                }
-                break;
-            }
+            case OP_ARR_PRE_U8:  HANDLE_ARRAY_PRE(1, uint8_t,  read_u8(ctx->data_buffer + ctx->cursor), write_u8(ctx->data_buffer + ctx->cursor, count));
+            case OP_ARR_PRE_U16: HANDLE_ARRAY_PRE(2, uint16_t, read_u16(ctx->data_buffer + ctx->cursor, ctx->endianness), write_u16(ctx->data_buffer + ctx->cursor, count, ctx->endianness));
+            case OP_ARR_PRE_U32: HANDLE_ARRAY_PRE(4, uint32_t, read_u32(ctx->data_buffer + ctx->cursor, ctx->endianness), write_u32(ctx->data_buffer + ctx->cursor, count, ctx->endianness));
 
             case OP_ARR_FIXED: {
                 uint16_t key = read_il_u16(ctx);
@@ -868,15 +803,7 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 if (count > 0) {
                     if (!loop_push(ctx, ctx->ip, count)) return CND_ERR_OOB;
                 } else {
-                     // Skip loop body if count is 0
-                     int depth = 1;
-                     while (ctx->ip < ctx->program->bytecode_len && depth > 0) {
-                         uint8_t op = ctx->program->bytecode[ctx->ip];
-                         if (op == OP_ARR_FIXED || op == OP_ARR_PRE_U8 || 
-                             op == OP_ARR_PRE_U16 || op == OP_ARR_PRE_U32) depth++;
-                         if (op == OP_ARR_END) depth--;
-                         ctx->ip++; 
-                     }
+                     skip_loop_body(ctx);
                 }
                 break;
             }
