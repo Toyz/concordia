@@ -201,7 +201,7 @@ void parse_switch(Parser* p) {
     int32_t default_offset = -1; // -1 indicates no default
 
     while (p->current.type != TOK_RBRACE && p->current.type != TOK_EOF && !p->had_error) {
-        if (match_keyword(p->current, "case")) {
+        if (p->current.type == TOK_CASE) {
             advance(p); // consume case
             
             uint64_t val = 0;
@@ -266,7 +266,7 @@ void parse_switch(Parser* p) {
             }
             jump_fixups[jump_count++] = jump_loc;
 
-        } else if (match_keyword(p->current, "default")) {
+        } else if (p->current.type == TOK_DEFAULT) {
             advance(p); consume(p, TOK_COLON, "Expect :");
             default_offset = (int32_t)(buf_current_offset(p->target) - code_start_loc);
             
@@ -337,7 +337,7 @@ void parse_switch(Parser* p) {
 void parse_field(Parser* p) {
     if (p->had_error) return;
     
-    if (match_keyword(p->current, "switch")) {
+    if (p->current.type == TOK_SWITCH) {
         advance(p); // consume switch (was type_tok in previous logic, but here we check before)
         parse_switch(p);
         return;
@@ -908,11 +908,11 @@ void parse_top_level(Parser* p) {
                     consume(p, TOK_RPAREN, "Expect )");
                 }
             }
-        } else if (match_keyword(p->current, "struct")) {
+        } else if (p->current.type == TOK_STRUCT) {
             advance(p); parse_struct(p);
-        } else if (match_keyword(p->current, "enum")) {
+        } else if (p->current.type == TOK_ENUM) {
             advance(p); parse_enum(p);
-        } else if (match_keyword(p->current, "packet")) {
+        } else if (p->current.type == TOK_PACKET) {
             if (p->packet_count > 0) {
                 parser_error(p, "Only one packet definition allowed per file");
             }

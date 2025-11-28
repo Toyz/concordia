@@ -10,10 +10,30 @@ int is_alpha_c(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 int is_digit_c(char c) { return c >= '0' && c <= '9'; }
 int is_hex_c(char c) { return is_digit_c(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
 
+static TokenType check_keyword(const char* start, int length) {
+    struct { const char* name; TokenType type; } keywords[] = {
+        {"struct", TOK_STRUCT},
+        {"packet", TOK_PACKET},
+        {"enum", TOK_ENUM},
+        {"switch", TOK_SWITCH},
+        {"case", TOK_CASE},
+        {"default", TOK_DEFAULT},
+        {"true", TOK_TRUE},
+        {"false", TOK_FALSE},
+        {NULL, TOK_ERROR}
+    };
+    for (int i = 0; keywords[i].name; i++) {
+        size_t kw_len = strlen(keywords[i].name);
+        if (length == (int)kw_len && strncmp(start, keywords[i].name, length) == 0) {
+            return keywords[i].type;
+        }
+    }
+    return TOK_IDENTIFIER;
+}
+
 Token lexer_next(Lexer* lexer) {
     while (*lexer->current != '\0') {
         char c = *lexer->current;
-        // printf("LEX: %c\n", c);
 
         if (c == ' ' || c == '\r' || c == '\t') { lexer->current++; continue; }
         if (c == '\n') { lexer->line++; lexer->current++; continue; }
@@ -69,6 +89,7 @@ Token lexer_next(Lexer* lexer) {
                 lexer->current++;
             }
             token.length = (int)(lexer->current - token.start);
+            token.type = check_keyword(token.start, token.length);
             return token;
         }
 
