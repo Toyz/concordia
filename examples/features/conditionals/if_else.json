@@ -1,0 +1,12 @@
+{
+    "has_name": true,
+    "name": "Concordia",
+    "type": 1,
+    "id": 123456,
+    "has_nested": true,
+    "is_deep": false,
+    "shallow_val": 99,
+    "a": 20,
+    "b": 2,
+    "special_val": 42
+}

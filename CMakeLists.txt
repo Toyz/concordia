@@ -29,7 +29,7 @@ FetchContent_MakeAvailable(googletest)
 # Google Benchmark
 FetchContent_Declare(
   benchmark
-  URL https://github.com/google/benchmark/archive/refs/heads/main.zip
+  URL https://github.com/google/benchmark/archive/refs/tags/v1.9.1.zip
 )
 FetchContent_MakeAvailable(benchmark)
 
@@ -94,7 +94,14 @@ add_executable(test_runner
 target_link_libraries(test_runner concordia cnd_compiler gtest_main)
 
 # --- Benchmarks ---
-add_executable(vm_benchmark benchmarks/vm_benchmark.cpp)
+add_executable(vm_benchmark 
+    benchmarks/main.cpp
+    benchmarks/bench_common.cpp
+    benchmarks/bench_core.cpp
+    benchmarks/bench_features.cpp
+    benchmarks/bench_ifelse.cpp
+    benchmarks/bench_switch.cpp
+)
 target_link_libraries(vm_benchmark concordia cnd_compiler benchmark::benchmark)
 
 # --- Installation ---

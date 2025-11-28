@@ -1,0 +1,33 @@
+packet IfElseExample {
+    // Simple boolean check
+    bool has_name;
+    if (has_name) {
+        string name prefix uint8;
+    }
+
+    // Comparison check
+    uint8 type;
+    if (type == 1) {
+        uint32 id;
+    } else {
+        uint16 short_id;
+    }
+    
+    // Nested if/else
+    bool has_nested;
+    if (has_nested) {
+        bool is_deep;
+        if (is_deep) {
+            uint64 deep_val;
+        } else {
+            uint32 shallow_val;
+        }
+    }
+    
+    // Complex expression
+    uint8 a;
+    uint8 b;
+    if ((a > 10) && (b < 5)) {
+        uint8 special_val;
+    }
+}
