@@ -266,6 +266,15 @@ cnd_error_t json_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, voi
             case OP_IO_F64: *(double*)ptr   = (double)(item_to_process ? item_to_process->valuedouble : 0.0); break;
             case OP_IO_BIT_U: *(uint64_t*)ptr = (uint64_t)(item_to_process ? item_to_process->valueint : 0); break;
             case OP_IO_BIT_I: *(int64_t*)ptr  = (int64_t)(item_to_process ? item_to_process->valueint : 0); break;
+            case OP_IO_BOOL:
+            case OP_IO_BIT_BOOL: {
+                if (item_to_process && cJSON_IsBool(item_to_process)) {
+                    *(uint8_t*)ptr = cJSON_IsTrue(item_to_process) ? 1 : 0;
+                } else {
+                    *(uint8_t*)ptr = 0; // Default to false if not found or not a bool
+                }
+                break;
+            }
             case OP_STR_NULL: 
             case OP_STR_PRE_U8:
             case OP_STR_PRE_U16:
@@ -297,6 +306,12 @@ cnd_error_t json_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, voi
             case OP_IO_F32: val = cJSON_CreateNumber(*(float*)ptr); break;
             case OP_IO_BIT_U: val = cJSON_CreateNumber((double)*(uint64_t*)ptr); break;
             case OP_IO_BIT_I: val = cJSON_CreateNumber((double)*(int64_t*)ptr); break;
+            case OP_IO_BOOL:
+            case OP_IO_BIT_BOOL: {
+                uint8_t bool_val = *(uint8_t*)ptr;
+                val = cJSON_CreateBool(bool_val != 0);
+                break;
+            }
             case OP_STR_NULL: val = cJSON_CreateString((const char*)ptr); break; 
             
             case OP_STR_PRE_U8: {

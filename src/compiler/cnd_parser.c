@@ -492,7 +492,10 @@ void parse_field(Parser* p) {
                           match_keyword(type_tok, "int64") || match_keyword(type_tok, "i64")) {
                      op = OP_IO_BIT_I;
                  }
-                 else { parser_error(p, "Bitfields only supported for integer types"); return; }
+                 else if (match_keyword(type_tok, "bool")) {
+                     op = OP_IO_BIT_BOOL;
+                 }
+                 else { parser_error(p, "Bitfields only supported for integer/bool types"); return; }
                  
                  buf_push(p->target, op); buf_push_u16(p->target, key_id); buf_push(p->target, bit_width);
             } else {
@@ -506,6 +509,7 @@ void parse_field(Parser* p) {
                 else if (match_keyword(type_tok, "int64") || match_keyword(type_tok, "i64")) op = OP_IO_I64;
                 else if (match_keyword(type_tok, "float") || match_keyword(type_tok, "f32")) op = OP_IO_F32;
                 else if (match_keyword(type_tok, "double") || match_keyword(type_tok, "f64")) op = OP_IO_F64;
+                else if (match_keyword(type_tok, "bool")) op = OP_IO_BOOL;
                 else { parser_error(p, "Unknown type"); return; }
                 
                 if (has_crc) {

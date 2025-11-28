@@ -83,6 +83,8 @@ add_executable(test_runner
     tests/match_rtt_test.cpp
     tests/enum_test.cpp
     tests/string_array_test.cpp
+    tests/vm_concurrency_test.cpp
+    tests/bool_test.cpp
 )
 target_link_libraries(test_runner concordia cnd_compiler gtest_main)
 

@@ -30,6 +30,7 @@ extern "C" {
 #define OP_IO_I64           0x17
 #define OP_IO_F32           0x18
 #define OP_IO_F64           0x19
+#define OP_IO_BOOL          0x1A
 
 // Category C: Bitfields & Padding
 #define OP_IO_BIT_U         0x20

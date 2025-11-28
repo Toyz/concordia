@@ -63,11 +63,14 @@ extern "C" cnd_error_t test_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_
             case OP_IO_I32: *(int32_t*)ptr = (int32_t)g_test_data[idx].u64_val; break;
             case OP_IO_I64: *(int64_t*)ptr = (int64_t)g_test_data[idx].u64_val; break;
 
+            case OP_IO_BOOL: *(uint8_t*)ptr = (uint8_t)g_test_data[idx].u64_val; break;
+            
             case OP_IO_F32: *(float*)ptr = (float)g_test_data[idx].f64_val; break;
             case OP_IO_F64: *(double*)ptr = g_test_data[idx].f64_val; break;
 
             case OP_IO_BIT_U: *(uint64_t*)ptr = g_test_data[idx].u64_val; break;
             case OP_IO_BIT_I: *(int64_t*)ptr = (int64_t)g_test_data[idx].u64_val; break;
+            case OP_IO_BIT_BOOL: *(uint8_t*)ptr = (uint8_t)g_test_data[idx].u64_val; break;
             
             case OP_STR_NULL:
             case OP_STR_PRE_U8:
@@ -116,11 +119,14 @@ extern "C" cnd_error_t test_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_
             case OP_IO_I32: g_test_data[idx].u64_val = (uint64_t)*(int32_t*)ptr; break;
             case OP_IO_I64: g_test_data[idx].u64_val = (uint64_t)*(int64_t*)ptr; break;
 
+            case OP_IO_BOOL: g_test_data[idx].u64_val = *(uint8_t*)ptr; break;
+
             case OP_IO_F32: g_test_data[idx].f64_val = *(float*)ptr; break;
             case OP_IO_F64: g_test_data[idx].f64_val = *(double*)ptr; break;
 
             case OP_IO_BIT_U: g_test_data[idx].u64_val = *(uint64_t*)ptr; break;
             case OP_IO_BIT_I: g_test_data[idx].u64_val = (uint64_t)*(int64_t*)ptr; break;
+            case OP_IO_BIT_BOOL: g_test_data[idx].u64_val = *(uint8_t*)ptr; break;
             
             case OP_ARR_PRE_U8: g_test_data[idx].u64_val = *(uint8_t*)ptr; break;
             case OP_ARR_PRE_U16: g_test_data[idx].u64_val = *(uint16_t*)ptr; break;
