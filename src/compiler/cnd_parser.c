@@ -169,6 +169,173 @@ void emit_range_check(Parser* p, uint8_t type_op, Token min_tok, Token max_tok) 
 void parse_field(Parser* p); // Forward declaration
 void parse_block(Parser* p); // Forward declaration
 
+// Expression Parsing
+void parse_expression(Parser* p);
+
+void parse_primary(Parser* p) {
+    if (p->current.type == TOK_NUMBER) {
+        uint64_t val = (uint64_t)parse_int64(p->current);
+        advance(p);
+        buf_push(p->target, OP_PUSH_IMM);
+        buf_push_u64(p->target, val);
+    } else if (p->current.type == TOK_TRUE) {
+        advance(p);
+        buf_push(p->target, OP_PUSH_IMM);
+        buf_push_u64(p->target, 1);
+    } else if (p->current.type == TOK_FALSE) {
+        advance(p);
+        buf_push(p->target, OP_PUSH_IMM);
+        buf_push_u64(p->target, 0);
+    } else if (p->current.type == TOK_IDENTIFIER) {
+        Token name = p->current;
+        advance(p);
+        uint16_t key_id = strtab_add(&p->strtab, name.start, name.length);
+        buf_push(p->target, OP_LOAD_CTX);
+        buf_push_u16(p->target, key_id);
+    } else if (p->current.type == TOK_LPAREN) {
+        advance(p);
+        parse_expression(p);
+        consume(p, TOK_RPAREN, "Expect ) after expression");
+    } else {
+        parser_error(p, "Expect expression");
+    }
+}
+
+void parse_unary(Parser* p) {
+    if (p->current.type == TOK_BANG) {
+        advance(p);
+        parse_unary(p);
+        buf_push(p->target, OP_LOG_NOT);
+    } else if (p->current.type == TOK_TILDE) {
+        advance(p);
+        parse_unary(p);
+        buf_push(p->target, OP_BIT_NOT);
+    } else {
+        parse_primary(p);
+    }
+}
+
+void parse_shift(Parser* p) {
+    parse_unary(p);
+    while (p->current.type == TOK_LSHIFT || p->current.type == TOK_RSHIFT) {
+        TokenType op = p->current.type;
+        advance(p);
+        parse_unary(p);
+        if (op == TOK_LSHIFT) buf_push(p->target, OP_SHL);
+        else buf_push(p->target, OP_SHR);
+    }
+}
+
+void parse_comparison(Parser* p) {
+    parse_shift(p);
+    while (p->current.type == TOK_GT || p->current.type == TOK_GT_EQ ||
+           p->current.type == TOK_LT || p->current.type == TOK_LT_EQ) {
+        TokenType op = p->current.type;
+        advance(p);
+        parse_shift(p);
+        if (op == TOK_GT) buf_push(p->target, OP_GT);
+        else if (op == TOK_GT_EQ) buf_push(p->target, OP_GTE);
+        else if (op == TOK_LT) buf_push(p->target, OP_LT);
+        else if (op == TOK_LT_EQ) buf_push(p->target, OP_LTE);
+    }
+}
+
+void parse_equality(Parser* p) {
+    parse_comparison(p);
+    while (p->current.type == TOK_EQ_EQ || p->current.type == TOK_BANG_EQ) {
+        TokenType op = p->current.type;
+        advance(p);
+        parse_comparison(p);
+        if (op == TOK_EQ_EQ) buf_push(p->target, OP_EQ);
+        else buf_push(p->target, OP_NEQ);
+    }
+}
+
+void parse_bit_and(Parser* p) {
+    parse_equality(p);
+    while (p->current.type == TOK_AMP) {
+        advance(p);
+        parse_equality(p);
+        buf_push(p->target, OP_BIT_AND);
+    }
+}
+
+void parse_bit_xor(Parser* p) {
+    parse_bit_and(p);
+    while (p->current.type == TOK_CARET) {
+        advance(p);
+        parse_bit_and(p);
+        buf_push(p->target, OP_BIT_XOR);
+    }
+}
+
+void parse_bit_or(Parser* p) {
+    parse_bit_xor(p);
+    while (p->current.type == TOK_PIPE) {
+        advance(p);
+        parse_bit_xor(p);
+        buf_push(p->target, OP_BIT_OR);
+    }
+}
+
+void parse_logic_and(Parser* p) {
+    parse_bit_or(p);
+    while (p->current.type == TOK_AMP_AMP) {
+        advance(p);
+        parse_bit_or(p);
+        buf_push(p->target, OP_LOG_AND);
+    }
+}
+
+void parse_logic_or(Parser* p) {
+    parse_logic_and(p);
+    while (p->current.type == TOK_PIPE_PIPE) {
+        advance(p);
+        parse_logic_and(p);
+        buf_push(p->target, OP_LOG_OR);
+    }
+}
+
+void parse_expression(Parser* p) {
+    parse_logic_or(p);
+}
+
+void parse_if(Parser* p) {
+    consume(p, TOK_LPAREN, "Expect ( after if");
+    parse_expression(p);
+    consume(p, TOK_RPAREN, "Expect ) after if condition");
+    
+    size_t jump_false_loc = buf_current_offset(p->target);
+    buf_push(p->target, OP_JUMP_IF_NOT);
+    buf_push_u32(p->target, 0); // Placeholder
+    
+    parse_block(p);
+    
+    size_t jump_end_loc = buf_current_offset(p->target);
+    buf_push(p->target, OP_JUMP);
+    buf_push_u32(p->target, 0); // Placeholder
+    
+    // Patch jump_false
+    size_t else_start = buf_current_offset(p->target);
+    int32_t false_offset = (int32_t)(else_start - (jump_false_loc + 1 + 4));
+    buf_write_u32_at(p->target, jump_false_loc + 1, (uint32_t)false_offset);
+    
+    if (p->current.type == TOK_ELSE) {
+        advance(p);
+        if (p->current.type == TOK_IF) {
+            advance(p);
+            parse_if(p); // recursive else if
+        } else {
+            parse_block(p);
+        }
+    }
+    
+    // Patch jump_end
+    size_t end_loc = buf_current_offset(p->target);
+    int32_t end_offset = (int32_t)(end_loc - (jump_end_loc + 1 + 4));
+    buf_write_u32_at(p->target, jump_end_loc + 1, (uint32_t)end_offset);
+}
+
 typedef struct {
     uint64_t val;
     int32_t offset;
@@ -340,6 +507,12 @@ void parse_field(Parser* p) {
     if (p->current.type == TOK_SWITCH) {
         advance(p); // consume switch (was type_tok in previous logic, but here we check before)
         parse_switch(p);
+        return;
+    }
+
+    if (p->current.type == TOK_IF) {
+        advance(p);
+        parse_if(p);
         return;
     }
 

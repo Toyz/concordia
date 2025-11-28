@@ -3,7 +3,7 @@
   "displayName": "Concordia language support",
   "description": "",
   "publisher": "Helba",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "main": "./out/extension.js",
   "activationEvents": [
     "onLanguage:concordia"

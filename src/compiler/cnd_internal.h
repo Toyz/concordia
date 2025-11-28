@@ -27,6 +27,8 @@ typedef enum {
     TOK_SWITCH,
     TOK_CASE,
     TOK_DEFAULT,
+    TOK_IF,
+    TOK_ELSE,
     TOK_TRUE,
     TOK_FALSE,
 
@@ -42,6 +44,21 @@ typedef enum {
     TOK_AT,        // @
     TOK_EQUALS,    // =
     TOK_DOT,       // .
+    TOK_BANG,      // !
+    TOK_AMP,       // &
+    TOK_PIPE,      // |
+    TOK_CARET,     // ^
+    TOK_TILDE,     // ~
+    TOK_EQ_EQ,     // ==
+    TOK_BANG_EQ,   // !=
+    TOK_GT,        // >
+    TOK_LT,        // <
+    TOK_GT_EQ,     // >=
+    TOK_LT_EQ,     // <=
+    TOK_AMP_AMP,   // &&
+    TOK_PIPE_PIPE, // ||
+    TOK_LSHIFT,    // <<
+    TOK_RSHIFT,    // >>
     TOK_ERROR      // Lexer error
 } TokenType;
 

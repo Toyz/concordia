@@ -71,6 +71,32 @@ extern "C" {
 #define OP_SWITCH           0x51
 #define OP_JUMP             0x52
 
+// Category G: Expression Stack & ALU
+#define OP_LOAD_CTX         0x60
+#define OP_PUSH_IMM         0x61
+#define OP_POP              0x62
+
+// Bitwise
+#define OP_BIT_AND          0x63
+#define OP_BIT_OR           0x64
+#define OP_BIT_XOR          0x65
+#define OP_BIT_NOT          0x66
+#define OP_SHL              0x67
+#define OP_SHR              0x68
+
+// Comparison
+#define OP_EQ               0x69
+#define OP_NEQ              0x6A
+#define OP_GT               0x6B
+#define OP_LT               0x6C
+#define OP_GTE              0x6D
+#define OP_LTE              0x6E
+
+// Logical
+#define OP_LOG_AND          0x6F
+#define OP_LOG_OR           0x70
+#define OP_LOG_NOT          0x71
+
 // --- 2. VM Context ---
 
 typedef enum {
@@ -78,7 +104,9 @@ typedef enum {
     CND_ERR_OOB = 1,           // Out of bounds (IL or Data)
     CND_ERR_INVALID_OP = 2,    // Unknown Opcode
     CND_ERR_VALIDATION = 3,    // Range/Const check failed
-    CND_ERR_CALLBACK = 4       // User callback returned error
+    CND_ERR_CALLBACK = 4,      // User callback returned error
+    CND_ERR_STACK_OVERFLOW = 5,
+    CND_ERR_STACK_UNDERFLOW = 6
 } cnd_error_t;
 
 typedef enum {
@@ -101,6 +129,7 @@ typedef enum {
 } cnd_trans_t;
 
 #define CND_MAX_LOOP_DEPTH 8
+#define CND_MAX_EXPR_STACK 8
 
 typedef struct {
     size_t start_ip;
@@ -154,6 +183,9 @@ typedef struct cnd_vm_ctx_t {
 
     cnd_loop_frame loop_stack[CND_MAX_LOOP_DEPTH];
     uint8_t loop_depth;
+
+    uint64_t expr_stack[CND_MAX_EXPR_STACK];
+    uint8_t expr_sp;
 } cnd_vm_ctx;
 
 // --- 3. Public API ---

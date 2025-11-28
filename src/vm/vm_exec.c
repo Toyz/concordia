@@ -427,6 +427,7 @@ void cnd_init(cnd_vm_ctx* ctx,
     ctx->bit_offset = 0;
     ctx->endianness = CND_LE; 
     ctx->loop_depth = 0;
+    ctx->expr_sp = 0;
     
     ctx->trans_type = CND_TRANS_NONE;
     ctx->trans_f_factor = 1.0;
@@ -435,6 +436,36 @@ void cnd_init(cnd_vm_ctx* ctx,
     
     ctx->is_next_optional = false;
 }
+
+// Helper for stack operations
+static inline cnd_error_t stack_push(cnd_vm_ctx* ctx, uint64_t val) {
+    if (ctx->expr_sp >= CND_MAX_EXPR_STACK) return CND_ERR_STACK_OVERFLOW;
+    ctx->expr_stack[ctx->expr_sp++] = val;
+    return CND_ERR_OK;
+}
+
+static inline cnd_error_t stack_pop(cnd_vm_ctx* ctx, uint64_t* val) {
+    if (ctx->expr_sp == 0) return CND_ERR_STACK_UNDERFLOW;
+    *val = ctx->expr_stack[--ctx->expr_sp];
+    return CND_ERR_OK;
+}
+
+static inline cnd_error_t stack_peek(cnd_vm_ctx* ctx, uint64_t* val) {
+    if (ctx->expr_sp == 0) return CND_ERR_STACK_UNDERFLOW;
+    *val = ctx->expr_stack[ctx->expr_sp - 1];
+    return CND_ERR_OK;
+}
+
+// Helper for binary operations
+#define BINARY_OP(OP) \
+    uint64_t b; if (stack_pop(ctx, &b) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW; \
+    uint64_t a; if (stack_pop(ctx, &a) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW; \
+    if (stack_push(ctx, a OP b) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
+
+// Helper for unary operations
+#define UNARY_OP(OP) \
+    uint64_t a; if (stack_pop(ctx, &a) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW; \
+    if (stack_push(ctx, OP a) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
 
 cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
     if (!ctx || !ctx->program || !ctx->program->bytecode || !ctx->data_buffer) return CND_ERR_OOB;
@@ -872,6 +903,24 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 break;
             }
 
+            case OP_JUMP_IF_NOT: {
+                int32_t offset = (int32_t)read_il_u32(ctx);
+                uint64_t condition;
+                if (stack_pop(ctx, &condition) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
+                
+                if (condition == 0) {
+                    // Jump
+                    if (offset < 0) {
+                        if (ctx->ip < (size_t)(-offset)) return CND_ERR_OOB;
+                        ctx->ip -= (size_t)(-offset);
+                    } else {
+                        ctx->ip += (size_t)offset;
+                    }
+                    if (ctx->ip > ctx->program->bytecode_len) return CND_ERR_OOB;
+                }
+                break;
+            }
+
             case OP_JUMP: {
                 int32_t offset = (int32_t)read_il_u32(ctx);
                 // Offset is relative to IP *after* reading the offset (which is current ctx->ip)
@@ -884,6 +933,49 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 if (ctx->ip > ctx->program->bytecode_len) return CND_ERR_OOB;
                 break;
             }
+
+            // --- Category G: Expression Stack & ALU ---
+
+            case OP_LOAD_CTX: {
+                uint16_t key = read_il_u16(ctx);
+                uint64_t val = 0;
+                if (ctx->io_callback(ctx, key, OP_LOAD_CTX, &val) != CND_ERR_OK) return CND_ERR_CALLBACK;
+                if (stack_push(ctx, val) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
+                break;
+            }
+
+            case OP_PUSH_IMM: {
+                uint64_t val = read_il_u64(ctx);
+                if (stack_push(ctx, val) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
+                break;
+            }
+
+            case OP_POP: {
+                uint64_t val;
+                if (stack_pop(ctx, &val) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
+                break;
+            }
+
+            // Bitwise
+            case OP_BIT_AND: { BINARY_OP(&); break; }
+            case OP_BIT_OR:  { BINARY_OP(|); break; }
+            case OP_BIT_XOR: { BINARY_OP(^); break; }
+            case OP_BIT_NOT: { UNARY_OP(~); break; }
+            case OP_SHL:     { BINARY_OP(<<); break; }
+            case OP_SHR:     { BINARY_OP(>>); break; }
+
+            // Comparison
+            case OP_EQ:  { BINARY_OP(==); break; }
+            case OP_NEQ: { BINARY_OP(!=); break; }
+            case OP_GT:  { BINARY_OP(>); break; }
+            case OP_LT:  { BINARY_OP(<); break; }
+            case OP_GTE: { BINARY_OP(>=); break; }
+            case OP_LTE: { BINARY_OP(<=); break; }
+
+            // Logical
+            case OP_LOG_AND: { BINARY_OP(&&); break; }
+            case OP_LOG_OR:  { BINARY_OP(||); break; }
+            case OP_LOG_NOT: { UNARY_OP(!); break; }
 
             default:
                 break;

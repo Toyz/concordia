@@ -53,6 +53,27 @@ packet KitchenSink {
     @scale(0.1)
     uint16 temperature; // Key 17 (Stored as u16, App sees float)
     
+    // Conditional
+    bool has_extra; // Key 18
+    if (has_extra) {
+        string extra_data prefix uint8; // Key 19
+    }
+
     @crc(32)
-    uint32 checksum; // Key 18
+    uint32 checksum; // Key 20
+    // Advanced Switch with If/Else
+    uint8 adv_mode; // Key 21
+    switch (adv_mode) {
+        case 0: {
+            uint16 adv_simple_val; // Key 22
+        }
+        case 1: {
+            bool adv_has_details; // Key 23
+            if (adv_has_details) {
+                string adv_details prefix uint8; // Key 24
+            } else {
+                uint8 adv_fallback_code; // Key 25
+            }
+        }
+    }
 }

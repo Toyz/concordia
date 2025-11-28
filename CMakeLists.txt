@@ -87,6 +87,9 @@ add_executable(test_runner
     tests/bool_test.cpp
     tests/switch_test.cpp
     tests/enum_sugar_test.cpp
+    tests/vm_alu_test.cpp
+    tests/compiler_if_test.cpp
+    tests/rtt_if_test.cpp
 )
 target_link_libraries(test_runner concordia cnd_compiler gtest_main)
 
