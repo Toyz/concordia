@@ -106,17 +106,21 @@ cnd_error_t json_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, voi
     }
 
     // Handle Context Query (Switch Discriminator Lookup)
-    if (type == OP_CTX_QUERY) {
+    if (type == OP_CTX_QUERY || type == OP_LOAD_CTX) {
         cJSON* item = cJSON_GetObjectItem(current_obj_context, key_name);
         if (!item) {
              // Try to find in array stack if we are inside an array?
              // But Switch logic usually implies we are switching on a field in the CURRENT object.
              // So current_obj_context is correct.
-             printf("CALLBACK ERROR: CTX_QUERY '%s' not found in current object.\n", key_name);
+             printf("CALLBACK ERROR: CTX_QUERY/LOAD_CTX '%s' not found in current object.\n", key_name);
              return CND_ERR_CALLBACK;
         }
         // Return value as uint64
-        *(uint64_t*)ptr = (uint64_t)(item->valuedouble); 
+        if (cJSON_IsBool(item)) {
+            *(uint64_t*)ptr = cJSON_IsTrue(item) ? 1 : 0;
+        } else {
+            *(uint64_t*)ptr = (uint64_t)(item->valuedouble); 
+        }
         return CND_ERR_OK;
     }
 
