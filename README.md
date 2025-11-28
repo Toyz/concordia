@@ -4,7 +4,14 @@
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Standard](https://img.shields.io/badge/standard-C99-green.svg)
 
+> **Concordia:** Named after the Roman goddess of harmony, this framework ensures absolute **agreement** between your systems.
+
 **The Universal Binary Protocol for Aerospace and Embedded Systems.**
+
+### The Manifesto
+In embedded engineering, a "failure to agree" on data structure isn't just a bug—it's a mission failure. Traditional tools rely on fragile, generated code that locks your data format to your firmware version.
+
+Concordia solves this by treating **Schema as Data, not Code**. By compiling contracts into a tiny, hot-reloadable Intermediate Language (IL), we decouple the *definition* of your telemetry from the *lifecycle* of your flight software. This guarantees that no matter how your architecture evolves, your systems will always speak in perfect harmony.
 
 Concordia is a schema-driven, IL-based serialization framework designed for environments where reliability, bandwidth, and flexibility are critical. It decouples data definition from data processing, allowing you to update packet structures in orbit without reflashing flight software.
 

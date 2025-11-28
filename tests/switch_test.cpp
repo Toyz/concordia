@@ -140,3 +140,65 @@ TEST_F(ConcordiaTest, SwitchImportedEnum) {
 
     remove(kSharedFile);
 }
+
+TEST_F(ConcordiaTest, SwitchInsideStruct) {
+    CompileAndLoad(
+        "struct Container {"
+        "  uint8 t;"
+        "  switch(t) {"
+        "    case 1: uint8 v1;"
+        "    case 2: uint16 v2;"
+        "  }"
+        "}"
+        "packet P { Container c; }"
+    );
+    
+    // Case 2 (v2)
+    // Inside struct `c`, keys are local to struct definition order?
+    // `t` is Key 0. `v1` is Key 1. `v2` is Key 2.
+    // Struct `c` is Key 0 in Packet P.
+    // When entering struct `c`, VM pushes scope? No, Keys are flattened in global table by Compiler if inlined?
+    // Or `OP_ENTER_STRUCT` maintains hierarchy?
+    // `parse_struct` creates a `StructDef` with its own `StringTable`?
+    // No, `Parser` has one global `StringTable`.
+    // `parse_struct` uses the global `strtab` to register keys.
+    // So KeyIDs are sequential across the whole file.
+    // Order:
+    // Container.t -> Key 0
+    // Container.v1 -> Key 1
+    // Container.v2 -> Key 2
+    // P.c -> Key 3
+    
+    // Let's verify Key IDs by `cnd inspect` mentally:
+    // 0: t, 1: v1, 2: v2, 3: c.
+    
+    // Data:
+    // 1. c (Key 3) -> ENTER_STRUCT
+    // 2. t (Key 0) -> 2
+    // 3. v2 (Key 2) -> 0x1234
+    
+    clear_test_data();
+    // g_test_data indices match keys if keys are 0,1,2...
+    // But here execution order:
+    // 1. P.c (Key 3)
+    // 2. Container.t (Key 0)
+    // 3. Switch -> Case 2 -> Container.v2 (Key 2)
+    
+    // `test_io_callback` uses search or tape.
+    // We used search in previous tests.
+    // So we populate by Key.
+    
+    g_test_data[0] = {0, 2, 0, ""}; // Key 0 (t) = 2
+    g_test_data[1] = {2, 0x3412, 0, ""}; // Key 2 (v2) = 0x3412 (LE)
+    
+    uint8_t buffer[8] = {0};
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    EXPECT_EQ(cnd_execute(&ctx), CND_ERR_OK);
+    
+    // buffer[0] = t = 2
+    // buffer[1] = 0x12
+    // buffer[2] = 0x34
+    EXPECT_EQ(buffer[0], 2);
+    EXPECT_EQ(buffer[1], 0x12);
+    EXPECT_EQ(buffer[2], 0x34);
+}
