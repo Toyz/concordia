@@ -123,6 +123,7 @@ Token lexer_next(Lexer* lexer) {
             return token;
         }
         
+        
         token.type = TOK_ERROR;
         return token;
     }
