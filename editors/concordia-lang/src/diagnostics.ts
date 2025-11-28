@@ -47,20 +47,20 @@ function runCompilerDiagnostics(compilerPath: string, filePath: string, collecti
       for (const line of lines) {
         const match = line.trim().match(errorRegex);
         if (match) {
-            const lineNo = parseInt(match[2]) - 1;
-            const colNo = parseInt(match[3]) - 1;
-            const message = match[4];
+          const lineNo = parseInt(match[2]) - 1;
+          const colNo = parseInt(match[3]) - 1;
+          const message = match[4];
 
-            const range = new vscode.Range(
-                lineNo, colNo,
-                lineNo, 1000 // Highlight until end of line
-            );
-            const diagnostic = new vscode.Diagnostic(
-                range,
-                message,
-                vscode.DiagnosticSeverity.Error
-            );
-            diagnostics.push(diagnostic);
+          const range = new vscode.Range(
+            lineNo, colNo,
+            lineNo, 1000 // Highlight until end of line
+          );
+          const diagnostic = new vscode.Diagnostic(
+            range,
+            message,
+            vscode.DiagnosticSeverity.Error
+          );
+          diagnostics.push(diagnostic);
         }
       }
 
