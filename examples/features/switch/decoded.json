@@ -3,5 +3,9 @@
 	"v2_field":	123456,
 	"type":	3,
 	"code":	200,
-	"message":	"System OK"
+	"message":	"System OK",
+	"nested":	{
+		"tag":	2,
+		"val_b":	99999
+	}
 }

@@ -167,6 +167,7 @@ packet Message {
 *   **Discriminator:** Must be an integer primitive or an `enum`.
 *   **Cases:** Must match the type of the discriminator. You can use integer literals (`case 1:`) or Enum members (`case PacketType.STATUS:`).
 *   **Scope:** Each case block has its own scope. You can define single fields or blocks `{ ... }`.
+*   **Nesting:** Switch statements can be used inside `struct` definitions and can be nested within other switch cases.
 
 ## 6. Example
 

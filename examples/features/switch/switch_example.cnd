@@ -1,13 +1,20 @@
 enum MsgType : uint8 {
     PING = 1,
     DATA = 2,
-    /// Special message type
     STATUS = 3
 }
 
 struct DataPayload {
     uint16 id;
     uint8 values[4];
+}
+
+struct NestedSwitch {
+    uint8 tag;
+    switch (tag) {
+        case 1: uint16 val_a;
+        case 2: uint32 val_b;
+    }
 }
 
 packet SwitchExample {
@@ -22,16 +29,19 @@ packet SwitchExample {
     // 2. Complex Switch (Enum + Structs/Blocks)
     MsgType type;
     switch (type) {
-        case 1: {
+        case MsgType.PING: {
             // Inline block for PING
             uint32 timestamp;
             uint8 sequence;
         }
-        case 2: DataPayload data; // Struct
-        case MsgType.S: {
+        case MsgType.DATA: DataPayload data; // Struct
+        case MsgType.STATUS: {
             // Inline block with string
             uint8 code;
             string message max 64;
         }
     }
+
+    // 3. Nested Switch inside Struct
+    NestedSwitch nested;
 }

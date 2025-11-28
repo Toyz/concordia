@@ -13,6 +13,7 @@ int is_hex_c(char c) { return is_digit_c(c) || (c >= 'a' && c <= 'f') || (c >= '
 Token lexer_next(Lexer* lexer) {
     while (*lexer->current != '\0') {
         char c = *lexer->current;
+        // printf("LEX: %c\n", c);
 
         if (c == ' ' || c == '\r' || c == '\t') { lexer->current++; continue; }
         if (c == '\n') { lexer->line++; lexer->current++; continue; }
