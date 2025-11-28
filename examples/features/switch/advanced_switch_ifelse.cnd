@@ -1,0 +1,23 @@
+// Advanced Switch with If/Else Example
+
+enum AdvancedType : uint8 {
+    SIMPLE = 0,
+    COMPLEX = 1
+}
+
+packet AdvancedSwitchIfElse {
+    uint8 mode;
+    switch (mode) {
+        case AdvancedType.SIMPLE: {
+            uint16 simple_val;
+        }
+        case AdvancedType.COMPLEX: {
+            bool has_details;
+            if (has_details) {
+                string details prefix uint8;
+            } else {
+                uint8 fallback_code;
+            }
+        }
+    }
+}

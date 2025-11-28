@@ -26,3 +26,6 @@ nested_out.json
 # OS
 .DS_Store
 Thumbs.db
+
+.gemini/
+gha-creds-*.json

@@ -37,7 +37,7 @@ extern "C" cnd_error_t test_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_
         }
     }
     
-    if (type == OP_CTX_QUERY) {
+    if (type == OP_CTX_QUERY || type == OP_LOAD_CTX) {
         if (idx != -1) *(uint64_t*)ptr = g_test_data[idx].u64_val;
         else return CND_ERR_CALLBACK;
         return CND_ERR_OK;

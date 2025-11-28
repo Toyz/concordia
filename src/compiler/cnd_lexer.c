@@ -18,6 +18,8 @@ static TokenType check_keyword(const char* start, int length) {
         {"switch", TOK_SWITCH},
         {"case", TOK_CASE},
         {"default", TOK_DEFAULT},
+        {"if", TOK_IF},
+        {"else", TOK_ELSE},
         {"true", TOK_TRUE},
         {"false", TOK_FALSE},
         {NULL, TOK_ERROR}
@@ -71,7 +73,34 @@ Token lexer_next(Lexer* lexer) {
             case ':': token.type = TOK_COLON; return token;
             case ',': token.type = TOK_COMMA; return token;
             case '@': token.type = TOK_AT; return token;
-            case '=': token.type = TOK_EQUALS; return token;
+            case '=': 
+                if (*lexer->current == '=') { lexer->current++; token.length++; token.type = TOK_EQ_EQ; }
+                else token.type = TOK_EQUALS; 
+                return token;
+            case '!': 
+                if (*lexer->current == '=') { lexer->current++; token.length++; token.type = TOK_BANG_EQ; }
+                else token.type = TOK_BANG; 
+                return token;
+            case '&': 
+                if (*lexer->current == '&') { lexer->current++; token.length++; token.type = TOK_AMP_AMP; }
+                else token.type = TOK_AMP; 
+                return token;
+            case '|': 
+                if (*lexer->current == '|') { lexer->current++; token.length++; token.type = TOK_PIPE_PIPE; }
+                else token.type = TOK_PIPE; 
+                return token;
+            case '^': token.type = TOK_CARET; return token;
+            case '~': token.type = TOK_TILDE; return token;
+            case '>': 
+                if (*lexer->current == '=') { lexer->current++; token.length++; token.type = TOK_GT_EQ; }
+                else if (*lexer->current == '>') { lexer->current++; token.length++; token.type = TOK_RSHIFT; }
+                else token.type = TOK_GT; 
+                return token;
+            case '<': 
+                if (*lexer->current == '=') { lexer->current++; token.length++; token.type = TOK_LT_EQ; }
+                else if (*lexer->current == '<') { lexer->current++; token.length++; token.type = TOK_LSHIFT; }
+                else token.type = TOK_LT; 
+                return token;
             case '.': token.type = TOK_DOT; return token;
             case '"': {
                 token.type = TOK_STRING;

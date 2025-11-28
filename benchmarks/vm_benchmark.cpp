@@ -986,4 +986,96 @@ static void BM_SwitchDecode(benchmark::State& state) {
 }
 BENCHMARK(BM_SwitchDecode);
 
+// --- If Statement Benchmark ---
+
+struct IfBenchData {
+    bool condition;
+    uint32_t value;
+};
+
+static cnd_error_t bench_if_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
+    IfBenchData* d = (IfBenchData*)ctx->user_ptr;
+    
+    if (type == OP_LOAD_CTX) {
+        // Used for condition check
+        if (key_id == 0) {
+            *(uint8_t*)ptr = d->condition ? 1 : 0;
+            return CND_ERR_OK;
+        }
+    }
+
+    switch(key_id) {
+        case 0: // condition
+            if (ctx->mode == CND_MODE_ENCODE) *(uint8_t*)ptr = d->condition ? 1 : 0;
+            else d->condition = (*(uint8_t*)ptr) != 0;
+            break;
+        case 1: // value
+            if (ctx->mode == CND_MODE_ENCODE) *(uint32_t*)ptr = d->value;
+            else d->value = *(uint32_t*)ptr;
+            break;
+    }
+    return CND_ERR_OK;
+}
+
+static void BM_IfEncode(benchmark::State& state) {
+    std::vector<uint8_t> il_image;
+    CompileSchema(
+        "packet P {"
+        "  bool condition;"
+        "  if (condition) {"
+        "    uint32 value;"
+        "  }"
+        "}", 
+        il_image
+    );
+    
+    cnd_program program;
+    cnd_program_load_il(&program, il_image.data(), il_image.size());
+    
+    IfBenchData d = { true, 0x12345678 };
+    
+    uint8_t buffer[128];
+    cnd_vm_ctx ctx;
+
+    for (auto _ : state) {
+        memset(buffer, 0, sizeof(buffer));
+        cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), bench_if_callback, &d);
+        cnd_execute(&ctx);
+    }
+}
+BENCHMARK(BM_IfEncode);
+
+static void BM_IfDecode(benchmark::State& state) {
+    std::vector<uint8_t> il_image;
+    CompileSchema(
+        "packet P {"
+        "  bool condition;"
+        "  if (condition) {"
+        "    uint32 value;"
+        "  }"
+        "}", 
+        il_image
+    );
+    
+    cnd_program program;
+    cnd_program_load_il(&program, il_image.data(), il_image.size());
+    
+    IfBenchData d = { true, 0x12345678 };
+    
+    uint8_t buffer[128];
+    cnd_vm_ctx ctx;
+    
+    // Pre-encode
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), bench_if_callback, &d);
+    cnd_execute(&ctx);
+    size_t encoded_size = ctx.cursor;
+
+    for (auto _ : state) {
+        IfBenchData out_d;
+        cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, encoded_size, bench_if_callback, &out_d);
+        cnd_execute(&ctx);
+    }
+}
+BENCHMARK(BM_IfDecode);
+
 BENCHMARK_MAIN();

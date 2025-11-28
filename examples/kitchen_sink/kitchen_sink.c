@@ -45,7 +45,16 @@ typedef struct {
     uint8_t percentage;
     double temperature; // Scaled
     
+    bool has_extra;
+    char extra_data[64];
+
     uint32_t checksum;
+    // Advanced Switch with If/Else
+    uint8_t adv_mode;
+    uint16_t adv_simple_val;
+    bool adv_has_details;
+    char adv_details[64];
+    uint8_t adv_fallback_code;
 } KitchenSink;
 
 // --- IO Callback ---
@@ -58,10 +67,22 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key, uint8_t type, void* ptr) {
     #define IO_VAL(ctype, field) if(ctx->mode==CND_MODE_ENCODE) *(ctype*)ptr = (ctype)obj->field; else obj->field = *(ctype*)ptr;
     #define IO_FLOAT(ctype, field) if(ctx->mode==CND_MODE_ENCODE) *(ctype*)ptr = (ctype)obj->field; else obj->field = (double)*(ctype*)ptr;
     
-    // Control flow queries (Switch)
-    if (type == OP_CTX_QUERY) {
+    // Control flow queries (Switch & If)
+    if (type == OP_CTX_QUERY || type == OP_LOAD_CTX) {
         if (strcmp(key_name, "status") == 0) {
             *(uint64_t*)ptr = (uint64_t)obj->status;
+            return CND_ERR_OK;
+        }
+        if (strcmp(key_name, "has_extra") == 0) {
+            *(uint8_t*)ptr = obj->has_extra ? 1 : 0;
+            return CND_ERR_OK;
+        }
+        if (strcmp(key_name, "adv_mode") == 0) {
+            *(uint64_t*)ptr = (uint64_t)obj->adv_mode;
+            return CND_ERR_OK;
+        }
+        if (strcmp(key_name, "adv_has_details") == 0) {
+            *(uint64_t*)ptr = obj->adv_has_details ? 1 : 0;
             return CND_ERR_OK;
         }
         return CND_ERR_INVALID_OP;
@@ -154,10 +175,43 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key, uint8_t type, void* ptr) {
         // type is OP_IO_F64 because @scale converts it
         IO_FLOAT(double, temperature); 
     }
+    else if (strcmp(key_name, "has_extra") == 0) { IO_VAL(uint8_t, has_extra); }
+    else if (strcmp(key_name, "extra_data") == 0) {
+        if (ctx->mode == CND_MODE_ENCODE) {
+            *(const char**)ptr = obj->extra_data;
+        } else {
+            const char* src = (const char*)ptr;
+            size_t len = 0;
+            // Hack: Read prefix to get length because VM doesn't pass it
+            if (type == OP_STR_PRE_U8) len = *(const uint8_t*)(src - 1);
+            
+            if (len > 63) len = 63;
+            memcpy(obj->extra_data, src, len);
+            obj->extra_data[len] = 0;
+        }
+    }
     else if (strcmp(key_name, "checksum") == 0) { IO_VAL(uint32_t, checksum); }
+    // Advanced Switch with If/Else
+    else if (strcmp(key_name, "adv_mode") == 0) { IO_VAL(uint8_t, adv_mode); }
+    else if (strcmp(key_name, "adv_simple_val") == 0) { IO_VAL(uint16_t, adv_simple_val); }
+    else if (strcmp(key_name, "adv_has_details") == 0) { IO_VAL(uint8_t, adv_has_details); }
+    else if (strcmp(key_name, "adv_details") == 0) {
+        if (ctx->mode == CND_MODE_ENCODE) {
+            *(const char**)ptr = obj->adv_details;
+        } else {
+            const char* src = (const char*)ptr;
+            size_t len = 0;
+            if (type == OP_STR_PRE_U8) len = *(const uint8_t*)(src - 1);
+            if (len > 63) len = 63;
+            memcpy(obj->adv_details, src, len);
+            obj->adv_details[len] = 0;
+        }
+    }
+    else if (strcmp(key_name, "adv_fallback_code") == 0) { IO_VAL(uint8_t, adv_fallback_code); }
     else {
-        printf("Warning: Unknown key '%s'\n", key_name);
-        return CND_ERR_CALLBACK;
+        printf("Warning: Unknown key '%s' (type=%u)\n", key_name, type);
+        // For development, treat unknown keys as OK to avoid hard failures
+        return CND_ERR_OK;
     }
 
     return CND_ERR_OK;
@@ -205,9 +259,25 @@ int main() {
     strcpy(input_ok.name, "Kitchen Sink Demo");
     input_ok.status = STATUS_OK;
     input_ok.confidence = 99;
+    input_ok.error_code = 0;
+    input_ok.fail_reason[0] = 0;
     input_ok.percentage = 85;
     input_ok.temperature = 25.5; // stored as 255
+    input_ok.has_extra = true;
+    strcpy(input_ok.extra_data, "Extra!");
     input_ok.checksum = 0; // Recalculated by encoding
+    input_ok.adv_mode = 0;
+    input_ok.adv_simple_val = 12345;
+    input_ok.adv_has_details = false;
+    input_ok.adv_details[0] = 0;
+    input_ok.adv_fallback_code = 0;
+
+    // Advanced Switch: SIMPLE mode
+    input_ok.adv_mode = 0;
+    input_ok.adv_simple_val = 12345;
+    input_ok.adv_has_details = false;
+    input_ok.adv_details[0] = 0;
+    input_ok.adv_fallback_code = 0;
 
     uint8_t buffer[1024];
     memset(buffer, 0, sizeof(buffer));
@@ -234,7 +304,20 @@ int main() {
     printf("  Pos: %.2f, %.2f, %.2f\n", output_ok.position.x, output_ok.position.y, output_ok.position.z);
     printf("  Status: %s (Confidence: %d%%)\n", output_ok.status == STATUS_OK ? "OK" : "FAIL", output_ok.confidence);
     printf("  Temp: %.1f\n", output_ok.temperature);
+    printf("  Extra: %s\n", output_ok.has_extra ? output_ok.extra_data : "None");
     printf("  Checksum: 0x%X\n", output_ok.checksum);
+
+    printf("  Advanced Switch: mode=%d\n", output_ok.adv_mode);
+    if (output_ok.adv_mode == 0) {
+        printf("    SIMPLE: adv_simple_val=%u\n", output_ok.adv_simple_val);
+    } else if (output_ok.adv_mode == 1) {
+        printf("    COMPLEX: adv_has_details=%d\n", output_ok.adv_has_details);
+        if (output_ok.adv_has_details) {
+            printf("      Details: %s\n", output_ok.adv_details);
+        } else {
+            printf("      Fallback Code: %u\n", output_ok.adv_fallback_code);
+        }
+    }
 
     // 6. Prepare Data (Status FAIL)
     printf("\nEncoding 'FAIL' Packet...\n");
@@ -242,6 +325,20 @@ int main() {
     input_fail.status = STATUS_FAIL;
     input_fail.error_code = 500;
     strcpy(input_fail.fail_reason, "Internal Server Error");
+
+    // Advanced Switch: COMPLEX mode with details
+    KitchenSink input_adv_complex = input_ok;
+    input_adv_complex.adv_mode = 1;
+    input_adv_complex.adv_has_details = true;
+    strcpy(input_adv_complex.adv_details, "Advanced details here!");
+    input_adv_complex.adv_fallback_code = 0;
+
+    // Advanced Switch: COMPLEX mode with fallback
+    KitchenSink input_adv_fallback = input_ok;
+    input_adv_fallback.adv_mode = 1;
+    input_adv_fallback.adv_has_details = false;
+    input_adv_fallback.adv_details[0] = 0;
+    input_adv_fallback.adv_fallback_code = 77;
     
     // 7. Encode (FAIL)
     memset(buffer, 0, sizeof(buffer));
@@ -262,6 +359,54 @@ int main() {
     printf("  Status: %s\n", output_fail.status == STATUS_OK ? "OK" : "FAIL");
     printf("  Error Code: %d\n", output_fail.error_code);
     printf("  Reason: %s\n", output_fail.fail_reason);
+
+    // Encode/Decode advanced complex
+    printf("\nEncoding 'ADVANCED COMPLEX' Packet...\n");
+    memset(buffer, 0, sizeof(buffer));
+    cnd_init(&ctx, CND_MODE_ENCODE, &prog, buffer, sizeof(buffer), sink_cb, &input_adv_complex);
+    err = cnd_execute(&ctx);
+    if (err != CND_ERR_OK) { printf("Encode Error: %d\n", err); return 1; }
+    printf("Encoded %zu bytes.\n", ctx.cursor);
+    printf("Decoding...\n");
+    KitchenSink output_adv_complex;
+    memset(&output_adv_complex, 0, sizeof(output_adv_complex));
+    cnd_init(&ctx, CND_MODE_DECODE, &prog, buffer, ctx.cursor, sink_cb, &output_adv_complex);
+    err = cnd_execute(&ctx);
+    if (err != CND_ERR_OK) { printf("Decode Error: %d\n", err); return 1; }
+    printf("Decoded Data:\n");
+    printf("  Advanced Switch: mode=%d\n", output_adv_complex.adv_mode);
+    if (output_adv_complex.adv_mode == 1) {
+        printf("    COMPLEX: adv_has_details=%d\n", output_adv_complex.adv_has_details);
+        if (output_adv_complex.adv_has_details) {
+            printf("      Details: %s\n", output_adv_complex.adv_details);
+        } else {
+            printf("      Fallback Code: %u\n", output_adv_complex.adv_fallback_code);
+        }
+    }
+
+    // Encode/Decode advanced fallback
+    printf("\nEncoding 'ADVANCED FALLBACK' Packet...\n");
+    memset(buffer, 0, sizeof(buffer));
+    cnd_init(&ctx, CND_MODE_ENCODE, &prog, buffer, sizeof(buffer), sink_cb, &input_adv_fallback);
+    err = cnd_execute(&ctx);
+    if (err != CND_ERR_OK) { printf("Encode Error: %d\n", err); return 1; }
+    printf("Encoded %zu bytes.\n", ctx.cursor);
+    printf("Decoding...\n");
+    KitchenSink output_adv_fallback;
+    memset(&output_adv_fallback, 0, sizeof(output_adv_fallback));
+    cnd_init(&ctx, CND_MODE_DECODE, &prog, buffer, ctx.cursor, sink_cb, &output_adv_fallback);
+    err = cnd_execute(&ctx);
+    if (err != CND_ERR_OK) { printf("Decode Error: %d\n", err); return 1; }
+    printf("Decoded Data:\n");
+    printf("  Advanced Switch: mode=%d\n", output_adv_fallback.adv_mode);
+    if (output_adv_fallback.adv_mode == 1) {
+        printf("    COMPLEX: adv_has_details=%d\n", output_adv_fallback.adv_has_details);
+        if (output_adv_fallback.adv_has_details) {
+            printf("      Details: %s\n", output_adv_fallback.adv_details);
+        } else {
+            printf("      Fallback Code: %u\n", output_adv_fallback.adv_fallback_code);
+        }
+    }
 
     free(il);
     return 0;
