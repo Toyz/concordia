@@ -114,7 +114,9 @@ TEST_F(LexerTest, InvalidTokens) {
     Init("$invalid #token");
     
     EXPECT_EQ(Next().type, TOK_ERROR);
+    EXPECT_EQ(Next().type, TOK_IDENTIFIER);
     EXPECT_EQ(Next().type, TOK_ERROR);
+    EXPECT_EQ(Next().type, TOK_IDENTIFIER);
     EXPECT_EQ(Next().type, TOK_EOF);
 }
 
