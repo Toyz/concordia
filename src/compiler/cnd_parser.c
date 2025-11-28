@@ -166,8 +166,182 @@ void emit_range_check(Parser* p, uint8_t type_op, Token min_tok, Token max_tok) 
     }
 }
 
+void parse_field(Parser* p); // Forward declaration
+void parse_block(Parser* p); // Forward declaration
+
+typedef struct {
+    uint64_t val;
+    int32_t offset;
+} SwitchCase;
+
+void parse_switch(Parser* p) {
+    consume(p, TOK_LPAREN, "Expect ( after switch");
+    Token field_tok = p->current;
+    consume(p, TOK_IDENTIFIER, "Expect discriminator field name");
+    uint16_t key_id = strtab_add(&p->strtab, field_tok.start, field_tok.length);
+    consume(p, TOK_RPAREN, "Expect )");
+    consume(p, TOK_LBRACE, "Expect {");
+
+    size_t switch_instr_loc = buf_current_offset(p->target);
+    buf_push(p->target, OP_SWITCH);
+    buf_push_u16(p->target, key_id);
+    buf_push_u32(p->target, 0); // Placeholder for Table Offset
+
+    // Code block starts here
+    size_t code_start_loc = buf_current_offset(p->target);
+
+    SwitchCase* cases = NULL;
+    size_t case_count = 0;
+    size_t case_cap = 0;
+    
+    size_t* jump_fixups = NULL;
+    size_t jump_count = 0;
+    size_t jump_cap = 0;
+
+    int32_t default_offset = -1; // -1 indicates no default
+
+    while (p->current.type != TOK_RBRACE && p->current.type != TOK_EOF && !p->had_error) {
+        if (match_keyword(p->current, "case")) {
+            advance(p); // consume case
+            
+            uint64_t val = 0;
+            if (p->current.type == TOK_NUMBER) {
+                val = (uint64_t)parse_int64(p->current);
+                advance(p);
+            } else if (p->current.type == TOK_IDENTIFIER) {
+                // Enum.Value syntax
+                Token enum_name = p->current;
+                advance(p);
+                if (p->current.type == TOK_DOT) {
+                    advance(p); // Consume .
+                    Token val_name = p->current;
+                    consume(p, TOK_IDENTIFIER, "Expect Enum Value Name");
+                    
+                    EnumDef* edef = enum_reg_find(&p->enums, enum_name.start, enum_name.length);
+                    if (!edef) {
+                        parser_error(p, "Enum not found");
+                    } else {
+                        int found = 0;
+                        for(size_t i=0; i<edef->count; i++) {
+                            if (strlen(edef->values[i].name) == val_name.length &&
+                                strncmp(edef->values[i].name, val_name.start, val_name.length) == 0) {
+                                val = (uint64_t)edef->values[i].value;
+                                found = 1;
+                                break;
+                            }
+                        }
+                        if (!found) parser_error(p, "Enum value not found");
+                    }
+                } else {
+                    parser_error(p, "Expect . after Enum name (Enum.Value)");
+                }
+            }
+            
+            consume(p, TOK_COLON, "Expect : after case value");
+            
+            // Register Case
+            if (case_count >= case_cap) {
+                case_cap = (case_cap == 0) ? 8 : case_cap * 2;
+                cases = realloc(cases, case_cap * sizeof(SwitchCase));
+            }
+            cases[case_count].val = val;
+            cases[case_count].offset = (int32_t)(buf_current_offset(p->target) - code_start_loc);
+            case_count++;
+            
+            // Parse body
+            if (p->current.type == TOK_LBRACE) {
+                parse_block(p);
+            } else {
+                parse_field(p);
+            }
+            
+            // Emit Jump to end (break)
+            size_t jump_loc = buf_current_offset(p->target);
+            buf_push(p->target, OP_JUMP);
+            buf_push_u32(p->target, 0); // Placeholder
+            
+            if (jump_count >= jump_cap) {
+                jump_cap = (jump_cap == 0) ? 8 : jump_cap * 2;
+                jump_fixups = realloc(jump_fixups, jump_cap * sizeof(size_t));
+            }
+            jump_fixups[jump_count++] = jump_loc;
+
+        } else if (match_keyword(p->current, "default")) {
+            advance(p); consume(p, TOK_COLON, "Expect :");
+            default_offset = (int32_t)(buf_current_offset(p->target) - code_start_loc);
+            
+            if (p->current.type == TOK_LBRACE) {
+                parse_block(p);
+            } else {
+                parse_field(p);
+            }
+            
+            // Emit Jump to end (break)
+            size_t jump_loc = buf_current_offset(p->target);
+            buf_push(p->target, OP_JUMP);
+            buf_push_u32(p->target, 0); // Placeholder
+            
+            if (jump_count >= jump_cap) {
+                jump_cap = (jump_cap == 0) ? 8 : jump_cap * 2;
+                jump_fixups = realloc(jump_fixups, jump_cap * sizeof(size_t));
+            }
+            jump_fixups[jump_count++] = jump_loc;
+        } else {
+            parser_error(p, "Expect case or default");
+            advance(p);
+        }
+    }
+    consume(p, TOK_RBRACE, "Expect }");
+    
+    // Emit Table
+    size_t table_start = buf_current_offset(p->target);
+    buf_push_u16(p->target, (uint16_t)case_count);
+    
+    // Calculate default offset
+    // Default offset is relative to code_start_loc.
+    // If no default case provided, we want to skip the whole switch block?
+    // i.e. jump to table_end?
+    // But we don't know table_end yet.
+    // If default_offset is -1, we will patch it later or calculate it if possible.
+    // Actually, we can calculate table size!
+    // Table Size = 2 (count) + 4 (def) + count * (8+4).
+    size_t table_size = 2 + 4 + case_count * 12;
+    size_t table_end = table_start + table_size;
+    
+    if (default_offset == -1) {
+        default_offset = (int32_t)(table_end - code_start_loc);
+    }
+    buf_push_u32(p->target, (uint32_t)default_offset);
+    
+    for(size_t i=0; i<case_count; i++) {
+        buf_push_u64(p->target, cases[i].val);
+        buf_push_u32(p->target, (uint32_t)cases[i].offset);
+    }
+    
+    // Fixup Jumps to point to AFTER the table
+    for(size_t i=0; i<jump_count; i++) {
+        size_t jump_instr_end = jump_fixups[i] + 1 + 4;
+        int32_t off = (int32_t)(table_end - jump_instr_end);
+        buf_write_u32_at(p->target, jump_fixups[i] + 1, (uint32_t)off);
+    }
+    
+    // Fixup SWITCH instruction
+    size_t switch_instr_end = switch_instr_loc + 1 + 2 + 4;
+    uint32_t table_rel_offset = (uint32_t)(table_start - switch_instr_end);
+    buf_write_u32_at(p->target, switch_instr_loc + 3, table_rel_offset);
+    
+    if(cases) free(cases);
+    if(jump_fixups) free(jump_fixups);
+}
+
 void parse_field(Parser* p) {
     if (p->had_error) return;
+    
+    if (match_keyword(p->current, "switch")) {
+        advance(p); // consume switch (was type_tok in previous logic, but here we check before)
+        parse_switch(p);
+        return;
+    }
 
     // Decorator State Variables
     uint32_t array_fixed_count = 0;

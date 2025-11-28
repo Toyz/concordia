@@ -51,6 +51,7 @@ Token lexer_next(Lexer* lexer) {
             case ',': token.type = TOK_COMMA; return token;
             case '@': token.type = TOK_AT; return token;
             case '=': token.type = TOK_EQUALS; return token;
+            case '.': token.type = TOK_DOT; return token;
             case '"': {
                 token.type = TOK_STRING;
                 token.start = lexer->current;

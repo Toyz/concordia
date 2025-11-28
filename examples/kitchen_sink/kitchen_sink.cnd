@@ -1,0 +1,58 @@
+enum Status : uint8 {
+    OK = 0,
+    FAIL = 1
+}
+
+struct Vec3 {
+    float x;
+    float y;
+    float z;
+}
+
+packet KitchenSink {
+    // Primitives & Endianness
+    @big_endian
+    uint32 magic; // Key 0
+    
+    // Bitfields
+    uint16 flags_a : 1; // Key 1
+    bool   flag_b  : 1; // Key 2
+    int8   val_c   : 6; // Key 3
+    
+    // Primitives
+    int64 timestamp; // Key 4
+    
+    // Nested Struct
+    Vec3 position; // Key 5 (Inside: x=6, y=7, z=8)
+    
+    // Array (Fixed)
+    uint8 matrix[4]; // Key 9
+    
+    // Array (Variable)
+    uint16 points[] prefix uint8; // Key 10
+    
+    // String
+    string name max 32; // Key 11
+    
+    // Switch / Union
+    Status status; // Key 12
+    switch (status) {
+        case Status.OK: {
+            uint8 confidence; // Key 13
+        }
+        case Status.FAIL: {
+            uint16 error_code; // Key 14
+            string reason prefix uint8; // Key 15
+        }
+    }
+    
+    // Validation & Transform
+    @range(0, 100)
+    uint8 percentage; // Key 16
+    
+    @scale(0.1)
+    uint16 temperature; // Key 17 (Stored as u16, App sees float)
+    
+    @crc(32)
+    uint32 checksum; // Key 18
+}

@@ -18,6 +18,7 @@ extern "C" {
 #define OP_ENTER_STRUCT     0x03
 #define OP_EXIT_STRUCT      0x04
 #define OP_META_VERSION     0x05
+#define OP_CTX_QUERY        0x06
 
 // Category B: Primitives (Byte Aligned)
 #define OP_IO_U8            0x10
@@ -67,6 +68,8 @@ extern "C" {
 
 // Category F: Control Flow
 #define OP_JUMP_IF_NOT      0x50
+#define OP_SWITCH           0x51
+#define OP_JUMP             0x52
 
 // --- 2. VM Context ---
 

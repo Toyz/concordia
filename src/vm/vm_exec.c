@@ -825,6 +825,66 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 break;
             }
 
+            case OP_SWITCH: {
+                uint16_t key = read_il_u16(ctx);
+                uint32_t table_rel_offset = read_il_u32(ctx);
+                
+                // IP is now at the start of the code block (immediately after SWITCH instruction)
+                size_t code_start_ip = ctx->ip;
+                size_t table_start_ip = code_start_ip + table_rel_offset;
+                
+                if (table_start_ip > ctx->program->bytecode_len) return CND_ERR_OOB;
+                
+                // Jump to table to read it
+                size_t original_ip = ctx->ip;
+                ctx->ip = table_start_ip;
+                
+                uint16_t count = read_il_u16(ctx);
+                int32_t default_off = (int32_t)read_il_u32(ctx);
+                
+                uint64_t disc_val = 0;
+                if (ctx->io_callback(ctx, key, OP_CTX_QUERY, &disc_val) != CND_ERR_OK) return CND_ERR_CALLBACK;
+                
+                int32_t target_off = default_off;
+                bool found = false;
+                
+                for (uint16_t i = 0; i < count; i++) {
+                    uint64_t case_val = read_il_u64(ctx);
+                    int32_t case_off = (int32_t)read_il_u32(ctx);
+                    
+                    if (!found && disc_val == case_val) {
+                        target_off = case_off;
+                        found = true;
+                    }
+                }
+                
+                // Target offset is relative to code_start_ip (original_ip)
+                ctx->ip = original_ip; // Restore just in case calculations need it, or just set new
+                
+                if (target_off < 0) {
+                     if (code_start_ip < (size_t)(-target_off)) return CND_ERR_OOB;
+                     ctx->ip = code_start_ip - (size_t)(-target_off);
+                } else {
+                     ctx->ip = code_start_ip + (size_t)target_off;
+                }
+                
+                if (ctx->ip > ctx->program->bytecode_len) return CND_ERR_OOB;
+                break;
+            }
+
+            case OP_JUMP: {
+                int32_t offset = (int32_t)read_il_u32(ctx);
+                // Offset is relative to IP *after* reading the offset (which is current ctx->ip)
+                if (offset < 0) {
+                    if (ctx->ip < (size_t)(-offset)) return CND_ERR_OOB;
+                    ctx->ip -= (size_t)(-offset);
+                } else {
+                    ctx->ip += (size_t)offset;
+                }
+                if (ctx->ip > ctx->program->bytecode_len) return CND_ERR_OOB;
+                break;
+            }
+
             default:
                 break;
         }

@@ -1,0 +1,9 @@
+/// This is a simple status enum
+enum Status : uint8 {
+    /// Everything is good
+    OK = 0,
+    /// Something went wrong
+    ERROR = 1,
+    /// Unknown status
+    UNKNOWN = 2
+}
