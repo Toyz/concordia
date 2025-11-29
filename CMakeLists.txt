@@ -73,27 +73,12 @@ target_link_libraries(cnd concordia cnd_compiler cjson)
 # Test Executable
 add_executable(test_runner 
     tests/test_common.cpp
-    tests/vm_core_test.cpp
-    tests/vm_bitfield_test.cpp
-    tests/vm_safety_test.cpp
-    tests/vm_features_test.cpp
+    tests/vm_tests.cpp
     tests/compiler_test.cpp 
     tests/lexer_test.cpp
-    tests/import_test.cpp
-    tests/validation_test.cpp
-    tests/extended_test.cpp
-    tests/extended_coverage_test.cpp
-    tests/spec_coverage_test.cpp
-    tests/match_rtt_test.cpp
-    tests/enum_test.cpp
-    tests/string_array_test.cpp
-    tests/vm_concurrency_test.cpp
-    tests/bool_test.cpp
-    tests/switch_test.cpp
-    tests/enum_sugar_test.cpp
-    tests/vm_alu_test.cpp
-    tests/compiler_if_test.cpp
-    tests/rtt_if_test.cpp
+    tests/compiler_integration_test.cpp
+    tests/coverage_test.cpp
+    tests/language_features_test.cpp
 )
 target_link_libraries(test_runner concordia cnd_compiler gtest_main)
 
