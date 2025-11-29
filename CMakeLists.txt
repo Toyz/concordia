@@ -12,6 +12,10 @@ endif()
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 14)
 
+if(MSVC)
+  add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+endif()
+
 include_directories(include)
 
 # --- Dependencies ---
@@ -63,7 +67,7 @@ add_library(cnd_compiler
 add_executable(hexview src/tools/hexview.c)
 
 # Main CLI Tool (cnd)
-add_executable(cnd src/cli/main.c src/cli/cli_helpers.c src/cli/cmd_compile.c src/cli/cmd_encode.c src/cli/cmd_decode.c src/cli/cmd_fmt.c src/cli/cmd_inspect.c)
+add_executable(cnd src/cli/main.c src/cli/cli_helpers.c src/cli/json_binding.c src/cli/cmd_compile.c src/cli/cmd_encode.c src/cli/cmd_decode.c src/cli/cmd_fmt.c src/cli/cmd_inspect.c src/cli/cmd_lsp.c)
 target_link_libraries(cnd concordia cnd_compiler cjson)
 
 # Test Executable

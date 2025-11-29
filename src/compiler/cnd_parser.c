@@ -1,5 +1,7 @@
 #include "cnd_internal.h"
 
+static char* append_doc(char* current, Token t);
+
 // ANSI Color Codes
 #define COLOR_RESET   "\033[0m"
 #define COLOR_RED     "\033[31m"
@@ -10,19 +12,39 @@ void parser_error(Parser* p, const char* msg) {
     p->had_error = 1;
     p->error_count++;
 
+    // Calculate column
+    const char* line_start = p->current.start;
+    while (line_start > p->lexer.source && *(line_start - 1) != '\n' && *(line_start - 1) != '\r') {
+        line_start--;
+    }
+    int col = (int)(p->current.start - line_start) + 1;
+
+    // Store error for LSP/API usage
+    if (p->error_count > p->error_cap) { // Allow growing
+        size_t new_cap = (p->error_cap == 0) ? 8 : p->error_cap * 2;
+        // Safety check
+        if (new_cap > 1024) new_cap = 1024; // Cap max errors stored
+        if (p->error_count <= new_cap) {
+            p->errors = realloc(p->errors, new_cap * sizeof(CompilerError));
+            p->error_cap = new_cap;
+        }
+    }
+    
+    if (p->errors && p->error_count <= p->error_cap) {
+        CompilerError* err = &p->errors[p->error_count - 1];
+        err->line = p->current.line;
+        err->column = col;
+        err->message = strdup(msg); // Make sure to free this later!
+    }
+
+    if (p->silent) return;
+
     if (p->json_output) {
         // JSON format: {"file": "...", "line": N, "message": "...", "token": "..."}
         // We use manual JSON construction to avoid dependency on cJSON in the compiler core
         printf("{\"file\": \"%s\", \"line\": %d, \"message\": \"%s\", \"token\": \"%.*s\"}\n",
             p->current_path, p->current.line, msg, p->current.length, p->current.start);
     } else {
-        // Calculate line start to determine column
-        const char* line_start = p->current.start;
-        while (line_start > p->lexer.source && *(line_start - 1) != '\n' && *(line_start - 1) != '\r') {
-            line_start--;
-        }
-        int col = (int)(p->current.start - line_start) + 1;
-
         // Standard error format: file:line:col: error: message
         // With colors: Bold File, Red Error
         printf(COLOR_BOLD "%s:%d:%d: " COLOR_RED "error: " COLOR_RESET COLOR_BOLD "%s" COLOR_RESET "\n", 
@@ -166,7 +188,7 @@ void emit_range_check(Parser* p, uint8_t type_op, Token min_tok, Token max_tok) 
     }
 }
 
-void parse_field(Parser* p); // Forward declaration
+void parse_field(Parser* p, const char* doc); // Forward declaration
 void parse_block(Parser* p); // Forward declaration
 
 // Expression Parsing
@@ -419,7 +441,7 @@ void parse_switch(Parser* p) {
             if (p->current.type == TOK_LBRACE) {
                 parse_block(p);
             } else {
-                parse_field(p);
+                parse_field(p, NULL);
             }
             
             // Emit Jump to end (break)
@@ -440,7 +462,7 @@ void parse_switch(Parser* p) {
             if (p->current.type == TOK_LBRACE) {
                 parse_block(p);
             } else {
-                parse_field(p);
+                parse_field(p, NULL);
             }
             
             // Emit Jump to end (break)
@@ -501,8 +523,13 @@ void parse_switch(Parser* p) {
     if(jump_fixups) free(jump_fixups);
 }
 
-void parse_field(Parser* p) {
+void parse_field(Parser* p, const char* doc) {
     if (p->had_error) return;
+    
+    // Consume doc comments (currently ignored for fields, but prevents syntax error)
+    while (p->current.type == TOK_DOC_COMMENT) {
+        advance(p);
+    }
     
     if (p->current.type == TOK_SWITCH) {
         advance(p); // consume switch (was type_tok in previous logic, but here we check before)
@@ -892,15 +919,23 @@ void parse_field(Parser* p) {
 
 void parse_block(Parser* p) {
     consume(p, TOK_LBRACE, "Expect {");
+    char* pending_doc = NULL;
     while (p->current.type != TOK_RBRACE && p->current.type != TOK_EOF && !p->had_error) {
-        parse_field(p);
+        if (p->current.type == TOK_DOC_COMMENT) {
+            pending_doc = append_doc(pending_doc, p->current);
+            advance(p);
+            continue;
+        }
+        parse_field(p, pending_doc);
+        if (pending_doc) { free(pending_doc); pending_doc = NULL; }
     }
     consume(p, TOK_RBRACE, "Expect }");
+    if (pending_doc) free(pending_doc);
 }
 
-void parse_enum(Parser* p) {
+void parse_enum(Parser* p, const char* doc) {
     Token name = p->current; consume(p, TOK_IDENTIFIER, "Expect enum name");
-    EnumDef* def = enum_reg_add(&p->enums, name.start, name.length);
+    EnumDef* def = enum_reg_add(&p->enums, name.start, name.length, name.line, p->current_path, doc);
     
     // Optional underlying type: enum MyEnum : uint8 { ... }
     if (p->current.type == TOK_COLON) {
@@ -922,8 +957,15 @@ void parse_enum(Parser* p) {
     consume(p, TOK_LBRACE, "Expect {");
     
     int64_t next_val = 0;
+    char* val_doc = NULL;
     
     while (p->current.type != TOK_RBRACE && p->current.type != TOK_EOF && !p->had_error) {
+        if (p->current.type == TOK_DOC_COMMENT) {
+            val_doc = append_doc(val_doc, p->current);
+            advance(p);
+            continue;
+        }
+
         Token val_name = p->current;
         consume(p, TOK_IDENTIFIER, "Expect enum value name");
         
@@ -944,18 +986,22 @@ void parse_enum(Parser* p) {
         memcpy(def->values[def->count].name, val_name.start, val_name.length);
         def->values[def->count].name[val_name.length] = '\0';
         def->values[def->count].value = val;
+        def->values[def->count].doc_comment = val_doc; // Transfer ownership
+        val_doc = NULL; // Reset for next
         def->count++;
         
         next_val = val + 1;
         
         if (p->current.type == TOK_COMMA) advance(p);
+        if (val_doc) { free(val_doc); val_doc = NULL; } // Should be NULL already, but safety
     }
     consume(p, TOK_RBRACE, "Expect }");
+    if(val_doc) free(val_doc);
 }
 
-void parse_struct(Parser* p) {
+void parse_struct(Parser* p, const char* doc) {
     Token name = p->current; consume(p, TOK_IDENTIFIER, "Expect struct name");
-    StructDef* def = reg_add(&p->registry, name.start, name.length);
+    StructDef* def = reg_add(&p->registry, name.start, name.length, name.line, p->current_path, doc);
     
     const char* prev_name = p->current_struct_name;
     int prev_len = p->current_struct_name_len;
@@ -970,9 +1016,22 @@ void parse_struct(Parser* p) {
     p->current_struct_name_len = prev_len;
 }
 
-void parse_packet(Parser* p) {
+void parse_packet(Parser* p, const char* doc) {
+    // TODO: Store doc comment for packet?
     Token name = p->current; consume(p, TOK_IDENTIFIER, "Expect packet name");
+    
+    // Emit META_NAME with placeholder key
+    size_t meta_loc = buf_current_offset(p->target);
+    buf_push(p->target, OP_META_NAME);
+    buf_push_u16(p->target, 0xFFFF); // Placeholder
+    
     parse_block(p);
+    
+    // Add name to string table AFTER fields, so fields get lower IDs (preserving compatibility/tests)
+    uint16_t key_id = strtab_add(&p->strtab, name.start, name.length);
+    
+    // Patch the key
+    buf_write_u16_at(p->target, meta_loc + 1, key_id);
 }
 
 // Helper to resolve path relative to base
@@ -1058,8 +1117,32 @@ void parse_import(Parser* p) {
     free(full_path);
 }
 
+// Helper to append doc comments
+static char* append_doc(char* current, Token t) {
+    size_t len = t.length;
+    size_t current_len = current ? strlen(current) : 0;
+    char* new_doc = realloc(current, current_len + len + 2); // +1 for space/newline, +1 for null
+    if (current_len > 0) {
+        new_doc[current_len] = '\n'; // Join with newline
+        memcpy(new_doc + current_len + 1, t.start, len);
+        new_doc[current_len + 1 + len] = '\0';
+    } else {
+        memcpy(new_doc, t.start, len);
+        new_doc[len] = '\0';
+    }
+    return new_doc;
+}
+
 void parse_top_level(Parser* p) {
+    char* pending_doc = NULL;
+
     while (p->current.type != TOK_EOF && !p->had_error) {
+        if (p->current.type == TOK_DOC_COMMENT) {
+            pending_doc = append_doc(pending_doc, p->current);
+            advance(p);
+            continue;
+        }
+
         if (p->current.type == TOK_AT) {
             advance(p); 
             Token dec = p->current; consume(p, TOK_IDENTIFIER, "Expect decorator name");
@@ -1081,20 +1164,30 @@ void parse_top_level(Parser* p) {
                     consume(p, TOK_RPAREN, "Expect )");
                 }
             }
+            // Decorators don't consume doc comments, they attach to the next item?
+            // Usually doc comments should be immediately before the item. 
+            // If we have decorators, doc comments might be above them.
+            // For simplicity, we keep pending_doc through decorators.
         } else if (p->current.type == TOK_STRUCT) {
-            advance(p); parse_struct(p);
+            advance(p); parse_struct(p, pending_doc);
+            if(pending_doc) { free(pending_doc); pending_doc = NULL; }
         } else if (p->current.type == TOK_ENUM) {
-            advance(p); parse_enum(p);
+            advance(p); parse_enum(p, pending_doc);
+            if(pending_doc) { free(pending_doc); pending_doc = NULL; }
         } else if (p->current.type == TOK_PACKET) {
             if (p->packet_count > 0) {
                 parser_error(p, "Only one packet definition allowed per file");
             }
             p->packet_count++;
-            advance(p); parse_packet(p);
+            advance(p); parse_packet(p, pending_doc);
+            if(pending_doc) { free(pending_doc); pending_doc = NULL; } // Packet doesn't store doc yet but consume it
         } else if (p->current.type == TOK_SEMICOLON) {
             advance(p); // Ignore top-level semicolons
+            if(pending_doc) { free(pending_doc); pending_doc = NULL; } // Orphaned comment
         } else {
             parser_error(p, "Unexpected token");
+            if(pending_doc) { free(pending_doc); pending_doc = NULL; }
         }
     }
+    if(pending_doc) free(pending_doc);
 }

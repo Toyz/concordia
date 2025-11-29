@@ -19,6 +19,7 @@ extern "C" {
 #define OP_EXIT_STRUCT      0x04
 #define OP_META_VERSION     0x05
 #define OP_CTX_QUERY        0x06
+#define OP_META_NAME        0x07
 
 // Category B: Primitives (Byte Aligned)
 #define OP_IO_U8            0x10

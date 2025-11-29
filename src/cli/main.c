@@ -14,6 +14,7 @@ extern int cmd_encode(int argc, char** argv);
 extern int cmd_decode(int argc, char** argv);
 extern int cmd_fmt(int argc, char** argv);
 extern int cmd_inspect(int argc, char** argv);
+extern int cmd_lsp(int argc, char** argv);
 
 
 // --- main function for the cnd CLI tool ---
@@ -28,6 +29,7 @@ int main(int argc, char** argv) {
         printf("  cnd inspect <file.il>\n");
         printf("  cnd encode <schema.il> <in.json> <out.bin>\n");
         printf("  cnd decode <schema.il> <in.bin> <out.json>\n");
+        printf("  cnd lsp\n");
         return 1;
     }
     
@@ -36,6 +38,7 @@ int main(int argc, char** argv) {
     if (strcmp(argv[1], "inspect") == 0) return cmd_inspect(argc, argv);
     if (strcmp(argv[1], "encode") == 0) return cmd_encode(argc, argv);
     if (strcmp(argv[1], "decode") == 0) return cmd_decode(argc, argv);
+    if (strcmp(argv[1], "lsp") == 0) return cmd_lsp(argc, argv);
     
     printf("Unknown command: %s\n", argv[1]);
     return 1;

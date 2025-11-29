@@ -2,8 +2,13 @@
 
 int cmd_decode(int argc, char** argv) {
     if (argc < 5) {
-        printf("Usage: cnd decode <schema.il> <input.bin> <output.json>\n");
+        printf("Usage: cnd decode <schema.il> <input.bin> <output.json> [--hex]\n");
         return 1;
+    }
+    
+    int hex_mode = 0;
+    if (argc >= 6 && strcmp(argv[5], "--hex") == 0) {
+        hex_mode = 1;
     }
     
     ILFile il;
@@ -15,10 +20,16 @@ int cmd_decode(int argc, char** argv) {
     
     cJSON* root = cJSON_CreateObject();
     static IOCtx io_ctx; // Made static to persist
+    memset(&io_ctx, 0, sizeof(IOCtx)); // Initialize all fields to 0
     io_ctx.il = &il;
     io_ctx.stack[0] = root;
     io_ctx.depth = 0;
     io_ctx.array_depth = 0; // Initialize array depth
+    io_ctx.hex_mode = hex_mode;
+    io_ctx.in_hex_byte_array = false; // Initialize new hex-related fields
+    io_ctx.hex_str_buffer = NULL;
+    io_ctx.hex_str_buffer_len = 0;
+    io_ctx.hex_str_buffer_capacity = 0;
     
     cnd_vm_ctx vm;
     cnd_program program;

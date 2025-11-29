@@ -499,6 +499,16 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 if (ctx->io_callback(ctx, 0, opcode, NULL) != CND_ERR_OK) return CND_ERR_CALLBACK;
                 break; // VM continues with next instruction after the struct
             }
+
+            case OP_META_VERSION: {
+                read_il_u8(ctx); // Skip version
+                break;
+            }
+
+            case OP_META_NAME: {
+                read_il_u16(ctx); // Skip name key
+                break;
+            }
             
             case OP_CONST_WRITE: {
                 uint8_t type = read_il_u8(ctx);
@@ -763,7 +773,7 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 break; 
             } 
 
-            // --- Category D: Arrays & Strings ---
+            // ... Category D: Arrays & Strings ...
             
             case OP_STR_NULL: {
                 uint16_t key = read_il_u16(ctx);
@@ -853,6 +863,24 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                     if (ctx->io_callback(ctx, 0, OP_ARR_END, NULL) != CND_ERR_OK) return CND_ERR_CALLBACK;
                     loop_pop(ctx);
                 }
+                break;
+            }
+
+            case OP_RAW_BYTES: {
+                uint16_t key = read_il_u16(ctx);
+                uint32_t count = read_il_u32(ctx);
+                
+                if (ctx->cursor + count > ctx->data_len) return CND_ERR_OOB;
+                
+                // Callback receives/provides pointer to data in buffer
+                // For Encode: Callback writes TO this pointer
+                // For Decode: Callback reads FROM this pointer
+                // Since it's raw bytes, we just pass the pointer to the buffer.
+                void* ptr = ctx->data_buffer + ctx->cursor;
+                
+                if (ctx->io_callback(ctx, key, opcode, ptr) != CND_ERR_OK) return CND_ERR_CALLBACK;
+                
+                ctx->cursor += count;
                 break;
             }
 

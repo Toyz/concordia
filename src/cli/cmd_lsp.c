@@ -1,0 +1,847 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <cJSON.h>
+#include "../compiler/cnd_internal.h"
+#include "cli_helpers.h"
+#include "compiler.h" // For cnd_format_source
+
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#endif
+
+// --- LSP Protocol Helpers ---
+
+static void send_json(cJSON* json) {
+    char* str = cJSON_PrintUnformatted(json);
+    if (!str) return;
+    size_t len = strlen(str);
+    // Use \r\n for headers as per spec
+    fprintf(stdout, "Content-Length: %zu\r\n\r\n%s", len, str);
+    fflush(stdout);
+    free(str);
+}
+
+static cJSON* read_json() {
+    // Read header: "Content-Length: <N>\r\n\r\n"
+    size_t content_len = 0;
+    while (1) {
+        char line[1024];
+        // fgets reads until newline. In binary mode, \r\n is preserved.
+        if (!fgets(line, sizeof(line), stdin)) return NULL;
+        
+        if (strncmp(line, "Content-Length: ", 16) == 0) {
+            content_len = atoi(line + 16);
+        } else if (strcmp(line, "\r\n") == 0 || strcmp(line, "\n") == 0) { 
+            // Handle both \r\n and \n just in case, though spec says \r\n
+            break; // End of headers
+        }
+    }
+    
+    if (content_len == 0) return NULL;
+    
+    char* buf = malloc(content_len + 1);
+    if (!buf) return NULL;
+    size_t read_len = fread(buf, 1, content_len, stdin);
+    buf[read_len] = 0;
+    
+    cJSON* json = cJSON_Parse(buf);
+    free(buf);
+    return json;
+}
+
+static void send_response(cJSON* id, cJSON* result) {
+    cJSON* res = cJSON_CreateObject();
+    cJSON_AddStringToObject(res, "jsonrpc", "2.0");
+    if (id) cJSON_AddItemToObject(res, "id", cJSON_Duplicate(id, 1));
+    cJSON_AddItemToObject(res, "result", result);
+    send_json(res);
+    cJSON_Delete(res);
+}
+
+// --- Document Store ---
+typedef struct {
+    char* uri;
+    char* content;
+} LspDocument;
+
+static LspDocument* docs = NULL;
+static size_t doc_count = 0;
+static size_t doc_cap = 0;
+
+static void doc_update(const char* uri, const char* content) {
+    for (size_t i = 0; i < doc_count; i++) {
+        if (strcmp(docs[i].uri, uri) == 0) {
+            free(docs[i].content);
+            docs[i].content = strdup(content);
+            return;
+        }
+    }
+    if (doc_count >= doc_cap) {
+        doc_cap = (doc_cap == 0) ? 8 : doc_cap * 2;
+        docs = realloc(docs, doc_cap * sizeof(LspDocument));
+    }
+    docs[doc_count].uri = strdup(uri);
+    docs[doc_count].content = strdup(content);
+    doc_count++;
+}
+
+static char* doc_get(const char* uri) {
+    for (size_t i = 0; i < doc_count; i++) {
+        if (strcmp(docs[i].uri, uri) == 0) {
+            return strdup(docs[i].content); // Return copy
+        }
+    }
+    return NULL;
+}
+
+static void doc_remove(const char* uri) {
+    for (size_t i = 0; i < doc_count; i++) {
+        if (strcmp(docs[i].uri, uri) == 0) {
+            free(docs[i].uri);
+            free(docs[i].content);
+            if (i < doc_count - 1) {
+                docs[i] = docs[doc_count - 1];
+            }
+            doc_count--;
+            return;
+        }
+    }
+}
+
+// --- Analysis Logic ---
+
+static const char* get_type_name(uint8_t type) {
+    switch (type) {
+        case OP_IO_U8: return "u8";
+        case OP_IO_U16: return "u16";
+        case OP_IO_U32: return "u32";
+        case OP_IO_U64: return "u64";
+        case OP_IO_I8: return "i8";
+        case OP_IO_I16: return "i16";
+        case OP_IO_I32: return "i32";
+        case OP_IO_I64: return "i64";
+        default: return "unknown";
+    }
+}
+
+// Helper to analyze a source string and find definition for symbol at position
+typedef struct {
+    int found;
+    int def_line;
+    char* def_file;
+    char* symbol_name;
+    char* doc_comment;
+    char* type_details;
+} AnalysisResult;
+
+// We need to parse the file to build the registry.
+// But we also need to find what symbol is under the cursor.
+// We can re-tokenize the source to find the token at (line, char).
+// Then look up that token in the registry.
+
+static void analyze_source(const char* source, const char* file_path, int line, int character, AnalysisResult* res) {
+    res->found = 0;
+    res->def_line = 0;
+    res->def_file = NULL;
+    res->symbol_name = NULL;
+    res->doc_comment = NULL;
+    res->type_details = NULL;
+
+    // 1. Setup Parser to build registry
+    Parser p;
+    memset(&p, 0, sizeof(Parser));
+    p.json_output = 0; 
+    p.silent = 1; // CRITICAL: Suppress stdout/stderr to avoid breaking LSP
+    
+    // Initialize buffers
+    Buffer bc;
+    buf_init(&bc); p.target = &bc;
+    buf_init(&p.global_bc);
+    strtab_init(&p.strtab);
+    strtab_init(&p.imports);
+    reg_init(&p.registry);
+    enum_reg_init(&p.enums);
+    
+    lexer_init(&p.lexer, source);
+    p.current_path = file_path; // For import resolution (might fail for relative imports if not handled) 
+    
+    advance(&p);
+    parse_top_level(&p);
+    
+    // Registry is now populated. 
+    
+    // 2. Scan tokens again to find the cursor token
+    Lexer scanner;
+    lexer_init(&scanner, source);
+    
+    Token target_token = {TOK_EOF, NULL, 0, 0};
+    
+    for (;;) {
+        Token t = lexer_next(&scanner);
+        if (t.type == TOK_EOF) break;
+        
+        // Check intersection
+        // LSP lines are 0-based. Token lines are 1-based (usually).
+        // Let's assume lexer uses 1-based.
+        int tok_line = t.line - 1; 
+        
+        // Calculate column
+        // We need start of line pointer. 
+        // Lexer doesn't store it in Token easily without backtracking.
+        // But we can assume basic matching:
+        // If line matches...
+        if (tok_line == line) {
+            // Check column. 
+            // t.start is pointer into source.
+            // We need to calculate offset from line start.
+            const char* line_start = t.start;
+            while (line_start > source && *(line_start-1) != '\n') line_start--;
+            int col_start = (int)(t.start - line_start);
+            int col_end = col_start + t.length;
+            
+            if (character >= col_start && character <= col_end) {
+                target_token = t;
+                break;
+            }
+        }
+        if (tok_line > line) break; 
+    }
+    
+    if (target_token.type == TOK_IDENTIFIER) {
+        // Look up in registry
+        StructDef* sdef = reg_find(&p.registry, target_token.start, target_token.length);
+        if (sdef) {
+            res->found = 1;
+            res->def_line = sdef->line - 1; // Convert to 0-based
+            if (sdef->file) res->def_file = strdup(sdef->file);
+            if (sdef->doc_comment) res->doc_comment = strdup(sdef->doc_comment);
+            res->symbol_name = malloc(target_token.length + 1);
+            if (res->symbol_name) {
+                memcpy(res->symbol_name, target_token.start, target_token.length);
+                res->symbol_name[target_token.length] = '\0';
+            }
+        } else {
+            EnumDef* edef = enum_reg_find(&p.enums, target_token.start, target_token.length);
+            if (edef) {
+                res->found = 1;
+                res->def_line = edef->line - 1;
+                if (edef->file) res->def_file = strdup(edef->file);
+                if (edef->doc_comment) res->doc_comment = strdup(edef->doc_comment);
+                res->symbol_name = malloc(target_token.length + 1);
+                if (res->symbol_name) {
+                    memcpy(res->symbol_name, target_token.start, target_token.length);
+                    res->symbol_name[target_token.length] = '\0';
+                }
+
+                // Generate type details
+                Buffer tb; buf_init(&tb);
+                char tmp[256];
+                snprintf(tmp, sizeof(tmp), "Type: `%s`\n\nMembers:\n", get_type_name(edef->underlying_type));
+                buf_append(&tb, (uint8_t*)tmp, strlen(tmp));
+                
+                for(size_t i=0; i<edef->count; i++) {
+                    snprintf(tmp, sizeof(tmp), "- `%s` = `%lld`\n", edef->values[i].name, edef->values[i].value);
+                    buf_append(&tb, (uint8_t*)tmp, strlen(tmp));
+                }
+                buf_push(&tb, 0);
+                res->type_details = strdup((char*)tb.data);
+                buf_free(&tb);
+            }
+        }
+    }
+    
+    // Cleanup
+    buf_free(&bc);
+    buf_free(&p.global_bc);
+    // free registries... (leak for now in demo, but in loop should clean)
+    // TODO: proper cleanup
+}
+
+// --- Handlers ---
+
+// Helper for URI decoding
+static void url_decode(const char* src, char* dst) {
+    char a, b;
+    while (*src) {
+        if ((*src == '%') &&
+            ((a = src[1]) && (b = src[2])) &&
+            (isxdigit(a) && isxdigit(b))) {
+            if (a >= 'a') a -= 'a'-'A';
+            if (a >= 'A') a -= ('A' - 10);
+            else a -= '0';
+            if (b >= 'a') b -= 'a'-'A';
+            if (b >= 'A') b -= ('A' - 10);
+            else b -= '0';
+            *dst++ = 16*a+b;
+            src+=3;
+        } else {
+            *dst++ = *src++;
+        }
+    }
+    *dst++ = '\0';
+}
+
+static char* file_uri_to_path(const char* uri) {
+    // Skip "file://"
+    const char* raw_path = uri;
+    if (strncmp(uri, "file://", 7) == 0) {
+        raw_path = uri + 7;
+    }
+    
+    char* decoded = malloc(strlen(raw_path) + 1);
+    url_decode(raw_path, decoded);
+    
+    // Handle Windows "/C:/..." -> "C:/..."
+    // Also handle lower case drive letter normalization if needed?
+    if (decoded[0] == '/' && isalpha(decoded[1]) && decoded[2] == ':') {
+        char* fixed = strdup(decoded + 1);
+        free(decoded);
+        return fixed;
+    }
+    
+    return decoded;
+}
+
+static void handle_completion(cJSON* id, cJSON* params) {
+    cJSON* doc = cJSON_GetObjectItem(params, "textDocument");
+    cJSON* uri_item = cJSON_GetObjectItem(doc, "uri");
+    cJSON* pos = cJSON_GetObjectItem(params, "position");
+    int line = cJSON_GetObjectItem(pos, "line")->valueint;
+    int character = cJSON_GetObjectItem(pos, "character")->valueint;
+    
+    char* path = file_uri_to_path(uri_item->valuestring);
+    char* source = doc_get(uri_item->valuestring);
+    if (!source) source = read_file_text(path);
+
+    if (!source) {
+        send_response(id, cJSON_CreateNull());
+        free(path);
+        return;
+    }
+    
+    // 1. Parse to build registry
+    Parser p;
+    memset(&p, 0, sizeof(Parser));
+    p.json_output = 0; p.silent = 1;
+    
+    Buffer bc; buf_init(&bc); p.target = &bc;
+    buf_init(&p.global_bc);
+    strtab_init(&p.strtab); strtab_init(&p.imports);
+    reg_init(&p.registry); enum_reg_init(&p.enums);
+    
+    lexer_init(&p.lexer, source);
+    p.current_path = path;
+    advance(&p);
+    parse_top_level(&p);
+    
+    // 2. Scan to find context
+    Lexer scanner;
+    lexer_init(&scanner, source);
+    
+    Token prev_token = {TOK_EOF, NULL, 0, 0};
+    Token prev_prev_token = {TOK_EOF, NULL, 0, 0};
+    
+    // Calculate cursor offset
+    size_t cursor_offset = 0;
+    int l = 0;
+    const char* ptr = source;
+    while (*ptr && l < line) {
+        if (*ptr == '\n') l++;
+        ptr++;
+    }
+    cursor_offset = (ptr - source) + character;
+    
+    int context_is_enum_member = 0;
+    char* enum_name = NULL;
+    
+    while (1) {
+        Token t = lexer_next(&scanner);
+        if (t.type == TOK_EOF) break;
+        
+        size_t token_start = t.start - source;
+        
+        if (token_start >= cursor_offset) {
+            break; // Reached cursor
+        }
+        
+        prev_prev_token = prev_token;
+        prev_token = t;
+    }
+    
+    // Check context: [Identifier] [.] [Cursor]
+    if (prev_token.type == TOK_DOT && prev_prev_token.type == TOK_IDENTIFIER) {
+        // Check if prev_prev is an Enum
+        EnumDef* edef = enum_reg_find(&p.enums, prev_prev_token.start, prev_prev_token.length);
+        if (edef) {
+            context_is_enum_member = 1;
+            enum_name = malloc(prev_prev_token.length + 1); // Portable replacement for strndup
+            if (enum_name) {
+                memcpy(enum_name, prev_prev_token.start, prev_prev_token.length);
+                enum_name[prev_prev_token.length] = '\0';
+            }
+        }
+    }
+    
+    // Build Completion List
+    cJSON* result = cJSON_CreateObject();
+    cJSON_AddBoolToObject(result, "isIncomplete", 0);
+    cJSON* items = cJSON_CreateArray();
+    
+    if (context_is_enum_member && enum_name) {
+        EnumDef* edef = enum_reg_find(&p.enums, enum_name, (int)strlen(enum_name));
+        if (edef) {
+            for (size_t i = 0; i < edef->count; i++) {
+                cJSON* item = cJSON_CreateObject();
+                cJSON* label = cJSON_CreateString(edef->values[i].name);
+                cJSON_AddItemToObject(item, "label", label);
+                cJSON_AddNumberToObject(item, "kind", 20); // EnumMember
+                cJSON_AddItemToArray(items, item);
+            }
+        }
+        free(enum_name);
+    } else {
+        // Top-level items
+        const char* keywords[] = { "struct", "packet", "enum", "import", "true", "false", "prefix", "string", "const", "range", "if", "else", "switch", "case", "default" };
+        for (size_t i = 0; i < sizeof(keywords)/sizeof(char*); i++) {
+            cJSON* item = cJSON_CreateObject();
+            cJSON_AddStringToObject(item, "label", keywords[i]);
+            cJSON_AddNumberToObject(item, "kind", 14); // Keyword
+            cJSON_AddItemToArray(items, item);
+        }
+        
+        // Add Structs
+        for (size_t i = 0; i < p.registry.count; i++) {
+            cJSON* item = cJSON_CreateObject();
+            cJSON_AddStringToObject(item, "label", p.registry.defs[i].name);
+            cJSON_AddNumberToObject(item, "kind", 7); // Class/Struct
+            if (p.registry.defs[i].doc_comment) cJSON_AddStringToObject(item, "detail", p.registry.defs[i].doc_comment);
+            cJSON_AddItemToArray(items, item);
+        }
+        
+        // Add Enums
+        for (size_t i = 0; i < p.enums.count; i++) {
+            cJSON* item = cJSON_CreateObject();
+            cJSON_AddStringToObject(item, "label", p.enums.defs[i].name);
+            cJSON_AddNumberToObject(item, "kind", 13); // Enum
+            if (p.enums.defs[i].doc_comment) cJSON_AddStringToObject(item, "detail", p.enums.defs[i].doc_comment);
+            cJSON_AddItemToArray(items, item);
+        }
+    }
+    
+    cJSON_AddItemToObject(result, "items", items);
+    send_response(id, result);
+    
+    // Cleanup
+    buf_free(&bc); buf_free(&p.global_bc);
+    // free registries...
+    free(source); free(path);
+}
+
+static void handle_formatting(cJSON* id, cJSON* params) {
+    cJSON* doc = cJSON_GetObjectItem(params, "textDocument");
+    cJSON* uri_item = cJSON_GetObjectItem(doc, "uri");
+    
+    char* path = file_uri_to_path(uri_item->valuestring);
+    char* source = read_file_text(path);
+    if (!source) {
+        send_response(id, cJSON_CreateNull());
+        free(path);
+        return;
+    }
+    
+    char* formatted = cnd_format_source(source);
+    
+    cJSON* edits = cJSON_CreateArray();
+    cJSON* edit = cJSON_CreateObject();
+    
+    cJSON* range = cJSON_CreateObject();
+    cJSON* start = cJSON_CreateObject(); cJSON_AddNumberToObject(start, "line", 0); cJSON_AddNumberToObject(start, "character", 0);
+    cJSON* end = cJSON_CreateObject(); cJSON_AddNumberToObject(end, "line", 999999); cJSON_AddNumberToObject(end, "character", 0);
+    
+    cJSON_AddItemToObject(range, "start", start);
+    cJSON_AddItemToObject(range, "end", end);
+    
+    cJSON_AddItemToObject(edit, "range", range);
+    cJSON_AddStringToObject(edit, "newText", formatted ? formatted : source);
+    
+    cJSON_AddItemToArray(edits, edit);
+    
+    send_response(id, edits);
+    
+    free(source);
+    if (formatted) free(formatted);
+    free(path);
+}
+
+static void handle_document_symbol(cJSON* id, cJSON* params) {
+    cJSON* doc = cJSON_GetObjectItem(params, "textDocument");
+    cJSON* uri_item = cJSON_GetObjectItem(doc, "uri");
+    
+    char* path = file_uri_to_path(uri_item->valuestring);
+    char* source = read_file_text(path);
+    if (!source) {
+        send_response(id, cJSON_CreateNull());
+        free(path);
+        return;
+    }
+    
+    // Parse
+    Parser p;
+    memset(&p, 0, sizeof(Parser));
+    p.json_output = 0; p.silent = 1;
+    Buffer bc; buf_init(&bc); p.target = &bc;
+    buf_init(&p.global_bc); strtab_init(&p.strtab); strtab_init(&p.imports); reg_init(&p.registry); enum_reg_init(&p.enums);
+    
+    lexer_init(&p.lexer, source);
+    p.current_path = path;
+    advance(&p);
+    parse_top_level(&p);
+    
+    cJSON* symbols = cJSON_CreateArray();
+    
+    // Structs
+    for (size_t i = 0; i < p.registry.count; i++) {
+        cJSON* sym = cJSON_CreateObject();
+        cJSON_AddStringToObject(sym, "name", p.registry.defs[i].name);
+        cJSON_AddNumberToObject(sym, "kind", 23); // Struct
+        
+        cJSON* loc = cJSON_CreateObject();
+        cJSON_AddStringToObject(loc, "uri", uri_item->valuestring);
+        cJSON* range = cJSON_CreateObject();
+        cJSON* start = cJSON_CreateObject(); cJSON_AddNumberToObject(start, "line", p.registry.defs[i].line - 1); cJSON_AddNumberToObject(start, "character", 0);
+        cJSON* end = cJSON_CreateObject(); cJSON_AddNumberToObject(end, "line", p.registry.defs[i].line - 1); cJSON_AddNumberToObject(end, "character", 0);
+        cJSON_AddItemToObject(range, "start", start); cJSON_AddItemToObject(range, "end", end);
+        cJSON_AddItemToObject(loc, "range", range);
+        
+        cJSON_AddItemToObject(sym, "location", loc);
+        cJSON_AddItemToArray(symbols, sym);
+    }
+    
+    // Enums
+    for (size_t i = 0; i < p.enums.count; i++) {
+        cJSON* sym = cJSON_CreateObject();
+        cJSON_AddStringToObject(sym, "name", p.enums.defs[i].name);
+        cJSON_AddNumberToObject(sym, "kind", 10); // Enum
+        
+        cJSON* loc = cJSON_CreateObject();
+        cJSON_AddStringToObject(loc, "uri", uri_item->valuestring);
+        cJSON* range = cJSON_CreateObject();
+        cJSON* start = cJSON_CreateObject(); cJSON_AddNumberToObject(start, "line", p.enums.defs[i].line - 1); cJSON_AddNumberToObject(start, "character", 0);
+        cJSON* end = cJSON_CreateObject(); cJSON_AddNumberToObject(end, "line", p.enums.defs[i].line - 1); cJSON_AddNumberToObject(end, "character", 0);
+        cJSON_AddItemToObject(range, "start", start); cJSON_AddItemToObject(range, "end", end);
+        cJSON_AddItemToObject(loc, "range", range);
+        
+        cJSON_AddItemToObject(sym, "location", loc);
+        cJSON_AddItemToArray(symbols, sym);
+    }
+    
+    send_response(id, symbols);
+    
+    buf_free(&bc); buf_free(&p.global_bc);
+    free(source); free(path);
+}
+
+static void publish_diagnostics(const char* uri, const char* source) {
+    // Parse to collect errors
+    Parser p;
+    memset(&p, 0, sizeof(Parser));
+    p.json_output = 0; p.silent = 1;
+    Buffer bc; buf_init(&bc); p.target = &bc;
+    buf_init(&p.global_bc); strtab_init(&p.strtab); strtab_init(&p.imports); reg_init(&p.registry); enum_reg_init(&p.enums);
+    
+    lexer_init(&p.lexer, source);
+    char* path = file_uri_to_path(uri);
+    p.current_path = path;
+    advance(&p);
+    parse_top_level(&p);
+    
+    // Send diagnostics
+    cJSON* notification = cJSON_CreateObject();
+    cJSON_AddStringToObject(notification, "jsonrpc", "2.0");
+    cJSON_AddStringToObject(notification, "method", "textDocument/publishDiagnostics");
+    
+    cJSON* params = cJSON_CreateObject();
+    cJSON_AddStringToObject(params, "uri", uri);
+    
+    cJSON* diagnostics = cJSON_CreateArray();
+    
+    for (size_t i = 0; i < p.error_count; i++) {
+        if (i >= p.error_cap || !p.errors) break;
+        CompilerError* err = &p.errors[i];
+        
+        cJSON* diag = cJSON_CreateObject();
+        
+        cJSON* range = cJSON_CreateObject();
+        cJSON* start = cJSON_CreateObject(); cJSON_AddNumberToObject(start, "line", err->line - 1); cJSON_AddNumberToObject(start, "character", err->column - 1);
+        cJSON* end = cJSON_CreateObject(); cJSON_AddNumberToObject(end, "line", err->line - 1); cJSON_AddNumberToObject(end, "character", err->column); // Just 1 char width or more?
+        cJSON_AddItemToObject(range, "start", start); cJSON_AddItemToObject(range, "end", end);
+        
+        cJSON_AddItemToObject(diag, "range", range);
+        cJSON_AddNumberToObject(diag, "severity", 1); // Error
+        cJSON_AddStringToObject(diag, "message", err->message);
+        cJSON_AddStringToObject(diag, "source", "concordia");
+        
+        cJSON_AddItemToArray(diagnostics, diag);
+        
+        free(err->message);
+    }
+    if (p.errors) free(p.errors);
+    
+    cJSON_AddItemToObject(params, "diagnostics", diagnostics);
+    cJSON_AddItemToObject(notification, "params", params);
+    
+    send_json(notification);
+    cJSON_Delete(notification);
+    
+    buf_free(&bc); buf_free(&p.global_bc);
+    free(path);
+}
+
+static void handle_didOpen(cJSON* params) {
+    cJSON* doc = cJSON_GetObjectItem(params, "textDocument");
+    if (!doc) return;
+    cJSON* uri = cJSON_GetObjectItem(doc, "uri");
+    cJSON* text = cJSON_GetObjectItem(doc, "text");
+    if (uri && text && uri->valuestring && text->valuestring) {
+        doc_update(uri->valuestring, text->valuestring);
+        publish_diagnostics(uri->valuestring, text->valuestring);
+    }
+}
+
+static void handle_didChange(cJSON* params) {
+    cJSON* doc = cJSON_GetObjectItem(params, "textDocument");
+    if (!doc) return;
+    cJSON* uri = cJSON_GetObjectItem(doc, "uri");
+    cJSON* changes = cJSON_GetObjectItem(params, "contentChanges");
+    if (uri && changes && cJSON_GetArraySize(changes) > 0) {
+        // Full sync: last change has full text
+        cJSON* lastChange = cJSON_GetArrayItem(changes, cJSON_GetArraySize(changes) - 1);
+        cJSON* text = cJSON_GetObjectItem(lastChange, "text");
+        if (text && text->valuestring) {
+            doc_update(uri->valuestring, text->valuestring);
+            publish_diagnostics(uri->valuestring, text->valuestring);
+        }
+    }
+}
+
+static void handle_didClose(cJSON* params) {
+    cJSON* doc = cJSON_GetObjectItem(params, "textDocument");
+    if (!doc) return;
+    cJSON* uri = cJSON_GetObjectItem(doc, "uri");
+    if (uri && uri->valuestring) {
+        doc_remove(uri->valuestring);
+    }
+}
+
+static void handle_didSave(cJSON* params) {
+    cJSON* doc = cJSON_GetObjectItem(params, "textDocument");
+    if (!doc) return;
+    cJSON* uri = cJSON_GetObjectItem(doc, "uri");
+    if (uri && uri->valuestring) {
+        // We need source content. If it's a save, we can read from disk.
+        char* path = file_uri_to_path(uri->valuestring);
+        char* source = read_file_text(path);
+        if (source) {
+            publish_diagnostics(uri->valuestring, source);
+            free(source);
+        }
+        free(path);
+    }
+}
+
+static void handle_initialize(cJSON* id) {
+    cJSON* res = cJSON_CreateObject();
+    cJSON* cap = cJSON_CreateObject();
+    cJSON_AddBoolToObject(cap, "definitionProvider", 1);
+    cJSON_AddBoolToObject(cap, "hoverProvider", 1);
+    cJSON_AddBoolToObject(cap, "documentSymbolProvider", 1);
+    cJSON_AddBoolToObject(cap, "documentFormattingProvider", 1);
+    
+    cJSON* comp = cJSON_CreateObject();
+    cJSON_AddBoolToObject(comp, "resolveProvider", 0);
+    cJSON_AddStringToObject(comp, "triggerCharacters", "."); 
+    cJSON_AddItemToObject(cap, "completionProvider", comp);
+    
+    // Advertise text document sync (1 = Full)
+    cJSON_AddNumberToObject(cap, "textDocumentSync", 1);
+    
+    cJSON_AddItemToObject(res, "capabilities", cap);
+    send_response(id, res);
+}
+
+static void handle_definition(cJSON* id, cJSON* params) {
+    cJSON* doc = cJSON_GetObjectItem(params, "textDocument");
+    cJSON* uri_item = cJSON_GetObjectItem(doc, "uri");
+    cJSON* pos = cJSON_GetObjectItem(params, "position");
+    int line = cJSON_GetObjectItem(pos, "line")->valueint;
+    int character = cJSON_GetObjectItem(pos, "character")->valueint;
+    
+    char* path = file_uri_to_path(uri_item->valuestring);
+    
+    // Read file content
+    char* source = doc_get(uri_item->valuestring);
+    if (!source) source = read_file_text(path);
+
+    if (!source) {
+        send_response(id, cJSON_CreateNull());
+        free(path);
+        return;
+    }
+    
+    AnalysisResult res;
+    analyze_source(source, path, line, character, &res);
+    
+    if (res.found) {
+        cJSON* loc = cJSON_CreateObject();
+        
+        // Use resolved file if available, else fallback to current URI
+        if (res.def_file) {
+            // Convert file path to URI
+            // Hacky: assume absolute path or simple relative?
+            // VS Code expects file:///...
+            // If def_file is "import_a.cnd" (relative), and we opened "import_b.cnd" at "/abs/path/to/import_b.cnd",
+            // the resolve_path in parser made it absolute. So res.def_file should be absolute.
+            char uri[1024];
+            // Windows path handling
+            if (res.def_file[1] == ':') {
+                snprintf(uri, sizeof(uri), "file:///%s", res.def_file);
+            } else {
+                snprintf(uri, sizeof(uri), "file://%s", res.def_file);
+            }
+            // Normalize backslashes to slashes for URI
+            for(int i=0; uri[i]; i++) if(uri[i] == '\\') uri[i] = '/';
+            
+            cJSON_AddStringToObject(loc, "uri", uri);
+        } else {
+            cJSON_AddStringToObject(loc, "uri", uri_item->valuestring);
+        }
+
+        cJSON* range = cJSON_CreateObject();
+        cJSON* start = cJSON_CreateObject();
+        cJSON_AddNumberToObject(start, "line", res.def_line);
+        cJSON_AddNumberToObject(start, "character", 0);
+        cJSON* end = cJSON_CreateObject();
+        cJSON_AddNumberToObject(end, "line", res.def_line);
+        cJSON_AddNumberToObject(end, "character", 0); // Highlight whole line? Or just start
+        
+        cJSON_AddItemToObject(range, "start", start);
+        cJSON_AddItemToObject(range, "end", end);
+        cJSON_AddItemToObject(loc, "range", range);
+        
+        send_response(id, loc);
+        if (res.symbol_name) free(res.symbol_name);
+        if (res.def_file) free(res.def_file);
+        if (res.doc_comment) free(res.doc_comment);
+    } else {
+        send_response(id, cJSON_CreateNull());
+    }
+    
+    free(source);
+    free(path);
+}
+
+static void handle_hover(cJSON* id, cJSON* params) {
+    // Similar to definition, but returns markdown
+    cJSON* doc = cJSON_GetObjectItem(params, "textDocument");
+    cJSON* uri_item = cJSON_GetObjectItem(doc, "uri");
+    cJSON* pos = cJSON_GetObjectItem(params, "position");
+    int line = cJSON_GetObjectItem(pos, "line")->valueint;
+    int character = cJSON_GetObjectItem(pos, "character")->valueint;
+    
+    char* path = file_uri_to_path(uri_item->valuestring);
+    char* source = doc_get(uri_item->valuestring);
+    if (!source) source = read_file_text(path);
+
+    if (!source) {
+        send_response(id, cJSON_CreateNull());
+        free(path);
+        return;
+    }
+    
+    AnalysisResult res;
+    analyze_source(source, path, line, character, &res);
+    
+    if (res.found) {
+        cJSON* h = cJSON_CreateObject();
+        cJSON* contents = cJSON_CreateObject();
+        cJSON_AddStringToObject(contents, "kind", "markdown");
+        
+        char msg[4096]; // Increased buffer size
+        const char* file_display = res.def_file ? res.def_file : "current file";
+        
+        int offset = 0;
+        offset += snprintf(msg + offset, sizeof(msg) - offset, "**%s**\n\nDefined in %s on line %d.", res.symbol_name, file_display, res.def_line + 1);
+        
+        if (res.doc_comment) {
+            offset += snprintf(msg + offset, sizeof(msg) - offset, "\n\n%s", res.doc_comment);
+        }
+
+        if (res.type_details) {
+            offset += snprintf(msg + offset, sizeof(msg) - offset, "\n\n%s", res.type_details);
+        }
+        
+        cJSON_AddStringToObject(contents, "value", msg);
+        
+        cJSON_AddItemToObject(h, "contents", contents);
+        send_response(id, h);
+        if (res.symbol_name) free(res.symbol_name);
+        if (res.def_file) free(res.def_file);
+        if (res.doc_comment) free(res.doc_comment);
+        if (res.type_details) free(res.type_details);
+    } else {
+        send_response(id, cJSON_CreateNull());
+    }
+    
+    free(source);
+    free(path);
+}
+
+int cmd_lsp(int argc, char** argv) {
+#ifdef _WIN32
+    _setmode(_fileno(stdin), _O_BINARY);
+    _setmode(_fileno(stdout), _O_BINARY);
+#endif
+
+    // Standard LSP loop
+    while (1) {
+        cJSON* req = read_json();
+        if (!req) break;
+        
+        cJSON* id = cJSON_GetObjectItem(req, "id");
+        cJSON* method = cJSON_GetObjectItem(req, "method");
+        cJSON* params = cJSON_GetObjectItem(req, "params");
+        
+        if (method && method->valuestring) {
+            if (strcmp(method->valuestring, "initialize") == 0) {
+                handle_initialize(id);
+            } else if (strcmp(method->valuestring, "textDocument/definition") == 0) {
+                handle_definition(id, params);
+            } else if (strcmp(method->valuestring, "textDocument/hover") == 0) {
+                handle_hover(id, params);
+            } else if (strcmp(method->valuestring, "textDocument/completion") == 0) {
+                handle_completion(id, params);
+            } else if (strcmp(method->valuestring, "textDocument/formatting") == 0) {
+                handle_formatting(id, params);
+            } else if (strcmp(method->valuestring, "textDocument/documentSymbol") == 0) {
+                handle_document_symbol(id, params);
+            } else if (strcmp(method->valuestring, "textDocument/didOpen") == 0) {
+                handle_didOpen(params);
+            } else if (strcmp(method->valuestring, "textDocument/didChange") == 0) {
+                handle_didChange(params);
+            } else if (strcmp(method->valuestring, "textDocument/didSave") == 0) {
+                handle_didSave(params);
+            } else if (strcmp(method->valuestring, "shutdown") == 0) {
+                send_response(id, cJSON_CreateNull());
+            } else if (strcmp(method->valuestring, "exit") == 0) {
+                cJSON_Delete(req);
+                return 0;
+            }
+        }
+        
+        cJSON_Delete(req);
+    }
+    return 0;
+}

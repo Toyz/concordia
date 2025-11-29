@@ -70,7 +70,7 @@ packet KitchenSink {
         case 1: {
             bool adv_has_details; // Key 23
             if (adv_has_details) {
-                xstring adv_details prefix uint8; // Key 24
+                string adv_details prefix uint8; // Key 24
             } else {
                 uint8 adv_fallback_code; // Key 25
             }

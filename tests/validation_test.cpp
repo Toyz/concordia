@@ -21,9 +21,9 @@ protected:
 
     bool CompileShouldFail(const std::string& source) {
         WriteSource(source);
-        testing::internal::CaptureStdout(); // Suppress error output
+        // testing::internal::CaptureStdout(); // Suppress error output
         int res = cnd_compile_file(kSourceFile, kOutFile, 0);
-        testing::internal::GetCapturedStdout();
+        // testing::internal::GetCapturedStdout();
         return res != 0;
     }
 };
