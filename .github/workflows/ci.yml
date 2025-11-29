@@ -17,6 +17,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Configure CMake
       run: cmake -B build -DCMAKE_BUILD_TYPE=Debug

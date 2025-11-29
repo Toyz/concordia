@@ -22,7 +22,7 @@ int main(int argc, char** argv) {
     setbuf(stdout, NULL); // Ensure prints appear immediately
 
     if (argc < 2) {
-        printf("Concordia CLI\n");
+        printf("Concordia CLI %s (%s)\n", CND_VERSION, CND_GIT_HASH);
         printf("Usage:\n");
         printf("  cnd compile <in.cnd> <out.il>\n");
         printf("  cnd fmt <in.cnd> [out.cnd]\n");
@@ -30,6 +30,7 @@ int main(int argc, char** argv) {
         printf("  cnd encode <schema.il> <in.json> <out.bin>\n");
         printf("  cnd decode <schema.il> <in.bin> <out.json>\n");
         printf("  cnd lsp\n");
+        printf("  cnd version\n");
         return 1;
     }
     
@@ -39,6 +40,11 @@ int main(int argc, char** argv) {
     if (strcmp(argv[1], "encode") == 0) return cmd_encode(argc, argv);
     if (strcmp(argv[1], "decode") == 0) return cmd_decode(argc, argv);
     if (strcmp(argv[1], "lsp") == 0) return cmd_lsp(argc, argv);
+    if (strcmp(argv[1], "version") == 0 || strcmp(argv[1], "-v") == 0 || strcmp(argv[1], "--version") == 0) {
+        printf("Concordia CLI %s\n", CND_VERSION);
+        printf("Git Hash: %s\n", CND_GIT_HASH);
+        return 0;
+    }
     
     printf("Unknown command: %s\n", argv[1]);
     return 1;
