@@ -158,7 +158,12 @@ packet SwitchPacket {
 | `@match(value)` | Field must match value (telemetry) |
 | `@little_endian` / `@big_endian` | Byte order override |
 | `@range(min, max)` | Input validation |
-| `@scale(factor)` | Apply scaling |
+| `@scale(factor)` | Apply linear scaling (float/double) |
+| `@offset(value)` | Apply linear offset (float/double) |
+| `@add(n)` | Integer addition transform |
+| `@sub(n)` | Integer subtraction transform |
+| `@mul(n)` | Integer multiplication transform |
+| `@div(n)` | Integer division transform |
 | `@optional` | Optional field |
 | `@crc16` | CRC-16 validation or generation |
 | `@crc32` | CRC-32 validation or generation |
