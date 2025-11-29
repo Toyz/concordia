@@ -38,6 +38,14 @@ typedef struct {
     int array_index_stack[32]; // Stack for current index within that array
     int array_start_depth[32]; // Stack for io->depth when array started
     int array_depth; // Current depth in array stack
+    
+    int hex_mode; // Flag to enable hex string output for byte arrays
+
+    // State for hex string accumulation for current byte array
+    bool in_hex_byte_array;
+    char* hex_str_buffer;
+    size_t hex_str_buffer_len;
+    size_t hex_str_buffer_capacity;
 } IOCtx;
 cnd_error_t json_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr);
 

@@ -15,6 +15,9 @@ int cnd_compile_file(const char* in_path, const char* out_path, int json_output)
 // If out_path is NULL, prints to stdout
 int cnd_format_file(const char* in_path, const char* out_path);
 
+// Format source code string. Returns allocated string (caller must free).
+char* cnd_format_source(const char* source);
+
 #ifdef __cplusplus
 }
 #endif

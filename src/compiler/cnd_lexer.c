@@ -39,6 +39,23 @@ Token lexer_next(Lexer* lexer) {
 
         if (c == ' ' || c == '\r' || c == '\t') { lexer->current++; continue; }
         if (c == '\n') { lexer->line++; lexer->current++; continue; }
+        
+        // Doc Comment ///
+        if (c == '/' && *(lexer->current + 1) == '/' && *(lexer->current + 2) == '/') {
+             lexer->current += 3; // Skip ///
+             Token token;
+             token.type = TOK_DOC_COMMENT;
+             token.start = lexer->current;
+             token.line = lexer->line;
+             // Read until newline
+             while (*lexer->current != '\0' && *lexer->current != '\n' && *lexer->current != '\r') {
+                 lexer->current++;
+             }
+             token.length = (int)(lexer->current - token.start);
+             // Trim leading space if present? VS Code usually handles it, but let's be raw.
+             return token;
+        }
+
         if (c == '/' && *(lexer->current + 1) == '/') {
             while (*lexer->current != '\0' && *lexer->current != '\n') lexer->current++;
             continue;

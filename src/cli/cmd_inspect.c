@@ -40,6 +40,7 @@ static const char* get_opcode_name(uint8_t op) {
         case OP_ENTER_STRUCT: return "ENTER_STRUCT";
         case OP_EXIT_STRUCT: return "EXIT_STRUCT";
         case OP_META_VERSION: return "META_VERSION";
+        case OP_META_NAME: return "META_NAME";
         case OP_IO_U8: return "IO_U8";
         case OP_IO_U16: return "IO_U16";
         case OP_IO_U32: return "IO_U32";
@@ -168,6 +169,18 @@ int cmd_inspect(int argc, char** argv) {
             printf("%04X: %-15s", offset, get_opcode_name(op));
 
             switch (op) {
+                case OP_META_VERSION: {
+                    uint8_t v = read_u8(&ptr, end);
+                    printf(" Ver=%d", v);
+                    break;
+                }
+                
+                case OP_META_NAME: {
+                    uint16_t k = read_u16(&ptr, end);
+                    printf(" KeyID=%d (Name)", k);
+                    break;
+                }
+
                 case OP_IO_U8:
                 case OP_IO_U16:
                 case OP_IO_U32:

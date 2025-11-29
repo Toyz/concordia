@@ -61,9 +61,9 @@ TEST_F(ImportTest, DuplicateImport) {
 TEST_F(ImportTest, MissingFile) {
     WriteFile(kFileB, "@import(\"non_existent.cnd\")");
     
-    testing::internal::CaptureStdout();
+    // testing::internal::CaptureStdout();
     int res = cnd_compile_file(kFileB, kOutFile, 0);
-    testing::internal::GetCapturedStdout();
+    // testing::internal::GetCapturedStdout();
     
     EXPECT_NE(res, 0);
 }

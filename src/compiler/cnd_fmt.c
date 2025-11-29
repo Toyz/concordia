@@ -6,7 +6,6 @@
 #include "cnd_internal.h"
 
 // --- Formatting Lexer ---
-// We need a lexer that returns comments and newlines to preserve structure
 
 typedef enum {
     FMT_EOF,
@@ -25,7 +24,7 @@ typedef enum {
     FMT_AT,        // @
     FMT_COMMENT,   // // ...
     FMT_NEWLINE,   // \n
-    FMT_WHITESPACE // spaces/tabs (for preservation if needed, but we usually normalize)
+    FMT_WHITESPACE // spaces/tabs
 } FmtTokenType;
 
 typedef struct {
@@ -118,7 +117,6 @@ static FmtToken fmt_next(FmtLexer* l) {
 
     if (is_digit_f(c) || (c == '-' && is_digit_f(*l->current))) {
         t.type = FMT_NUMBER;
-        // Simple skip for now, similar to main lexer but less strict validation
         while (is_digit_f(*l->current) || *l->current == 'x' || *l->current == 'X' || *l->current == '.' || (*l->current >= 'a' && *l->current <= 'f') || (*l->current >= 'A' && *l->current <= 'F')) {
             l->current++;
         }
@@ -126,15 +124,124 @@ static FmtToken fmt_next(FmtLexer* l) {
         return t;
     }
 
-    // Unknown char, treat as identifier/symbol for now to avoid crash
     t.type = FMT_IDENTIFIER; 
     return t;
 }
 
-// --- Formatter ---
+// --- Dynamic Buffer ---
 
-static void print_indent(FILE* out, int level) {
-    for (int i = 0; i < level; i++) fprintf(out, "    ");
+typedef struct {
+    char* data;
+    size_t len;
+    size_t cap;
+} DynBuf;
+
+static void db_init(DynBuf* db) {
+    db->len = 0;
+    db->cap = 1024;
+    db->data = malloc(db->cap);
+    db->data[0] = '\0';
+}
+
+static void db_append(DynBuf* db, const char* str, size_t len) {
+    if (db->len + len + 1 > db->cap) {
+        while (db->len + len + 1 > db->cap) db->cap *= 2;
+        db->data = realloc(db->data, db->cap);
+    }
+    memcpy(db->data + db->len, str, len);
+    db->len += len;
+    db->data[db->len] = '\0';
+}
+
+static void db_append_str(DynBuf* db, const char* str) {
+    db_append(db, str, strlen(str));
+}
+
+static void db_indent(DynBuf* db, int level) {
+    for (int i = 0; i < level; i++) db_append_str(db, "    ");
+}
+
+// --- Formatter Logic ---
+
+char* cnd_format_source(const char* source) {
+    FmtLexer lexer;
+    fmt_init(&lexer, source);
+
+    DynBuf out;
+    db_init(&out);
+
+    int indent = 0;
+    int newline_pending = 0;
+    int space_pending = 0;
+    int on_new_line = 1;
+
+    FmtToken t;
+    FmtToken prev = {FMT_EOF, NULL, 0};
+
+    while (1) {
+        t = fmt_next(&lexer);
+        if (t.type == FMT_EOF) break;
+
+        // Ignore input whitespace (except we track if separation needed)
+        if (t.type == FMT_WHITESPACE) {
+            if (prev.type != FMT_NEWLINE && prev.type != FMT_EOF) {
+                space_pending = 1;
+            }
+            continue;
+        }
+
+        if (t.type == FMT_NEWLINE) {
+            if (newline_pending < 2) newline_pending++;
+            continue;
+        }
+
+        // Logic
+        if (t.type == FMT_RBRACE) {
+            indent--;
+            if (indent < 0) indent = 0;
+            newline_pending = 1;
+        }
+
+        // Apply newlines
+        if (newline_pending > 0) {
+            if (!on_new_line) {
+                db_append_str(&out, "\n");
+                if (newline_pending > 1) db_append_str(&out, "\n");
+            }
+            on_new_line = 1;
+            newline_pending = 0;
+            space_pending = 0;
+        }
+
+        // Apply Indent or Space
+        if (on_new_line) {
+            db_indent(&out, indent);
+            on_new_line = 0;
+        } else if (space_pending) {
+            db_append_str(&out, " ");
+            space_pending = 0;
+        }
+
+        if (t.type == FMT_LBRACE) {
+            db_append_str(&out, " "); // Space before {
+        }
+
+        db_append(&out, t.start, t.length);
+
+        if (t.type == FMT_LBRACE) {
+            indent++;
+            newline_pending = 1;
+        } else if (t.type == FMT_RBRACE || t.type == FMT_SEMICOLON || t.type == FMT_COMMENT) {
+            newline_pending = 1;
+        } else if (t.type == FMT_COMMA) {
+            space_pending = 1;
+        }
+
+        prev = t;
+    }
+    
+    db_append_str(&out, "\n");
+    return out.data;
 }
 
 int cnd_format_file(const char* in_path, const char* out_path) {
@@ -153,126 +260,24 @@ int cnd_format_file(const char* in_path, const char* out_path) {
     source[size] = '\0';
     fclose(f);
 
+    char* formatted = cnd_format_source(source);
+    free(source);
+
+    if (!formatted) return 1;
+
     FILE* out = stdout;
     if (out_path) {
         out = fopen(out_path, "w");
         if (!out) {
             fprintf(stderr, "Failed to open output file: %s\n", out_path);
-            free(source);
+            free(formatted);
             return 1;
         }
     }
 
-    FmtLexer lexer;
-    fmt_init(&lexer, source);
-
-    int indent = 0;
-    int newline_pending = 0; // 0: no, 1: yes, 2: double newline
-    int space_pending = 0;
-    int on_new_line = 1; // Are we at the start of a line?
-
-    FmtToken t;
-    FmtToken prev = {FMT_EOF, NULL, 0};
-
-    while (1) {
-        t = fmt_next(&lexer);
-        if (t.type == FMT_EOF) break;
-
-        // Handle Whitespace/Newlines (Input)
-        if (t.type == FMT_WHITESPACE) {
-            // Ignore input whitespace, we generate our own
-            // But if it's a comment following code, we might need a space
-            if (prev.type != FMT_NEWLINE && prev.type != FMT_EOF) {
-                space_pending = 1;
-            }
-            continue;
-        }
-
-        if (t.type == FMT_NEWLINE) {
-            if (newline_pending < 2) newline_pending++;
-            continue;
-        }
-
-        // Logic for outputting tokens
-        
-        // Dedent before closing brace
-        if (t.type == FMT_RBRACE) {
-            indent--;
-            if (indent < 0) indent = 0;
-            newline_pending = 1; // Force newline before }
-        }
-
-        // Apply pending newlines
-        if (newline_pending > 0) {
-            if (!on_new_line) {
-                fprintf(out, "\n");
-                if (newline_pending > 1) fprintf(out, "\n"); // Preserve blank lines
-            }
-            on_new_line = 1;
-            newline_pending = 0;
-            space_pending = 0;
-        }
-
-        // Apply Indent
-        if (on_new_line) {
-            print_indent(out, indent);
-            on_new_line = 0;
-        } else if (space_pending) {
-            fprintf(out, " ");
-            space_pending = 0;
-        }
-
-        // Special spacing rules
-        if (t.type == FMT_LBRACE) {
-            fprintf(out, " "); // Always space before {
-        }
-
-        // Print Token
-        fwrite(t.start, 1, t.length, out);
-
-        // Post-token rules
-        if (t.type == FMT_LBRACE) {
-            indent++;
-            newline_pending = 1;
-        } else if (t.type == FMT_RBRACE) {
-            newline_pending = 1;
-        } else if (t.type == FMT_SEMICOLON) {
-            newline_pending = 1;
-        } else if (t.type == FMT_COMMENT) {
-            newline_pending = 1;
-        } else if (t.type == FMT_COMMA) {
-            space_pending = 1;
-        } else if (t.type == FMT_AT) {
-            // No space after @
-        } else {
-            // Default spacing between tokens?
-            // e.g. "uint16 voltage" -> space needed
-            // "packet Status" -> space needed
-            // We rely on input whitespace setting 'space_pending' for now, 
-            // but we should enforce it for keywords if we can identify them.
-            // Since we don't parse keywords specifically in FmtLexer (just IDENTIFIER),
-            // we rely on the fact that the user probably had a space there, 
-            // OR we can check if next token is identifier/number.
-            
-            // Lookahead for spacing?
-            // Or just set space_pending = 1 if next is identifier?
-            // Let's rely on input whitespace for "intra-line" spacing for now,
-            // as it's safer than guessing.
-            // But we stripped input whitespace!
-            // Wait, I added `if (t.type == FMT_WHITESPACE) space_pending = 1;`
-            // So if the user had "uint16 voltage", we see WHITESPACE and set space_pending.
-            // If user had "uint16voltage", we wouldn't.
-            // This preserves necessary spaces.
-        }
-
-        prev = t;
-    }
+    fputs(formatted, out);
     
-    fprintf(out, "\n"); // End with newline
-
-    if (out_path && out != stdout) {
-        fclose(out);
-    }
-    free(source);
+    if (out_path && out != stdout) fclose(out);
+    free(formatted);
     return 0;
 }

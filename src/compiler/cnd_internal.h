@@ -9,6 +9,10 @@
 #include "concordia.h"
 #include "compiler.h"
 
+#ifdef _WIN32
+#define strdup _strdup
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -59,6 +63,7 @@ typedef enum {
     TOK_PIPE_PIPE, // ||
     TOK_LSHIFT,    // <<
     TOK_RSHIFT,    // >>
+    TOK_DOC_COMMENT, // /// Comment
     TOK_ERROR      // Lexer error
 } TokenType;
 
@@ -111,6 +116,9 @@ uint16_t strtab_add(StringTable* t, const char* start, int len);
 typedef struct {
     char* name;
     Buffer bytecode;
+    int line;
+    char* file; // File path where defined
+    char* doc_comment;
 } StructDef;
 
 typedef struct {
@@ -120,13 +128,14 @@ typedef struct {
 } StructRegistry;
 
 void reg_init(StructRegistry* r);
-StructDef* reg_add(StructRegistry* r, const char* name, int len);
+StructDef* reg_add(StructRegistry* r, const char* name, int len, int line, const char* file, const char* doc);
 StructDef* reg_find(StructRegistry* r, const char* name, int len);
 
 // --- Utils: Enum Registry ---
 typedef struct {
     char* name;
     int64_t value;
+    char* doc_comment;
 } EnumValue;
 
 typedef struct {
@@ -135,6 +144,9 @@ typedef struct {
     EnumValue* values;
     size_t count;
     size_t capacity;
+    int line;
+    char* file; // File path where defined
+    char* doc_comment;
 } EnumDef;
 
 typedef struct {
@@ -144,10 +156,16 @@ typedef struct {
 } EnumRegistry;
 
 void enum_reg_init(EnumRegistry* r);
-EnumDef* enum_reg_add(EnumRegistry* r, const char* name, int len);
+EnumDef* enum_reg_add(EnumRegistry* r, const char* name, int len, int line, const char* file, const char* doc);
 EnumDef* enum_reg_find(EnumRegistry* r, const char* name, int len);
 
 // --- Parser ---
+typedef struct {
+    int line;
+    int column;
+    char* message;
+} CompilerError;
+
 typedef struct {
     Lexer lexer;
     Token current;
@@ -164,7 +182,11 @@ typedef struct {
     int had_error;
     int error_count; // Total number of errors encountered
     int json_output; // Flag for JSON error output
+    int silent;      // Flag to suppress all output (for LSP)
     int packet_count; // Track number of packets defined
+    
+    CompilerError* errors; // List of errors for LSP
+    size_t error_cap;
 } Parser;
 
 void parser_error(Parser* p, const char* msg);

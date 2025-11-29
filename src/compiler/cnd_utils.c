@@ -97,15 +97,18 @@ void reg_init(StructRegistry* r) {
     r->defs = malloc(r->capacity * sizeof(StructDef));
 }
 
-StructDef* reg_add(StructRegistry* r, const char* name, int len) {
+StructDef* reg_add(StructRegistry* r, const char* name, int len, int line, const char* file, const char* doc) {
     if (r->count >= r->capacity) {
-        r->capacity *= 2;
+        r->capacity = (r->capacity == 0) ? 8 : r->capacity * 2;
         r->defs = realloc(r->defs, r->capacity * sizeof(StructDef));
     }
     StructDef* def = &r->defs[r->count++];
     def->name = malloc(len + 1);
     memcpy(def->name, name, len);
     def->name[len] = '\0';
+    def->line = line;
+    def->file = file ? strdup(file) : NULL;
+    def->doc_comment = doc ? strdup(doc) : NULL;
     buf_init(&def->bytecode);
     return def;
 }
@@ -119,27 +122,28 @@ StructDef* reg_find(StructRegistry* r, const char* name, int len) {
     return NULL;
 }
 
-// --- Enum Registry Implementation ---
-
 void enum_reg_init(EnumRegistry* r) {
     r->count = 0;
     r->capacity = 8;
     r->defs = malloc(r->capacity * sizeof(EnumDef));
 }
 
-EnumDef* enum_reg_add(EnumRegistry* r, const char* name, int len) {
+EnumDef* enum_reg_add(EnumRegistry* r, const char* name, int len, int line, const char* file, const char* doc) {
     if (r->count >= r->capacity) {
-        r->capacity *= 2;
+        r->capacity = (r->capacity == 0) ? 8 : r->capacity * 2;
         r->defs = realloc(r->defs, r->capacity * sizeof(EnumDef));
     }
     EnumDef* def = &r->defs[r->count++];
     def->name = malloc(len + 1);
     memcpy(def->name, name, len);
     def->name[len] = '\0';
+    def->line = line;
+    def->file = file ? strdup(file) : NULL;
+    def->doc_comment = doc ? strdup(doc) : NULL;
     def->values = NULL;
     def->count = 0;
     def->capacity = 0;
-    def->underlying_type = OP_IO_U32; // Default
+    def->underlying_type = 0x12; // Default U32 (OP_IO_U32)
     return def;
 }
 
