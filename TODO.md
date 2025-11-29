@@ -57,56 +57,30 @@
 
 ### 3. Control Flow
 - [x] **Conditionals**: Implement `JUMP_IF_NOT` opcode and `@depends_on(field)` decorator logic in compiler to allow optional fields.
-- [x] **Conceptual: Conditional Field Inclusion (if/else)**:
-    This feature allows fields or blocks of fields to be conditionally included in the binary based on complex logic involving previous fields (bitwise operations, comparisons, etc.).
-    **Proposed Syntax**:
-    ```cnd
-    packet ConditionalData {
-        uint8 status_flags;
-        int16 temperature;
-
-        // Bitmask Check: Has GPS Data
-        if (status_flags & 0x01) {
-            Vec3 position;
-        }
-
-        // Complex Logic: "If high temp OR error mode"
-        if ((status_flags & 0x80) || temperature > 100) {
-            uint16 alarm_code;
-        }
-
-        // Range Check: "If value is within valid bounds"
-        if (pressure >= 0 && pressure <= 5000) {
-            uint8 valid_reading;
-        } else {
-            uint8 error_code;
-        }
-    }
-    ```
-    **Implementation Sketch**:
-    *   **Compiler**: 
-        *   Implement an expression parser to convert conditions into RPN (Reverse Polish Notation) bytecode.
-        *   **Operator Precedence**: Handle standard C-style precedence (e.g., `&` > `==` > `&&` > `||`) to ensure correct evaluation order.
-        *   **Branching**: Support `else` blocks by inserting unconditional jumps at the end of `if` blocks.
-    *   **VM Architecture**: Add a small "Expression Stack" (e.g., `uint64_t expr_stack[8]`) to the VM Context.
-    *   **New Opcodes**:
-        *   `OP_LOAD_CTX key`: Queries host for field value, pushes to stack.
-        *   `OP_PUSH_IMM val`: Pushes immediate constant to stack.
-        *   **ALU Operations**:
-            *   **Bitwise**: `OP_BIT_AND`, `OP_BIT_OR`, `OP_BIT_XOR`, `OP_BIT_NOT`, `OP_SHL`, `OP_SHR`
-            *   **Comparison**: `OP_EQ`, `OP_NEQ`, `OP_GT`, `OP_LT`, `OP_GTE`, `OP_LTE`
-            *   **Logical**: `OP_LOG_AND`, `OP_LOG_OR`, `OP_LOG_NOT`
-        *   `OP_JUMP_IF_FALSE off`: Pops top of stack; if 0 (false), jumps `off` bytes (skipping the block).
-        *   `OP_JUMP off`: Unconditional jump (used to skip `else` block after executing `if` block).
+- [x] **Conditional Field Inclusion (if/else)**:
+    Implemented full support for conditional logic using an expression stack.
+    **Features**:
+    *   **Expression Parser**: Converts conditions into RPN bytecode.
+    *   **Operators**: Supports bitwise (`&`, `|`, `^`, `~`), comparison (`==`, `!=`, `>`, `<`, `>=`, `<=`), and logical (`&&`, `||`, `!`) operators.
+    *   **Branching**: Supports `if` and `else` blocks with `OP_JUMP_IF_NOT` and `OP_JUMP`.
+    *   **VM Support**: Added Expression Stack and ALU opcodes to the VM.
 
 ### 4. CLI & JSON Improvements
-- [x] **Robust Array Handling**: Improve `json_io_callback` to correctly track array indices during loops. This will likely involve making the `IOCtx` more stateful for array elements.
+- [x] **Robust Array Handling**: Improve `json_io_callback` to correctly track array indices during loops.
 - [x] **Hex/Binary Output**: Add options to output binary data as Hex strings in JSON for `uint8[]` blobs.
-- [x] **Refactor VM Architecture**: Separate 'Program' (Code) from 'Context' (State) to support concurrent execution and shared resources.
+- [x] **Refactor VM Architecture**: Separate 'Program' (Code) from 'Context' (State).
+- [x] **Version Injection**: CLI now reports version and git hash (`cnd version`).
 
 ### 5. Documentation & Examples
 - [x] **Language Guide**: Detailed documentation of the `.cnd` syntax.
 - [x] **Host Integration Guide**: Example C++ dispatcher loop for embedded targets.
 
 ### 6. Compiler Enhancements
-- [x] **Imports**: Add `@import("file.cnd")` support to allow splitting definitions across multiple files. The compiler should resolve these and emit a single `.il` file containing all necessary bytecode.
+- [x] **Imports**: Add `@import("file.cnd")` support.
+- [x] **Tree Shaking**: Implemented `optimize_strings` to remove unused strings from the generated IL, significantly reducing binary size.
+
+### 7. Tooling & CI
+- [x] **LSP Support**: Added `textDocument/hover` support for Enums (showing values and types).
+- [x] **Test Suite**: Refactored and consolidated tests into thematic files (`vm_tests.cpp`, `language_features_test.cpp`, etc.).
+- [x] **CI/CD**: Configured GitHub Actions with `fetch-depth: 0` for correct versioning.
+
