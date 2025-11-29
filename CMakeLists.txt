@@ -16,6 +16,33 @@ if(MSVC)
   add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 endif()
 
+# --- Version Info ---
+find_package(Git)
+if(GIT_FOUND)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} describe --tags --always --dirty
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_VERSION
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_HASH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+else()
+    set(GIT_VERSION "unknown")
+    set(GIT_HASH "unknown")
+endif()
+
+if("${GIT_VERSION}" STREQUAL "")
+    set(GIT_VERSION "dev")
+endif()
+
+add_compile_definitions(CND_VERSION="${GIT_VERSION}")
+add_compile_definitions(CND_GIT_HASH="${GIT_HASH}")
+
 include_directories(include)
 
 # --- Dependencies ---
