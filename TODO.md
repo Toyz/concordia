@@ -57,7 +57,7 @@
 
 ### 3. Control Flow
 - [x] **Conditionals**: Implement `JUMP_IF_NOT` opcode and `@depends_on(field)` decorator logic in compiler to allow optional fields.
-- [ ] **Conceptual: Conditional Field Inclusion (if/else)**:
+- [x] **Conceptual: Conditional Field Inclusion (if/else)**:
     This feature allows fields or blocks of fields to be conditionally included in the binary based on complex logic involving previous fields (bitwise operations, comparisons, etc.).
     **Proposed Syntax**:
     ```cnd
@@ -101,7 +101,7 @@
 
 ### 4. CLI & JSON Improvements
 - [x] **Robust Array Handling**: Improve `json_io_callback` to correctly track array indices during loops. This will likely involve making the `IOCtx` more stateful for array elements.
-- [ ] **Hex/Binary Output**: Add options to output binary data as Hex strings in JSON for `uint8[]` blobs.
+- [x] **Hex/Binary Output**: Add options to output binary data as Hex strings in JSON for `uint8[]` blobs.
 - [x] **Refactor VM Architecture**: Separate 'Program' (Code) from 'Context' (State) to support concurrent execution and shared resources.
 
 ### 5. Documentation & Examples

@@ -3,6 +3,221 @@
 #include <string.h>
 #include "cnd_internal.h"
 
+static int get_type_size(uint8_t type) {
+    switch (type) {
+        case OP_IO_U8: case OP_IO_I8: return 1;
+        case OP_IO_U16: case OP_IO_I16: return 2;
+        case OP_IO_U32: case OP_IO_I32: case OP_IO_F32: return 4;
+        case OP_IO_U64: case OP_IO_I64: case OP_IO_F64: return 8;
+        case OP_IO_BOOL: return 1;
+        default: return 0;
+    }
+}
+
+static void optimize_strings(Parser* p) {
+    if (p->strtab.count == 0) return;
+
+    // 1. Mark used strings
+    uint8_t* used = calloc(p->strtab.count, 1);
+    
+    size_t offset = 0;
+    uint8_t* bc = p->global_bc.data;
+    size_t len = p->global_bc.size;
+
+    while (offset < len) {
+        uint8_t op = bc[offset++];
+        
+        // Opcodes with string ID at offset 0 (immediately after op)
+        if (op == OP_META_NAME || 
+            op == OP_ENTER_STRUCT ||
+            (op >= OP_IO_U8 && op <= OP_IO_BOOL) ||
+            (op >= OP_IO_BIT_U && op <= OP_IO_BIT_BOOL) ||
+            (op >= OP_STR_NULL && op <= OP_STR_PRE_U32) ||
+            (op >= OP_ARR_FIXED && op <= OP_ARR_PRE_U32) ||
+            op == OP_CONST_CHECK) {
+            
+            if (offset + 2 > len) break;
+            uint16_t id = *(uint16_t*)(bc + offset);
+            if (id < p->strtab.count) used[id] = 1;
+            offset += 2;
+        }
+
+        // Skip other arguments
+        switch (op) {
+            case OP_META_VERSION: offset += 1; break;
+            case OP_CTX_QUERY: offset += 1; break;
+            case OP_IO_BIT_U: case OP_IO_BIT_I: case OP_IO_BIT_BOOL: offset += 1; break;
+            case OP_ALIGN_PAD: case OP_ALIGN_FILL: offset += 1; break;
+            case OP_ARR_FIXED: offset += 5; break; // u32 len + u8 type
+            case OP_ARR_PRE_U8: case OP_ARR_PRE_U16: case OP_ARR_PRE_U32: offset += 1; break;
+            
+            case OP_RAW_BYTES: {
+                if (offset + 4 > len) break;
+                uint32_t count = *(uint32_t*)(bc + offset); offset += 4;
+                offset += count;
+                break;
+            }
+
+            case OP_CONST_CHECK: {
+                if (offset + 1 > len) break;
+                uint8_t type = bc[offset++];
+                offset += get_type_size(type);
+                break;
+            }
+            case OP_CONST_WRITE: {
+                if (offset + 1 > len) break;
+                uint8_t type = bc[offset++];
+                offset += get_type_size(type);
+                break;
+            }
+            case OP_RANGE_CHECK: {
+                if (offset + 1 > len) break;
+                uint8_t type = bc[offset++];
+                int sz = get_type_size(type);
+                offset += sz * 2; // min, max
+                break;
+            }
+            case OP_ENUM_CHECK: {
+                if (offset + 3 > len) break;
+                uint8_t type = bc[offset++];
+                uint16_t count = *(uint16_t*)(bc + offset); offset += 2;
+                offset += count * get_type_size(type);
+                break;
+            }
+            case OP_CRC_16: offset += 7; break; // poly(2), init(2), xor(2), flags(1)
+            case OP_CRC_32: offset += 13; break; // poly(4), init(4), xor(4), flags(1)
+            case OP_SCALE_LIN: offset += 16; break; // double, double
+            case OP_TRANS_ADD: case OP_TRANS_SUB: case OP_TRANS_MUL: case OP_TRANS_DIV: offset += 8; break; // double
+            
+            case OP_JUMP_IF_NOT: case OP_JUMP: offset += 4; break;
+            case OP_SWITCH: {
+                if (offset + 3 > len) break;
+                uint8_t type = bc[offset++];
+                uint16_t count = *(uint16_t*)(bc + offset); offset += 2;
+                int sz = get_type_size(type);
+                offset += count * (sz + 4); // val + offset
+                offset += 4; // default
+                break;
+            }
+            case OP_PUSH_IMM: {
+                if (offset + 1 > len) break;
+                uint8_t type = bc[offset++];
+                offset += get_type_size(type);
+                break;
+            }
+            case OP_STR_NULL: case OP_STR_PRE_U8: case OP_STR_PRE_U16: case OP_STR_PRE_U32: offset += 2; break; // max_len
+        }
+    }
+
+    // 2. Build new string table and map
+    uint16_t* map = malloc(p->strtab.count * sizeof(uint16_t));
+    StringTable new_tab;
+    strtab_init(&new_tab);
+
+    for (size_t i = 0; i < p->strtab.count; i++) {
+        if (used[i]) {
+            uint16_t new_id = strtab_add(&new_tab, p->strtab.strings[i], (int)strlen(p->strtab.strings[i]));
+            map[i] = new_id;
+        } else {
+            map[i] = 0; // Should not be used
+        }
+    }
+
+    // 3. Update bytecode
+    offset = 0;
+    while (offset < len) {
+        uint8_t op = bc[offset++];
+        
+        if (op == OP_META_NAME || 
+            op == OP_ENTER_STRUCT ||
+            (op >= OP_IO_U8 && op <= OP_IO_BOOL) ||
+            (op >= OP_IO_BIT_U && op <= OP_IO_BIT_BOOL) ||
+            (op >= OP_STR_NULL && op <= OP_STR_PRE_U32) ||
+            (op >= OP_ARR_FIXED && op <= OP_ARR_PRE_U32) ||
+            op == OP_CONST_CHECK) {
+            
+            if (offset + 2 > len) break;
+            uint16_t* id_ptr = (uint16_t*)(bc + offset);
+            uint16_t old_id = *id_ptr;
+            if (old_id < p->strtab.count) {
+                *id_ptr = map[old_id];
+            }
+            offset += 2;
+        }
+
+        // Skip other arguments (same as above)
+        switch (op) {
+            case OP_META_VERSION: offset += 1; break;
+            case OP_CTX_QUERY: offset += 1; break;
+            case OP_IO_BIT_U: case OP_IO_BIT_I: case OP_IO_BIT_BOOL: offset += 1; break;
+            case OP_ALIGN_PAD: case OP_ALIGN_FILL: offset += 1; break;
+            case OP_ARR_FIXED: offset += 5; break;
+            case OP_ARR_PRE_U8: case OP_ARR_PRE_U16: case OP_ARR_PRE_U32: offset += 1; break;
+            case OP_RAW_BYTES: {
+                if (offset + 4 > len) break;
+                uint32_t count = *(uint32_t*)(bc + offset); offset += 4;
+                offset += count;
+                break;
+            }
+            case OP_CONST_CHECK: {
+                if (offset + 1 > len) break;
+                uint8_t type = bc[offset++];
+                offset += get_type_size(type);
+                break;
+            }
+            case OP_CONST_WRITE: {
+                if (offset + 1 > len) break;
+                uint8_t type = bc[offset++];
+                offset += get_type_size(type);
+                break;
+            }
+            case OP_RANGE_CHECK: {
+                if (offset + 1 > len) break;
+                uint8_t type = bc[offset++];
+                int sz = get_type_size(type);
+                offset += sz * 2;
+                break;
+            }
+            case OP_ENUM_CHECK: {
+                if (offset + 3 > len) break;
+                uint8_t type = bc[offset++];
+                uint16_t count = *(uint16_t*)(bc + offset); offset += 2;
+                offset += count * get_type_size(type);
+                break;
+            }
+            case OP_CRC_16: offset += 7; break;
+            case OP_CRC_32: offset += 13; break;
+            case OP_SCALE_LIN: offset += 16; break;
+            case OP_TRANS_ADD: case OP_TRANS_SUB: case OP_TRANS_MUL: case OP_TRANS_DIV: offset += 8; break;
+            case OP_JUMP_IF_NOT: case OP_JUMP: offset += 4; break;
+            case OP_SWITCH: {
+                if (offset + 3 > len) break;
+                uint8_t type = bc[offset++];
+                uint16_t count = *(uint16_t*)(bc + offset); offset += 2;
+                int sz = get_type_size(type);
+                offset += count * (sz + 4);
+                offset += 4;
+                break;
+            }
+            case OP_PUSH_IMM: {
+                if (offset + 1 > len) break;
+                uint8_t type = bc[offset++];
+                offset += get_type_size(type);
+                break;
+            }
+            case OP_STR_NULL: case OP_STR_PRE_U8: case OP_STR_PRE_U16: case OP_STR_PRE_U32: offset += 2; break;
+        }
+    }
+
+    // Replace string table
+    for(size_t i=0; i<p->strtab.count; i++) free(p->strtab.strings[i]);
+    free(p->strtab.strings);
+    p->strtab = new_tab;
+
+    free(used);
+    free(map);
+}
+
 // Implementation of cnd_compile_file using the new modular structure
 int cnd_compile_file(const char* in_path, const char* out_path, int json_output) {
     setbuf(stdout, NULL); // Ensure debug prints are flushed immediately
@@ -39,6 +254,8 @@ int cnd_compile_file(const char* in_path, const char* out_path, int json_output)
     if (p.had_error) {
         ret = 1;
     } else {
+        optimize_strings(&p);
+
         FILE* out = fopen(out_path, "wb");
         if (!out) { 
             if (json_output) printf("{\"error\": \"Error opening output file: %s\"}\n", out_path);
