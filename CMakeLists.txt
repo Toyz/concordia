@@ -43,8 +43,6 @@ endif()
 add_compile_definitions(CND_VERSION="${GIT_VERSION}")
 add_compile_definitions(CND_GIT_HASH="${GIT_HASH}")
 
-include_directories(include)
-
 # --- Dependencies ---
 
 include(FetchContent)
@@ -55,6 +53,7 @@ FetchContent_Declare(
   URL https://github.com/google/googletest/archive/refs/heads/main.zip
 )
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 # Google Benchmark
@@ -62,6 +61,8 @@ FetchContent_Declare(
   benchmark
   URL https://github.com/google/benchmark/archive/refs/tags/v1.9.1.zip
 )
+set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(benchmark)
 
 # cJSON
@@ -80,7 +81,11 @@ endif()
 # --- Targets ---
 
 # Library
-add_library(concordia src/vm/vm_exec.c src/vm/vm_io.c)
+add_library(concordia 
+    src/vm/vm_exec.c 
+    src/vm/vm_io.c
+)
+target_include_directories(concordia PUBLIC include)
 
 # Compiler Library
 add_library(cnd_compiler 
@@ -90,15 +95,27 @@ add_library(cnd_compiler
     src/compiler/cnd_parser.c
     src/compiler/cnd_fmt.c
 )
+target_include_directories(cnd_compiler PUBLIC include)
 
 add_executable(hexview src/tools/hexview.c)
 
 # Main CLI Tool (cnd)
-add_executable(cnd src/cli/main.c src/cli/cli_helpers.c src/cli/json_binding.c src/cli/cmd_compile.c src/cli/cmd_encode.c src/cli/cmd_decode.c src/cli/cmd_fmt.c src/cli/cmd_inspect.c src/cli/cmd_lsp.c)
+set(CND_SOURCES
+    src/cli/main.c
+    src/cli/cli_helpers.c
+    src/cli/json_binding.c
+    src/cli/cmd_compile.c
+    src/cli/cmd_encode.c
+    src/cli/cmd_decode.c
+    src/cli/cmd_fmt.c
+    src/cli/cmd_inspect.c
+    src/cli/cmd_lsp.c
+)
+add_executable(cnd ${CND_SOURCES})
 target_link_libraries(cnd concordia cnd_compiler cjson)
 
 # Test Executable
-add_executable(test_runner 
+set(TEST_SOURCES
     tests/test_common.cpp
     tests/vm_tests.cpp
     tests/compiler_test.cpp 
@@ -107,10 +124,11 @@ add_executable(test_runner
     tests/coverage_test.cpp
     tests/language_features_test.cpp
 )
+add_executable(test_runner ${TEST_SOURCES})
 target_link_libraries(test_runner concordia cnd_compiler gtest_main)
 
 # --- Benchmarks ---
-add_executable(vm_benchmark 
+set(BENCHMARK_SOURCES
     benchmarks/main.cpp
     benchmarks/bench_common.cpp
     benchmarks/bench_core.cpp
@@ -118,13 +136,14 @@ add_executable(vm_benchmark
     benchmarks/bench_ifelse.cpp
     benchmarks/bench_switch.cpp
 )
+add_executable(vm_benchmark ${BENCHMARK_SOURCES})
 target_link_libraries(vm_benchmark concordia cnd_compiler benchmark::benchmark)
 
 # --- Installation ---
 
 include(GNUInstallDirs)
 
-install(TARGETS cnd hexview
+install(TARGETS cnd
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 

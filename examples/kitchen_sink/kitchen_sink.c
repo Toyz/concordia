@@ -62,7 +62,7 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
     // Helper macros
     #define ENCODE (ctx->mode == CND_MODE_ENCODE)
     #define DECODE (ctx->mode == CND_MODE_DECODE)
-    #define IO_VAL(ctype, field) if (ENCODE) *(ctype*)ptr = (ctype)obj->field; else obj->field = *(ctype*)ptr;
+    #define IO_VAL(ctype, field) { if (ENCODE) *(ctype*)ptr = (ctype)obj->field; else obj->field = *(ctype*)ptr; }
     
     // Debug
     // printf("CB: Key %d (%s) Type %02X\n", key_id, key_name ? key_name : "?", type);

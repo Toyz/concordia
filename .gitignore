@@ -29,3 +29,8 @@ Thumbs.db
 
 .gemini/
 gha-creds-*.json
+
+# nob build system
+nob
+build_nob/
+nob_deps/
