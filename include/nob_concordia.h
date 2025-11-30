@@ -26,7 +26,11 @@ bool cnd_setup(const char *deps_dir) {
     // 2. Build Concordia using its own nob.c
     // We compile the nob.c inside the repo and run it.
     const char *nob_src = nob_temp_sprintf("%s/nob.c", concordia_dir);
+#ifdef _WIN32
+    const char *nob_exe = nob_temp_sprintf("%s/nob.exe", concordia_dir);
+#else
     const char *nob_exe = nob_temp_sprintf("%s/nob", concordia_dir);
+#endif
     
     // Check if nob.c exists (it should if cloned correctly)
     if (!nob_file_exists(nob_src)) {
@@ -36,22 +40,25 @@ bool cnd_setup(const char *deps_dir) {
 
     // Compile nob
     Nob_Cmd cmd = {0};
+#ifdef _MSC_VER
+    nob_cmd_append(&cmd, "cl", nob_src, "/Fe:", nob_exe);
+#else
     nob_cmd_append(&cmd, "cc", nob_src, "-o", nob_exe);
+#endif
+
     if (!nob_cmd_run_sync(cmd)) {
         nob_cmd_free(cmd);
         return false;
     }
     
     // Run nob (inside the directory to keep paths relative)
-    // We need to change directory to run it properly? 
-    // nob.c uses relative paths like "./build_nob".
-    // So we should run it with CWD set to concordia_dir.
-    // nob_cmd_run_sync doesn't support setting CWD easily without fork/exec manually or changing global CWD.
-    // Changing global CWD is risky.
-    // However, we can use "sh -c 'cd ... && ./nob'"
-    
     cmd.count = 0;
+#ifdef _WIN32
+    nob_cmd_append(&cmd, "cmd", "/c", nob_temp_sprintf("cd %s && nob.exe", concordia_dir));
+#else
     nob_cmd_append(&cmd, "sh", "-c", nob_temp_sprintf("cd %s && ./nob", concordia_dir));
+#endif
+
     if (!nob_cmd_run_sync(cmd)) {
         nob_cmd_free(cmd);
         return false;
@@ -69,13 +76,22 @@ void cnd_cflags(Nob_Cmd *cmd, const char *deps_dir) {
 // Adds link flags for Concordia: -L... -lconcordia -lcnd_compiler
 void cnd_ldflags(Nob_Cmd *cmd, const char *deps_dir) {
     const char *lib_dir = nob_temp_sprintf("%s/concordia/build_nob", deps_dir);
+#ifdef _MSC_VER
+    nob_cmd_append(cmd, nob_temp_sprintf("/LIBPATH:%s", lib_dir));
+    nob_cmd_append(cmd, "concordia.lib", "cnd_compiler.lib");
+#else
     nob_cmd_append(cmd, nob_temp_sprintf("-L%s", lib_dir));
     nob_cmd_append(cmd, "-lconcordia", "-lcnd_compiler");
+#endif
 }
 
 // Returns the path to the cnd executable
 const char *cnd_tool_path(const char *deps_dir) {
+#ifdef _WIN32
+    return nob_temp_sprintf("%s/concordia/build_nob/cnd.exe", deps_dir);
+#else
     return nob_temp_sprintf("%s/concordia/build_nob/cnd", deps_dir);
+#endif
 }
 
 // --- Tools ---
