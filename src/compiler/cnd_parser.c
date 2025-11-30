@@ -20,17 +20,17 @@ void parser_error(Parser* p, const char* msg) {
     int col = (int)(p->current.start - line_start) + 1;
 
     // Store error for LSP/API usage
-    if (p->error_count > p->error_cap) { // Allow growing
+    if ((size_t)p->error_count > p->error_cap) { // Allow growing
         size_t new_cap = (p->error_cap == 0) ? 8 : p->error_cap * 2;
         // Safety check
         if (new_cap > 1024) new_cap = 1024; // Cap max errors stored
-        if (p->error_count <= new_cap) {
+        if ((size_t)p->error_count <= new_cap) {
             p->errors = realloc(p->errors, new_cap * sizeof(CompilerError));
             p->error_cap = new_cap;
         }
     }
     
-    if (p->errors && p->error_count <= p->error_cap) {
+    if (p->errors && (size_t)p->error_count <= p->error_cap) {
         CompilerError* err = &p->errors[p->error_count - 1];
         err->line = p->current.line;
         err->column = col;
@@ -94,7 +94,7 @@ void consume(Parser* p, TokenType type, const char* msg) {
 
 int match_keyword(Token t, const char* kw) {
     if (t.type != TOK_IDENTIFIER) return 0;
-    if (strlen(kw) != t.length) return 0;
+    if (strlen(kw) != (size_t)t.length) return 0;
     return strncmp(t.start, kw, t.length) == 0;
 }
 
@@ -412,7 +412,7 @@ void parse_switch(Parser* p) {
                     } else {
                         int found = 0;
                         for(size_t i=0; i<edef->count; i++) {
-                            if (strlen(edef->values[i].name) == val_name.length &&
+                            if (strlen(edef->values[i].name) == (size_t)val_name.length &&
                                 strncmp(edef->values[i].name, val_name.start, val_name.length) == 0) {
                                 val = (uint64_t)edef->values[i].value;
                                 found = 1;
@@ -524,6 +524,7 @@ void parse_switch(Parser* p) {
 }
 
 void parse_field(Parser* p, const char* doc) {
+    (void)doc;
     if (p->had_error) return;
     
     // Consume doc comments (currently ignored for fields, but prevents syntax error)
@@ -1017,6 +1018,7 @@ void parse_struct(Parser* p, const char* doc) {
 }
 
 void parse_packet(Parser* p, const char* doc) {
+    (void)doc;
     // TODO: Store doc comment for packet?
     Token name = p->current; consume(p, TOK_IDENTIFIER, "Expect packet name");
     

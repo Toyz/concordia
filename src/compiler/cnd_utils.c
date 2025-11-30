@@ -74,7 +74,7 @@ void strtab_init(StringTable* t) {
 
 uint16_t strtab_add(StringTable* t, const char* start, int len) {
     for (size_t i = 0; i < t->count; i++) {
-        if (strlen(t->strings[i]) == len && strncmp(t->strings[i], start, len) == 0) {
+        if (strlen(t->strings[i]) == (size_t)len && strncmp(t->strings[i], start, len) == 0) {
             return (uint16_t)i;
         }
     }
@@ -115,7 +115,7 @@ StructDef* reg_add(StructRegistry* r, const char* name, int len, int line, const
 
 StructDef* reg_find(StructRegistry* r, const char* name, int len) {
     for (size_t i = 0; i < r->count; i++) {
-        if (strlen(r->defs[i].name) == len && strncmp(r->defs[i].name, name, len) == 0) {
+        if (strlen(r->defs[i].name) == (size_t)len && strncmp(r->defs[i].name, name, len) == 0) {
             return &r->defs[i];
         }
     }
@@ -149,7 +149,7 @@ EnumDef* enum_reg_add(EnumRegistry* r, const char* name, int len, int line, cons
 
 EnumDef* enum_reg_find(EnumRegistry* r, const char* name, int len) {
     for (size_t i = 0; i < r->count; i++) {
-        if (strlen(r->defs[i].name) == len && strncmp(r->defs[i].name, name, len) == 0) {
+        if (strlen(r->defs[i].name) == (size_t)len && strncmp(r->defs[i].name, name, len) == 0) {
             return &r->defs[i];
         }
     }

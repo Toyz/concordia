@@ -450,12 +450,6 @@ static inline cnd_error_t stack_pop(cnd_vm_ctx* ctx, uint64_t* val) {
     return CND_ERR_OK;
 }
 
-static inline cnd_error_t stack_peek(cnd_vm_ctx* ctx, uint64_t* val) {
-    if (ctx->expr_sp == 0) return CND_ERR_STACK_UNDERFLOW;
-    *val = ctx->expr_stack[ctx->expr_sp - 1];
-    return CND_ERR_OK;
-}
-
 // Helper for binary operations
 #define BINARY_OP(OP) \
     uint64_t b; if (stack_pop(ctx, &b) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW; \
@@ -831,7 +825,6 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 // printf("VM_DEBUG: Calling callback for ARR_FIXED (Key %d)\n", key);
                 if (ctx->mode == CND_MODE_ENCODE) {
                      // Notify host about array start so it can push context
-                     uint16_t c = (uint16_t)count; // Callback expects u16? No, ptr to void.
                      // We should probably pass u32, but for now let's cast or ensure callback handles it.
                      // The callback signature is (ctx, key, type, void*).
                      // For ARR_FIXED, we pass pointer to count.

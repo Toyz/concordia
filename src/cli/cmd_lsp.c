@@ -97,7 +97,14 @@ static char* doc_get(const char* uri) {
     return NULL;
 }
 
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#endif
+
 static void doc_remove(const char* uri) {
+    (void)uri;
+    /*
     for (size_t i = 0; i < doc_count; i++) {
         if (strcmp(docs[i].uri, uri) == 0) {
             free(docs[i].uri);
@@ -109,7 +116,24 @@ static void doc_remove(const char* uri) {
             return;
         }
     }
+    */
 }
+
+static void handle_didClose(cJSON* params) {
+    (void)params; // Unused
+    /*
+    cJSON* doc = cJSON_GetObjectItem(params, "textDocument");
+    if (!doc) return;
+    cJSON* uri = cJSON_GetObjectItem(doc, "uri");
+    if (uri && uri->valuestring) {
+        doc_remove(uri->valuestring);
+    }
+    */
+}
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 
 // --- Analysis Logic ---
 
@@ -568,8 +592,8 @@ static void publish_diagnostics(const char* uri, const char* source) {
     
     cJSON* diagnostics = cJSON_CreateArray();
     
-    for (size_t i = 0; i < p.error_count; i++) {
-        if (i >= p.error_cap || !p.errors) break;
+    for (size_t i = 0; i < (size_t)p.error_count; i++) {
+        if (i >= (size_t)p.error_cap || !p.errors) break;
         CompilerError* err = &p.errors[i];
         
         cJSON* diag = cJSON_CreateObject();
@@ -624,15 +648,6 @@ static void handle_didChange(cJSON* params) {
             doc_update(uri->valuestring, text->valuestring);
             publish_diagnostics(uri->valuestring, text->valuestring);
         }
-    }
-}
-
-static void handle_didClose(cJSON* params) {
-    cJSON* doc = cJSON_GetObjectItem(params, "textDocument");
-    if (!doc) return;
-    cJSON* uri = cJSON_GetObjectItem(doc, "uri");
-    if (uri && uri->valuestring) {
-        doc_remove(uri->valuestring);
     }
 }
 
@@ -800,6 +815,7 @@ static void handle_hover(cJSON* id, cJSON* params) {
 }
 
 int cmd_lsp(int argc, char** argv) {
+    (void)argc; (void)argv;
 #ifdef _WIN32
     _setmode(_fileno(stdin), _O_BINARY);
     _setmode(_fileno(stdout), _O_BINARY);

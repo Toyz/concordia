@@ -315,7 +315,7 @@ int cnd_compile_file(const char* in_path, const char* out_path, int json_output)
         free(p.enums.defs);
     }
     if (p.errors) {
-        for(size_t i=0; i<p.error_count && i<p.error_cap; i++) {
+        for(size_t i=0; i<(size_t)p.error_count && i<p.error_cap; i++) {
             if(p.errors[i].message) free(p.errors[i].message);
         }
         free(p.errors);
