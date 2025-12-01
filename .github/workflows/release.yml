@@ -33,6 +33,14 @@ jobs:
     - name: Build
       run: cmake --build build --config Release
 
+    - name: Run Tests (Unix)
+      if: runner.os != 'Windows'
+      run: ./build/tests/test_runner
+
+    - name: Run Tests (Windows)
+      if: runner.os == 'Windows'
+      run: .\build\tests\Release\test_runner.exe
+
     - name: Install to Staging
       run: cmake --install build --config Release --prefix staging
 

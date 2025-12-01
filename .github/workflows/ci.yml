@@ -28,8 +28,8 @@ jobs:
 
     - name: Run Tests (Unix)
       if: runner.os != 'Windows'
-      run: ./build/test_runner
+      run: ./build/tests/test_runner
 
     - name: Run Tests (Windows)
       if: runner.os == 'Windows'
-      run: .\build\Debug\test_runner.exe
+      run: .\build\tests\Debug\test_runner.exe
