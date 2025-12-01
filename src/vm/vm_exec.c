@@ -2,6 +2,11 @@
 #include <string.h>
 #include <stdio.h> // For debug prints
 
+// --- Instruction Fetch Macros ---
+// Can be overridden in cnd_execute for optimization
+#define FETCH_IL_U8(ctx) read_il_u8(ctx)
+#define FETCH_IL_U16(ctx) read_il_u16(ctx)
+
 // --- Helpers / Macros to reduce repeated IO case code ---
 // HANDLE_PRIMITIVE(size, ctype, READ_EXPR, WRITE_EXPR)
 //   - size: number of bytes this IO consumes
@@ -9,11 +14,12 @@
 //   - READ_EXPR: expression to evaluate to read `ctype` from data buffer
 //   - WRITE_EXPR: expression to evaluate to write `val` into buffer
 #define HANDLE_PRIMITIVE(size, ctype, READ_EXPR, WRITE_EXPR) \
-    { uint16_t key = read_il_u16(ctx); \
+    { uint16_t key = FETCH_IL_U16(ctx); \
       if (ctx->cursor + (size) > ctx->data_len) { \
           if (ctx->is_next_optional) { \
               ctx->is_next_optional = false; \
               ctype val = 0; \
+              SYNC_IP(); \
               if (ctx->io_callback(ctx, key, opcode, &val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
               break; \
           } \
@@ -23,17 +29,20 @@
           if (ctx->trans_type == CND_TRANS_SCALE_F64) { \
               double eng_val = 0; \
               if (ctx->mode == CND_MODE_ENCODE) { \
+                  SYNC_IP(); \
                   if (ctx->io_callback(ctx, key, OP_IO_F64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
                   ctype val = (ctype)((eng_val - ctx->trans_f_offset) / ctx->trans_f_factor); \
                   WRITE_EXPR; \
               } else { \
                   ctype raw = (READ_EXPR); \
                   eng_val = (double)raw * ctx->trans_f_factor + ctx->trans_f_offset; \
+                  SYNC_IP(); \
                   if (ctx->io_callback(ctx, key, OP_IO_F64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
               } \
           } else { \
               int64_t eng_val = 0; \
               if (ctx->mode == CND_MODE_ENCODE) { \
+                  SYNC_IP(); \
                   if (ctx->io_callback(ctx, key, OP_IO_I64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
                   int64_t raw64 = eng_val; \
                   switch(ctx->trans_type) { \
@@ -56,6 +65,7 @@
                       default: break; \
                   } \
                   eng_val = raw64; \
+                  SYNC_IP(); \
                   if (ctx->io_callback(ctx, key, OP_IO_I64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
               } \
           } \
@@ -63,10 +73,12 @@
       } else { \
           ctype val = 0; \
           if (ctx->mode == CND_MODE_ENCODE) { \
+              SYNC_IP(); \
               if (ctx->io_callback(ctx, key, opcode, &val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
               WRITE_EXPR; \
           } else { \
               val = (READ_EXPR); \
+              SYNC_IP(); \
               if (ctx->io_callback(ctx, key, opcode, &val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
           } \
       } \
@@ -76,11 +88,12 @@
 
 // Helper for float/double where we must memcopy to/from an integer representation
 #define HANDLE_FLOAT(size, ctype, int_t, READ_INT_EXPR, WRITE_INT_EXPR) \
-    { uint16_t key = read_il_u16(ctx); \
+    { uint16_t key = FETCH_IL_U16(ctx); \
       if (ctx->cursor + (size) > ctx->data_len) { \
           if (ctx->is_next_optional) { \
               ctx->is_next_optional = false; \
               ctype val = 0; \
+              SYNC_IP(); \
               if (ctx->io_callback(ctx, key, opcode, &val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
               break; \
           } \
@@ -90,17 +103,20 @@
           if (ctx->trans_type == CND_TRANS_SCALE_F64) { \
               double eng_val = 0; \
               if (ctx->mode == CND_MODE_ENCODE) { \
+                  SYNC_IP(); \
                   if (ctx->io_callback(ctx, key, OP_IO_F64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
                   ctype val = (ctype)((eng_val - ctx->trans_f_offset) / ctx->trans_f_factor); \
                   int_t t; memcpy(&t, &val, sizeof(t)); WRITE_INT_EXPR; \
               } else { \
                   int_t t = (READ_INT_EXPR); ctype val; memcpy(&val, &t, sizeof(t)); \
                   eng_val = (double)val * ctx->trans_f_factor + ctx->trans_f_offset; \
+                  SYNC_IP(); \
                   if (ctx->io_callback(ctx, key, OP_IO_F64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
               } \
           } else { \
               int64_t eng_val = 0; \
               if (ctx->mode == CND_MODE_ENCODE) { \
+                  SYNC_IP(); \
                   if (ctx->io_callback(ctx, key, OP_IO_I64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
                   int64_t raw64 = eng_val; \
                   switch(ctx->trans_type) { \
@@ -123,6 +139,7 @@
                       default: break; \
                   } \
                   eng_val = raw64; \
+                  SYNC_IP(); \
                   if (ctx->io_callback(ctx, key, OP_IO_I64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
               } \
           } \
@@ -130,10 +147,12 @@
       } else { \
           ctype val = 0; \
           if (ctx->mode == CND_MODE_ENCODE) { \
+              SYNC_IP(); \
               if (ctx->io_callback(ctx, key, opcode, &val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
               int_t t; memcpy(&t, &val, sizeof(t)); WRITE_INT_EXPR; \
           } else { \
               int_t t = (READ_INT_EXPR); memcpy(&val, &t, sizeof(t)); \
+              SYNC_IP(); \
               if (ctx->io_callback(ctx, key, opcode, &val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
           } \
       } \
@@ -193,9 +212,10 @@ static void loop_pop(cnd_vm_ctx* ctx) {
 
 #define HANDLE_ARRAY_PRE(size, ctype, READ_EXPR, WRITE_EXPR) \
     { \
-        uint16_t key = read_il_u16(ctx); \
+        uint16_t key = FETCH_IL_U16(ctx); \
         ctype count = 0; \
         if (ctx->mode == CND_MODE_ENCODE) { \
+            SYNC_IP(); \
             if (ctx->io_callback(ctx, key, opcode, &count) != CND_ERR_OK) return CND_ERR_CALLBACK; \
             if (ctx->cursor + (size) > ctx->data_len) return CND_ERR_OOB; \
             WRITE_EXPR; \
@@ -204,21 +224,26 @@ static void loop_pop(cnd_vm_ctx* ctx) {
             if (ctx->cursor + (size) > ctx->data_len) return CND_ERR_OOB; \
             count = (READ_EXPR); \
             ctx->cursor += (size); \
+            SYNC_IP(); \
             if (ctx->io_callback(ctx, key, opcode, &count) != CND_ERR_OK) return CND_ERR_CALLBACK; \
         } \
         if (count > 0) { \
+            SYNC_IP(); \
             if (!loop_push(ctx, ctx->ip, (uint32_t)count)) return CND_ERR_OOB; \
         } else { \
+             SYNC_IP(); \
              skip_loop_body(ctx); \
+             RELOAD_PC(); \
         } \
         break; \
     }
 
 #define HANDLE_STRING_PRE(size, ctype, READ_EXPR, WRITE_EXPR) \
     { \
-        uint16_t key = read_il_u16(ctx); \
+        uint16_t key = FETCH_IL_U16(ctx); \
         const char* str = NULL; \
         if (ctx->mode == CND_MODE_ENCODE) { \
+            SYNC_IP(); \
             if (ctx->io_callback(ctx, key, opcode, &str) != CND_ERR_OK) { \
                 if (ctx->is_next_optional) { \
                     ctx->is_next_optional = false; \
@@ -239,6 +264,7 @@ static void loop_pop(cnd_vm_ctx* ctx) {
             ctype len_val = (READ_EXPR); \
             if (ctx->cursor + (size) + len_val > ctx->data_len) return CND_ERR_OOB; \
             const char* ptr = (const char*)(ctx->data_buffer + ctx->cursor + (size)); \
+            SYNC_IP(); \
             if (ctx->io_callback(ctx, key, opcode, (void*)ptr) != CND_ERR_OK) return CND_ERR_CALLBACK; \
             ctx->cursor += (size) + len_val; \
         } \
@@ -335,34 +361,35 @@ static uint32_t calc_crc(const uint8_t* data, size_t len, uint32_t poly, uint32_
     return (crc ^ xorout) & mask;
 }
 
-static bool should_align(uint8_t opcode) {
-    // Category A: Meta & State (0x00 - 0x0F) - No alignment
-    if (opcode < 0x10) return false;
-    
-    // Category B: Primitives (0x10 - 0x1F) - Align
-    if (opcode < 0x20) return true;
-    
-    // Category C: Bitfields (0x20 - 0x2F) - No alignment
-    if (opcode < 0x30) return false;
-    
-    // Category D: Arrays & Strings (0x30 - 0x3F) - Align
-    if (opcode < 0x40) return true;
-    
-    // Category E: Validation (0x40 - 0x4F)
-    // Exceptions that do NOT align:
-    if (opcode == OP_RANGE_CHECK || 
-        opcode == OP_SCALE_LIN || 
-        opcode == OP_TRANS_ADD || 
-        opcode == OP_TRANS_SUB || 
-        opcode == OP_TRANS_MUL || 
-        opcode == OP_TRANS_DIV || 
-        opcode == OP_MARK_OPTIONAL) return false;
-        
-    // Category F: Control Flow (0x50 - 0x5F) - No alignment
-    if (opcode >= 0x50) return false;
-    
-    // Default for remaining Category E (CRC, Const) is true
-    return true;
+static const bool ALIGN_TABLE[256] = {
+    // 0x00 - 0x0F (Meta & State) - No alignment
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    // 0x10 - 0x1F (Primitives) - Align
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    // 0x20 - 0x2F (Bitfields) - No alignment
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    // 0x30 - 0x3F (Arrays & Strings) - Align
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    // 0x40 - 0x4F (Validation)
+    1, // 0x40 CONST_CHECK
+    1, // 0x41 CONST_WRITE
+    0, // 0x42 RANGE_CHECK
+    0, // 0x43 SCALE_LIN
+    1, // 0x44 CRC_16
+    0, // 0x45 TRANS_ADD
+    0, // 0x46 TRANS_SUB
+    0, // 0x47 TRANS_MUL
+    0, // 0x48 TRANS_DIV
+    1, // 0x49 CRC_32
+    0, // 0x4A MARK_OPTIONAL
+    1, // 0x4B ENUM_CHECK
+    1, 1, 1, 1, // 0x4C - 0x4F
+    // 0x50 - 0xFF (Control Flow & Others) - No alignment
+    0 // ... rest 0
+};
+
+static inline bool should_align(uint8_t opcode) {
+    return ALIGN_TABLE[opcode];
 }
 
 // --- Public API ---
@@ -464,12 +491,25 @@ static inline cnd_error_t stack_pop(cnd_vm_ctx* ctx, uint64_t* val) {
 cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
     if (!ctx || !ctx->program || !ctx->program->bytecode || !ctx->data_buffer) return CND_ERR_OOB;
 
-    while (ctx->ip < ctx->program->bytecode_len) {
-        uint8_t opcode = ctx->program->bytecode[ctx->ip];
-        ctx->ip++; 
+    const uint8_t* pc = ctx->program->bytecode + ctx->ip;
+    const uint8_t* end = ctx->program->bytecode + ctx->program->bytecode_len;
+
+    // Override fetch macros to use local pc
+    #undef FETCH_IL_U8
+    #undef FETCH_IL_U16
+    #define FETCH_IL_U8(c) ((pc < end) ? *pc++ : 0)
+    #define FETCH_IL_U16(c) ((pc + 2 <= end) ? (pc += 2, (uint16_t)(pc[-2] | (pc[-1] << 8))) : 0)
+    #define FETCH_IL_U32(c) ((pc + 4 <= end) ? (pc += 4, (uint32_t)(pc[-4] | (pc[-3] << 8) | (pc[-2] << 16) | (pc[-1] << 24))) : 0)
+    #define FETCH_IL_U64(c) ((pc + 8 <= end) ? (pc += 8, ((uint64_t)pc[-8] | ((uint64_t)pc[-7] << 8) | ((uint64_t)pc[-6] << 16) | ((uint64_t)pc[-5] << 24) | ((uint64_t)pc[-4] << 32) | ((uint64_t)pc[-3] << 40) | ((uint64_t)pc[-2] << 48) | ((uint64_t)pc[-1] << 56))) : 0)
+    
+    #define SYNC_IP() (ctx->ip = (size_t)(pc - ctx->program->bytecode))
+    #define RELOAD_PC() (pc = ctx->program->bytecode + ctx->ip)
+
+    while (pc < end) {
+        uint8_t opcode = *pc++;
 
         // Check alignment
-        if (should_align(opcode)) {
+        if (ALIGN_TABLE[opcode]) {
              if (ctx->bit_offset != 0) {
                 ctx->cursor++;
                 ctx->bit_offset = 0;
@@ -482,36 +522,38 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             case OP_SET_ENDIAN_BE: ctx->endianness = CND_BE; break;
             
             case OP_ENTER_STRUCT: {
-                uint16_t key = read_il_u16(ctx);
+                uint16_t key = FETCH_IL_U16(ctx);
                 // printf("VM_DEBUG: Calling callback for ENTER_STRUCT (Key %d)\n", key);
+                SYNC_IP();
                 if (ctx->io_callback(ctx, key, opcode, NULL) != CND_ERR_OK) return CND_ERR_CALLBACK;
                 break; // VM continues with next instruction, which is the first field of the struct
             }
             
             case OP_EXIT_STRUCT: {
                 // printf("VM_DEBUG: Calling callback for EXIT_STRUCT\n");
+                SYNC_IP();
                 if (ctx->io_callback(ctx, 0, opcode, NULL) != CND_ERR_OK) return CND_ERR_CALLBACK;
                 break; // VM continues with next instruction after the struct
             }
 
             case OP_META_VERSION: {
-                read_il_u8(ctx); // Skip version
+                FETCH_IL_U8(ctx); // Skip version
                 break;
             }
 
             case OP_META_NAME: {
-                read_il_u16(ctx); // Skip name key
+                FETCH_IL_U16(ctx); // Skip name key
                 break;
             }
             
             case OP_CONST_WRITE: {
-                uint8_t type = read_il_u8(ctx);
+                uint8_t type = FETCH_IL_U8(ctx);
                 uint64_t val = 0;
                 int size = 0;
-                if (type == OP_IO_U8) { val = read_il_u8(ctx); size=1; }
-                else if (type == OP_IO_U16) { val = read_il_u16(ctx); size=2; }
-                else if (type == OP_IO_U32) { val = read_il_u32(ctx); size=4; }
-                else if (type == OP_IO_U64) { val = read_il_u64(ctx); size=8; }
+                if (type == OP_IO_U8) { val = FETCH_IL_U8(ctx); size=1; }
+                else if (type == OP_IO_U16) { val = FETCH_IL_U16(ctx); size=2; }
+                else if (type == OP_IO_U32) { val = FETCH_IL_U32(ctx); size=4; }
+                else if (type == OP_IO_U64) { val = FETCH_IL_U64(ctx); size=8; }
                 else { return CND_ERR_INVALID_OP; }
                 
                 if (ctx->cursor + size > ctx->data_len) return CND_ERR_OOB;
@@ -526,14 +568,14 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             }
             
             case OP_CONST_CHECK: {
-                uint16_t key = read_il_u16(ctx);
-                uint8_t type = read_il_u8(ctx);
+                uint16_t key = FETCH_IL_U16(ctx);
+                uint8_t type = FETCH_IL_U8(ctx);
                 uint64_t expected = 0;
                 int size = 0;
-                if (type == OP_IO_U8 || type == OP_IO_I8) { expected = read_il_u8(ctx); size=1; }
-                else if (type == OP_IO_U16 || type == OP_IO_I16) { expected = read_il_u16(ctx); size=2; }
-                else if (type == OP_IO_U32 || type == OP_IO_I32) { expected = read_il_u32(ctx); size=4; }
-                else if (type == OP_IO_U64 || type == OP_IO_I64) { expected = read_il_u64(ctx); size=8; }
+                if (type == OP_IO_U8 || type == OP_IO_I8) { expected = FETCH_IL_U8(ctx); size=1; }
+                else if (type == OP_IO_U16 || type == OP_IO_I16) { expected = FETCH_IL_U16(ctx); size=2; }
+                else if (type == OP_IO_U32 || type == OP_IO_I32) { expected = FETCH_IL_U32(ctx); size=4; }
+                else if (type == OP_IO_U64 || type == OP_IO_I64) { expected = FETCH_IL_U64(ctx); size=8; }
                 else { return CND_ERR_INVALID_OP; }
                 
                 if (ctx->cursor + size > ctx->data_len) return CND_ERR_OOB;
@@ -552,6 +594,7 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                     if (actual != expected) return CND_ERR_VALIDATION;
 
                     // Notify host (Read-Only)
+                    SYNC_IP();
                     if (size == 1) { uint8_t v = (uint8_t)actual; if (ctx->io_callback(ctx, key, type, &v) != CND_ERR_OK) return CND_ERR_CALLBACK; }
                     else if (size == 2) { uint16_t v = (uint16_t)actual; if (ctx->io_callback(ctx, key, type, &v) != CND_ERR_OK) return CND_ERR_CALLBACK; }
                     else if (size == 4) { uint32_t v = (uint32_t)actual; if (ctx->io_callback(ctx, key, type, &v) != CND_ERR_OK) return CND_ERR_CALLBACK; }
@@ -563,21 +606,21 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             }
 
             case OP_ENUM_CHECK: {
-                uint8_t type = read_il_u8(ctx);
-                uint16_t count = read_il_u16(ctx);
+                uint8_t type = FETCH_IL_U8(ctx);
+                uint16_t count = FETCH_IL_U16(ctx);
                 bool found = false;
                 
                 #define CHECK_ENUM(size, ctype, READ_EXPR) \
                     ctype actual = (READ_EXPR); \
                     for (uint16_t i = 0; i < count; i++) { \
                         ctype val = 0; \
-                        if (size == 1) val = (ctype)read_il_u8(ctx); \
-                        else if (size == 2) val = (ctype)read_il_u16(ctx); \
-                        else if (size == 4) val = (ctype)read_il_u32(ctx); \
-                        else if (size == 8) val = (ctype)read_il_u64(ctx); \
+                        if (size == 1) val = (ctype)FETCH_IL_U8(ctx); \
+                        else if (size == 2) val = (ctype)FETCH_IL_U16(ctx); \
+                        else if (size == 4) val = (ctype)FETCH_IL_U32(ctx); \
+                        else if (size == 8) val = (ctype)FETCH_IL_U64(ctx); \
                         if (actual == val) { \
                             found = true; \
-                            ctx->ip += (count - 1 - i) * size; \
+                            pc += (count - 1 - i) * size; \
                             break; \
                         } \
                     }
@@ -600,19 +643,19 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             }
 
             case OP_RANGE_CHECK: {
-                uint8_t type = read_il_u8(ctx);
+                uint8_t type = FETCH_IL_U8(ctx);
                 switch (type) {
-                    case OP_IO_U8:  CHECK_RANGE(1, uint8_t, read_il_u8(ctx), read_u8(ctx->data_buffer + ctx->cursor - 1)); break;
-                    case OP_IO_I8:  CHECK_RANGE(1, int8_t,  read_il_u8(ctx), read_u8(ctx->data_buffer + ctx->cursor - 1)); break;
-                    case OP_IO_U16: CHECK_RANGE(2, uint16_t, read_il_u16(ctx), read_u16(ctx->data_buffer + ctx->cursor - 2, ctx->endianness)); break;
-                    case OP_IO_I16: CHECK_RANGE(2, int16_t,  read_il_u16(ctx), read_u16(ctx->data_buffer + ctx->cursor - 2, ctx->endianness)); break;
-                    case OP_IO_U32: CHECK_RANGE(4, uint32_t, read_il_u32(ctx), read_u32(ctx->data_buffer + ctx->cursor - 4, ctx->endianness)); break;
-                    case OP_IO_I32: CHECK_RANGE(4, int32_t,  read_il_u32(ctx), read_u32(ctx->data_buffer + ctx->cursor - 4, ctx->endianness)); break;
-                    case OP_IO_U64: CHECK_RANGE(8, uint64_t, read_il_u64(ctx), read_u64(ctx->data_buffer + ctx->cursor - 8, ctx->endianness)); break;
-                    case OP_IO_I64: CHECK_RANGE(8, int64_t,  read_il_u64(ctx), read_u64(ctx->data_buffer + ctx->cursor - 8, ctx->endianness)); break;
+                    case OP_IO_U8:  CHECK_RANGE(1, uint8_t, FETCH_IL_U8(ctx), read_u8(ctx->data_buffer + ctx->cursor - 1)); break;
+                    case OP_IO_I8:  CHECK_RANGE(1, int8_t,  FETCH_IL_U8(ctx), read_u8(ctx->data_buffer + ctx->cursor - 1)); break;
+                    case OP_IO_U16: CHECK_RANGE(2, uint16_t, FETCH_IL_U16(ctx), read_u16(ctx->data_buffer + ctx->cursor - 2, ctx->endianness)); break;
+                    case OP_IO_I16: CHECK_RANGE(2, int16_t,  FETCH_IL_U16(ctx), read_u16(ctx->data_buffer + ctx->cursor - 2, ctx->endianness)); break;
+                    case OP_IO_U32: CHECK_RANGE(4, uint32_t, FETCH_IL_U32(ctx), read_u32(ctx->data_buffer + ctx->cursor - 4, ctx->endianness)); break;
+                    case OP_IO_I32: CHECK_RANGE(4, int32_t,  FETCH_IL_U32(ctx), read_u32(ctx->data_buffer + ctx->cursor - 4, ctx->endianness)); break;
+                    case OP_IO_U64: CHECK_RANGE(8, uint64_t, FETCH_IL_U64(ctx), read_u64(ctx->data_buffer + ctx->cursor - 8, ctx->endianness)); break;
+                    case OP_IO_I64: CHECK_RANGE(8, int64_t,  FETCH_IL_U64(ctx), read_u64(ctx->data_buffer + ctx->cursor - 8, ctx->endianness)); break;
                     
-                    case OP_IO_F32: CHECK_RANGE_FLOAT(4, float, uint32_t, read_il_u32(ctx), read_u32(ctx->data_buffer + ctx->cursor - 4, ctx->endianness)); break;
-                    case OP_IO_F64: CHECK_RANGE_FLOAT(8, double, uint64_t, read_il_u64(ctx), read_u64(ctx->data_buffer + ctx->cursor - 8, ctx->endianness)); break;
+                    case OP_IO_F32: CHECK_RANGE_FLOAT(4, float, uint32_t, FETCH_IL_U32(ctx), read_u32(ctx->data_buffer + ctx->cursor - 4, ctx->endianness)); break;
+                    case OP_IO_F64: CHECK_RANGE_FLOAT(8, double, uint64_t, FETCH_IL_U64(ctx), read_u64(ctx->data_buffer + ctx->cursor - 8, ctx->endianness)); break;
                     
                     default: return CND_ERR_INVALID_OP;
                 }
@@ -620,10 +663,10 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             }
 
             case OP_CRC_16: {
-                uint16_t poly = read_il_u16(ctx);
-                uint16_t init = read_il_u16(ctx);
-                uint16_t xorout = read_il_u16(ctx);
-                uint8_t flags = read_il_u8(ctx);
+                uint16_t poly = FETCH_IL_U16(ctx);
+                uint16_t init = FETCH_IL_U16(ctx);
+                uint16_t xorout = FETCH_IL_U16(ctx);
+                uint8_t flags = FETCH_IL_U8(ctx);
                 
                 uint32_t crc = calc_crc(ctx->data_buffer, ctx->cursor, poly, init, xorout, flags, 16);
                 
@@ -640,10 +683,10 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             }
 
             case OP_CRC_32: {
-                uint32_t poly = read_il_u32(ctx);
-                uint32_t init = read_il_u32(ctx);
-                uint32_t xorout = read_il_u32(ctx);
-                uint8_t flags = read_il_u8(ctx);
+                uint32_t poly = FETCH_IL_U32(ctx);
+                uint32_t init = FETCH_IL_U32(ctx);
+                uint32_t xorout = FETCH_IL_U32(ctx);
+                uint8_t flags = FETCH_IL_U8(ctx);
                 
                 uint32_t crc = calc_crc(ctx->data_buffer, ctx->cursor, poly, init, xorout, flags, 32);
                 
@@ -660,8 +703,8 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             }
 
             case OP_SCALE_LIN: {
-                uint64_t i_fac = read_il_u64(ctx);
-                uint64_t i_off = read_il_u64(ctx);
+                uint64_t i_fac = FETCH_IL_U64(ctx);
+                uint64_t i_off = FETCH_IL_U64(ctx);
                 double fac, off;
                 memcpy(&fac, &i_fac, 8);
                 memcpy(&off, &i_off, 8);
@@ -675,10 +718,10 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 ctx->is_next_optional = true;
                 break;
             
-            case OP_TRANS_ADD: ctx->trans_type = CND_TRANS_ADD_I64; ctx->trans_i_val = (int64_t)read_il_u64(ctx); break;
-            case OP_TRANS_SUB: ctx->trans_type = CND_TRANS_SUB_I64; ctx->trans_i_val = (int64_t)read_il_u64(ctx); break;
-            case OP_TRANS_MUL: ctx->trans_type = CND_TRANS_MUL_I64; ctx->trans_i_val = (int64_t)read_il_u64(ctx); break;
-            case OP_TRANS_DIV: ctx->trans_type = CND_TRANS_DIV_I64; ctx->trans_i_val = (int64_t)read_il_u64(ctx); break;
+            case OP_TRANS_ADD: ctx->trans_type = CND_TRANS_ADD_I64; ctx->trans_i_val = (int64_t)FETCH_IL_U64(ctx); break;
+            case OP_TRANS_SUB: ctx->trans_type = CND_TRANS_SUB_I64; ctx->trans_i_val = (int64_t)FETCH_IL_U64(ctx); break;
+            case OP_TRANS_MUL: ctx->trans_type = CND_TRANS_MUL_I64; ctx->trans_i_val = (int64_t)FETCH_IL_U64(ctx); break;
+            case OP_TRANS_DIV: ctx->trans_type = CND_TRANS_DIV_I64; ctx->trans_i_val = (int64_t)FETCH_IL_U64(ctx); break;
 
             // ... Category B (Primitives) ...
             case OP_IO_U8: HANDLE_PRIMITIVE(1, uint8_t, read_u8(ctx->data_buffer + ctx->cursor), write_u8(ctx->data_buffer + ctx->cursor, val));
@@ -692,11 +735,12 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             case OP_IO_I64: HANDLE_PRIMITIVE(8, int64_t, (int64_t)read_u64(ctx->data_buffer + ctx->cursor, ctx->endianness), write_u64(ctx->data_buffer + ctx->cursor, (uint64_t)val, ctx->endianness));
 
             case OP_IO_BOOL: {
-                uint16_t key = read_il_u16(ctx);
+                uint16_t key = FETCH_IL_U16(ctx);
                 if (ctx->cursor + 1 > ctx->data_len) {
                     if (ctx->is_next_optional) {
                         ctx->is_next_optional = false;
                         uint8_t val = 0;
+                        SYNC_IP();
                         if (ctx->io_callback(ctx, key, opcode, &val) != CND_ERR_OK) return CND_ERR_CALLBACK;
                         break;
                     }
@@ -704,12 +748,14 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 }
                 uint8_t val = 0;
                 if (ctx->mode == CND_MODE_ENCODE) {
+                    SYNC_IP();
                     if (ctx->io_callback(ctx, key, opcode, &val) != CND_ERR_OK) return CND_ERR_CALLBACK;
                     if (val > 1) return CND_ERR_VALIDATION;
                     write_u8(ctx->data_buffer + ctx->cursor, val);
                 } else {
                     val = read_u8(ctx->data_buffer + ctx->cursor);
                     if (val > 1) return CND_ERR_VALIDATION;
+                    SYNC_IP();
                     if (ctx->io_callback(ctx, key, opcode, &val) != CND_ERR_OK) return CND_ERR_CALLBACK;
                 }
                 ctx->cursor += 1;
@@ -721,38 +767,42 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             case OP_IO_F64: HANDLE_FLOAT(8, double, uint64_t, read_u64(ctx->data_buffer + ctx->cursor, ctx->endianness), write_u64(ctx->data_buffer + ctx->cursor, t, ctx->endianness));
 
             // ... Category C (Bitfields) ...
-            case OP_IO_BIT_U: { uint16_t k=read_il_u16(ctx); uint8_t b=read_il_u8(ctx); uint64_t v=0; if(ctx->mode==CND_MODE_ENCODE){ if(ctx->io_callback(ctx,k,opcode,&v)) return CND_ERR_CALLBACK; write_bits(ctx,v,b); } else { v=read_bits(ctx,b); if(ctx->io_callback(ctx,k,opcode,&v)) return CND_ERR_CALLBACK; } break; } 
+            case OP_IO_BIT_U: { uint16_t k=FETCH_IL_U16(ctx); uint8_t b=FETCH_IL_U8(ctx); uint64_t v=0; if(ctx->mode==CND_MODE_ENCODE){ SYNC_IP(); if(ctx->io_callback(ctx,k,opcode,&v)) return CND_ERR_CALLBACK; write_bits(ctx,v,b); } else { v=read_bits(ctx,b); SYNC_IP(); if(ctx->io_callback(ctx,k,opcode,&v)) return CND_ERR_CALLBACK; } break; } 
             case OP_IO_BIT_I: { 
-                uint16_t k=read_il_u16(ctx); 
-                uint8_t b=read_il_u8(ctx); 
+                uint16_t k=FETCH_IL_U16(ctx); 
+                uint8_t b=FETCH_IL_U8(ctx); 
                 int64_t v=0; 
                 if(ctx->mode==CND_MODE_ENCODE){ 
+                    SYNC_IP();
                     if(ctx->io_callback(ctx,k,opcode,&v)) return CND_ERR_CALLBACK; 
                     write_bits(ctx,(uint64_t)v,b); 
                 } else { 
                     uint64_t raw = read_bits(ctx,b); 
                     v = sign_extend(raw, b);
+                    SYNC_IP();
                     if(ctx->io_callback(ctx,k,opcode,&v)) return CND_ERR_CALLBACK; 
                 } 
                 break; 
             }
             case OP_IO_BIT_BOOL: {
-                uint16_t k = read_il_u16(ctx);
+                uint16_t k = FETCH_IL_U16(ctx);
                 uint8_t v = 0;
                 if (ctx->mode == CND_MODE_ENCODE) {
+                    SYNC_IP();
                     if (ctx->io_callback(ctx, k, opcode, &v) != CND_ERR_OK) return CND_ERR_CALLBACK;
                     if (v > 1) return CND_ERR_VALIDATION;
                     write_bits(ctx, (uint64_t)v, 1);
                 } else {
                     uint64_t raw = read_bits(ctx, 1);
                     v = (uint8_t)raw;
+                    SYNC_IP();
                     if (ctx->io_callback(ctx, k, opcode, &v) != CND_ERR_OK) return CND_ERR_CALLBACK;
                 }
                 break;
             }
-            case OP_ALIGN_PAD: { uint8_t b=read_il_u8(ctx); for(int i=0;i<b;i++) { ctx->bit_offset++; if(ctx->bit_offset>=8){ctx->bit_offset=0; ctx->cursor++;} } break; } 
+            case OP_ALIGN_PAD: { uint8_t b=FETCH_IL_U8(ctx); for(int i=0;i<b;i++) { ctx->bit_offset++; if(ctx->bit_offset>=8){ctx->bit_offset=0; ctx->cursor++;} } break; } 
             case OP_ALIGN_FILL: { 
-                uint8_t fill_bit = read_il_u8(ctx);
+                uint8_t fill_bit = FETCH_IL_U8(ctx);
                 if (ctx->bit_offset != 0) {
                     if (ctx->mode == CND_MODE_ENCODE) {
                         uint8_t bits_to_fill = 8 - ctx->bit_offset;
@@ -770,11 +820,12 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             // ... Category D: Arrays & Strings ...
             
             case OP_STR_NULL: {
-                uint16_t key = read_il_u16(ctx);
-                uint16_t max_len = read_il_u16(ctx);
+                uint16_t key = FETCH_IL_U16(ctx);
+                uint16_t max_len = FETCH_IL_U16(ctx);
                 const char* str = NULL;
                 // printf("VM_DEBUG: Calling callback for STR_NULL (Key %d)\n", key);
                 if (ctx->mode == CND_MODE_ENCODE) {
+                    SYNC_IP();
                     if (ctx->io_callback(ctx, key, opcode, &str) != CND_ERR_OK) {
                         if (ctx->is_next_optional) {
                             ctx->is_next_optional = false;
@@ -803,6 +854,7 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                     if (ctx->cursor >= ctx->data_len) return CND_ERR_OOB; 
                     
                     const char* ptr = (const char*)(ctx->data_buffer + start);
+                    SYNC_IP();
                     if (ctx->io_callback(ctx, key, opcode, (void*)ptr) != CND_ERR_OK) return CND_ERR_CALLBACK;
                     
                     ctx->cursor++; // Skip null
@@ -820,24 +872,29 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             case OP_ARR_PRE_U32: HANDLE_ARRAY_PRE(4, uint32_t, read_u32(ctx->data_buffer + ctx->cursor, ctx->endianness), write_u32(ctx->data_buffer + ctx->cursor, count, ctx->endianness));
 
             case OP_ARR_FIXED: {
-                uint16_t key = read_il_u16(ctx);
-                uint32_t count = read_il_u32(ctx);
+                uint16_t key = FETCH_IL_U16(ctx);
+                uint32_t count = FETCH_IL_U32(ctx);
                 // printf("VM_DEBUG: Calling callback for ARR_FIXED (Key %d)\n", key);
                 if (ctx->mode == CND_MODE_ENCODE) {
                      // Notify host about array start so it can push context
                      // We should probably pass u32, but for now let's cast or ensure callback handles it.
                      // The callback signature is (ctx, key, type, void*).
                      // For ARR_FIXED, we pass pointer to count.
+                     SYNC_IP();
                      if (ctx->io_callback(ctx, key, opcode, &count) != CND_ERR_OK) return CND_ERR_CALLBACK;
                 } else {
                      // Notify host about array start
+                     SYNC_IP();
                      if (ctx->io_callback(ctx, key, opcode, &count) != CND_ERR_OK) return CND_ERR_CALLBACK;
                 }
 
                 if (count > 0) {
+                    SYNC_IP();
                     if (!loop_push(ctx, ctx->ip, count)) return CND_ERR_OOB;
                 } else {
+                     SYNC_IP();
                      skip_loop_body(ctx);
+                     RELOAD_PC();
                 }
                 break;
             }
@@ -851,8 +908,10 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 
                 if (frame->remaining > 0) {
                     ctx->ip = frame->start_ip;
+                    RELOAD_PC();
                 } else {
                     // Loop finished, notify callback
+                    SYNC_IP();
                     if (ctx->io_callback(ctx, 0, OP_ARR_END, NULL) != CND_ERR_OK) return CND_ERR_CALLBACK;
                     loop_pop(ctx);
                 }
@@ -860,8 +919,8 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             }
 
             case OP_RAW_BYTES: {
-                uint16_t key = read_il_u16(ctx);
-                uint32_t count = read_il_u32(ctx);
+                uint16_t key = FETCH_IL_U16(ctx);
+                uint32_t count = FETCH_IL_U32(ctx);
                 
                 if (ctx->cursor + count > ctx->data_len) return CND_ERR_OOB;
                 
@@ -871,6 +930,7 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 // Since it's raw bytes, we just pass the pointer to the buffer.
                 void* ptr = ctx->data_buffer + ctx->cursor;
                 
+                SYNC_IP();
                 if (ctx->io_callback(ctx, key, opcode, ptr) != CND_ERR_OK) return CND_ERR_CALLBACK;
                 
                 ctx->cursor += count;
@@ -878,10 +938,11 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             }
 
             case OP_SWITCH: {
-                uint16_t key = read_il_u16(ctx);
-                uint32_t table_rel_offset = read_il_u32(ctx);
+                uint16_t key = FETCH_IL_U16(ctx);
+                uint32_t table_rel_offset = FETCH_IL_U32(ctx);
                 
                 // IP is now at the start of the code block (immediately after SWITCH instruction)
+                SYNC_IP();
                 size_t code_start_ip = ctx->ip;
                 size_t table_start_ip = code_start_ip + table_rel_offset;
                 
@@ -921,16 +982,18 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 }
                 
                 if (ctx->ip > ctx->program->bytecode_len) return CND_ERR_OOB;
+                RELOAD_PC();
                 break;
             }
 
             case OP_JUMP_IF_NOT: {
-                int32_t offset = (int32_t)read_il_u32(ctx);
+                int32_t offset = (int32_t)FETCH_IL_U32(ctx);
                 uint64_t condition;
                 if (stack_pop(ctx, &condition) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
                 
                 if (condition == 0) {
                     // Jump
+                    SYNC_IP();
                     if (offset < 0) {
                         if (ctx->ip < (size_t)(-offset)) return CND_ERR_OOB;
                         ctx->ip -= (size_t)(-offset);
@@ -938,13 +1001,15 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                         ctx->ip += (size_t)offset;
                     }
                     if (ctx->ip > ctx->program->bytecode_len) return CND_ERR_OOB;
+                    RELOAD_PC();
                 }
                 break;
             }
 
             case OP_JUMP: {
-                int32_t offset = (int32_t)read_il_u32(ctx);
+                int32_t offset = (int32_t)FETCH_IL_U32(ctx);
                 // Offset is relative to IP *after* reading the offset (which is current ctx->ip)
+                SYNC_IP();
                 if (offset < 0) {
                     if (ctx->ip < (size_t)(-offset)) return CND_ERR_OOB;
                     ctx->ip -= (size_t)(-offset);
@@ -952,21 +1017,23 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                     ctx->ip += (size_t)offset;
                 }
                 if (ctx->ip > ctx->program->bytecode_len) return CND_ERR_OOB;
+                RELOAD_PC();
                 break;
             }
 
             // --- Category G: Expression Stack & ALU ---
 
             case OP_LOAD_CTX: {
-                uint16_t key = read_il_u16(ctx);
+                uint16_t key = FETCH_IL_U16(ctx);
                 uint64_t val = 0;
+                SYNC_IP();
                 if (ctx->io_callback(ctx, key, OP_LOAD_CTX, &val) != CND_ERR_OK) return CND_ERR_CALLBACK;
                 if (stack_push(ctx, val) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
                 break;
             }
 
             case OP_PUSH_IMM: {
-                uint64_t val = read_il_u64(ctx);
+                uint64_t val = FETCH_IL_U64(ctx);
                 if (stack_push(ctx, val) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
                 break;
             }

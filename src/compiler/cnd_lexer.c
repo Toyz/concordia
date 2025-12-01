@@ -1,4 +1,5 @@
 #include "cnd_internal.h"
+#include <string.h>
 
 void lexer_init(Lexer* lexer, const char* source) {
     lexer->source = source;
@@ -6,29 +7,32 @@ void lexer_init(Lexer* lexer, const char* source) {
     lexer->line = 1;
 }
 
-int is_alpha_c(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
-int is_digit_c(char c) { return c >= '0' && c <= '9'; }
-int is_hex_c(char c) { return is_digit_c(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
+static inline int is_alpha_c(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
+static inline int is_digit_c(char c) { return c >= '0' && c <= '9'; }
+static inline int is_hex_c(char c) { return is_digit_c(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
 
 static TokenType check_keyword(const char* start, int length) {
-    struct { const char* name; TokenType type; } keywords[] = {
-        {"struct", TOK_STRUCT},
-        {"packet", TOK_PACKET},
-        {"enum", TOK_ENUM},
-        {"switch", TOK_SWITCH},
-        {"case", TOK_CASE},
-        {"default", TOK_DEFAULT},
-        {"if", TOK_IF},
-        {"else", TOK_ELSE},
-        {"true", TOK_TRUE},
-        {"false", TOK_FALSE},
-        {NULL, TOK_ERROR}
-    };
-    for (int i = 0; keywords[i].name; i++) {
-        size_t kw_len = strlen(keywords[i].name);
-        if (length == (int)kw_len && strncmp(start, keywords[i].name, length) == 0) {
-            return keywords[i].type;
-        }
+    switch (length) {
+        case 2:
+            if (memcmp(start, "if", 2) == 0) return TOK_IF;
+            break;
+        case 4:
+            if (memcmp(start, "enum", 4) == 0) return TOK_ENUM;
+            if (memcmp(start, "case", 4) == 0) return TOK_CASE;
+            if (memcmp(start, "else", 4) == 0) return TOK_ELSE;
+            if (memcmp(start, "true", 4) == 0) return TOK_TRUE;
+            break;
+        case 5:
+            if (memcmp(start, "false", 5) == 0) return TOK_FALSE;
+            break;
+        case 6:
+            if (memcmp(start, "struct", 6) == 0) return TOK_STRUCT;
+            if (memcmp(start, "packet", 6) == 0) return TOK_PACKET;
+            if (memcmp(start, "switch", 6) == 0) return TOK_SWITCH;
+            break;
+        case 7:
+            if (memcmp(start, "default", 7) == 0) return TOK_DEFAULT;
+            break;
     }
     return TOK_IDENTIFIER;
 }

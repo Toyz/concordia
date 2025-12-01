@@ -65,7 +65,9 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
     #define IO_VAL(ctype, field) { if (ENCODE) *(ctype*)ptr = (ctype)obj->field; else obj->field = *(ctype*)ptr; }
     
     // Debug
-    // printf("CB: Key %d (%s) Type %02X\n", key_id, key_name ? key_name : "?", type);
+    if (!key_name) {
+        return CND_ERR_OK; // Safe fallback
+    }
 
     // Control Flow
     if (type == OP_CTX_QUERY || type == OP_LOAD_CTX) {
@@ -188,8 +190,10 @@ int main() {
     FILE* f = fopen("kitchen_sink.il", "rb");
     fseek(f, 0, SEEK_END); long size = ftell(f); fseek(f, 0, SEEK_SET);
     uint8_t* il = malloc(size); fread(il, 1, size, f); fclose(f);
+    printf("IL loaded, size: %ld\n", size);
     cnd_program prog;
     if (cnd_program_load_il(&prog, il, size) != CND_ERR_OK) { printf("Load failed\n"); return 1; }
+    printf("Program loaded\n");
     
     // 3. Data
     KitchenSink data = {
@@ -208,18 +212,40 @@ int main() {
     strcpy(data.extra_data, "Manual Extra");
     
     // 4. Encode
+    printf("Starting Encode...\n");
     uint8_t buffer[1024]; memset(buffer, 0, 1024);
     cnd_vm_ctx ctx;
     cnd_init(&ctx, CND_MODE_ENCODE, &prog, buffer, 1024, sink_cb, &data);
-    if (cnd_execute(&ctx) != CND_ERR_OK) { printf("Encode failed\n"); return 1; }
+    int err = cnd_execute(&ctx);
+    if (err != CND_ERR_OK) { printf("Encode failed with error %d\n", err); return 1; }
     printf("Encoded %zu bytes\n", ctx.cursor);
     
     // 5. Decode
+    printf("Starting Decode...\n");
     KitchenSink out = {0};
     cnd_init(&ctx, CND_MODE_DECODE, &prog, buffer, ctx.cursor, sink_cb, &out);
     if (cnd_execute(&ctx) != CND_ERR_OK) { printf("Decode failed\n"); return 1; }
     
-    printf("Decoded: %s, Temp: %.1f, Extra: %s\n", out.name, out.temperature, out.extra_data);
+    printf("Decoded Results:\n");
+    printf("  Magic: 0x%X\n", out.magic);
+    printf("  Flags A: %u, Flag B: %s, Val C: %d\n", out.flags_a, out.flag_b ? "true" : "false", out.val_c);
+    printf("  Timestamp: %lld\n", (long long)out.timestamp);
+    printf("  Position: { %.2f, %.2f, %.2f }\n", out.position.x, out.position.y, out.position.z);
+    printf("  Matrix: [%d, %d, %d, %d]\n", out.matrix[0], out.matrix[1], out.matrix[2], out.matrix[3]);
+    printf("  Points (%d): [", out.points_len);
+    for(int i=0; i<out.points_len; i++) printf("%d%s", out.points[i], i==out.points_len-1 ? "" : ", ");
+    printf("]\n");
+    printf("  Name: %s\n", out.name);
+    printf("  Status: %d\n", out.status);
+    printf("  Confidence: %d, Error: %d, Reason: %s\n", out.confidence, out.error_code, out.reason);
+    printf("  Percentage: %d%%, Temp: %.2f\n", out.percentage, out.temperature);
+    printf("  Has Extra: %s\n", out.has_extra ? "true" : "false");
+    if (out.has_extra) printf("    Extra Data: %s\n", out.extra_data);
+    printf("  Adv Mode: %d\n", out.adv_mode);
+    printf("  Adv Simple Val: %d\n", out.adv_simple_val);
+    printf("  Adv Has Details: %s\n", out.adv_has_details ? "true" : "false");
+    if (out.adv_has_details) printf("    Adv Details: %s\n", out.adv_details);
+    printf("  Adv Fallback: %d\n", out.adv_fallback_code);
     
     free(il);
     return 0;

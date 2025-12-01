@@ -34,7 +34,10 @@ static void optimize_strings(Parser* p) {
             (op >= OP_IO_BIT_U && op <= OP_IO_BIT_BOOL) ||
             (op >= OP_STR_NULL && op <= OP_STR_PRE_U32) ||
             (op >= OP_ARR_FIXED && op <= OP_ARR_PRE_U32) ||
-            op == OP_CONST_CHECK) {
+            op == OP_RAW_BYTES ||
+            op == OP_CONST_CHECK ||
+            op == OP_SWITCH ||
+            op == OP_LOAD_CTX) {
             
             if (offset + 2 > len) break;
             uint16_t id = *(uint16_t*)(bc + offset);
@@ -48,13 +51,12 @@ static void optimize_strings(Parser* p) {
             case OP_CTX_QUERY: offset += 1; break;
             case OP_IO_BIT_U: case OP_IO_BIT_I: case OP_IO_BIT_BOOL: offset += 1; break;
             case OP_ALIGN_PAD: case OP_ALIGN_FILL: offset += 1; break;
-            case OP_ARR_FIXED: offset += 5; break; // u32 len + u8 type
-            case OP_ARR_PRE_U8: case OP_ARR_PRE_U16: case OP_ARR_PRE_U32: offset += 1; break;
+            case OP_ARR_FIXED: offset += 4; break; // u32 count
+            case OP_ARR_PRE_U8: case OP_ARR_PRE_U16: case OP_ARR_PRE_U32: break; // No extra args
             
             case OP_RAW_BYTES: {
                 if (offset + 4 > len) break;
-                uint32_t count = *(uint32_t*)(bc + offset); offset += 4;
-                offset += count;
+                offset += 4; // u32 count
                 break;
             }
 
@@ -91,12 +93,8 @@ static void optimize_strings(Parser* p) {
             
             case OP_JUMP_IF_NOT: case OP_JUMP: offset += 4; break;
             case OP_SWITCH: {
-                if (offset + 3 > len) break;
-                uint8_t type = bc[offset++];
-                uint16_t count = *(uint16_t*)(bc + offset); offset += 2;
-                int sz = get_type_size(type);
-                offset += count * (sz + 4); // val + offset
-                offset += 4; // default
+                if (offset + 4 > len) break;
+                offset += 4; // Table Offset
                 break;
             }
             case OP_PUSH_IMM: {
@@ -105,7 +103,8 @@ static void optimize_strings(Parser* p) {
                 offset += get_type_size(type);
                 break;
             }
-            case OP_STR_NULL: case OP_STR_PRE_U8: case OP_STR_PRE_U16: case OP_STR_PRE_U32: offset += 2; break; // max_len
+            case OP_STR_NULL: offset += 2; break; // max_len
+            case OP_STR_PRE_U8: case OP_STR_PRE_U16: case OP_STR_PRE_U32: break; // No extra args
         }
     }
 
@@ -134,7 +133,10 @@ static void optimize_strings(Parser* p) {
             (op >= OP_IO_BIT_U && op <= OP_IO_BIT_BOOL) ||
             (op >= OP_STR_NULL && op <= OP_STR_PRE_U32) ||
             (op >= OP_ARR_FIXED && op <= OP_ARR_PRE_U32) ||
-            op == OP_CONST_CHECK) {
+            op == OP_RAW_BYTES ||
+            op == OP_CONST_CHECK ||
+            op == OP_SWITCH ||
+            op == OP_LOAD_CTX) {
             
             if (offset + 2 > len) break;
             uint16_t* id_ptr = (uint16_t*)(bc + offset);
@@ -151,12 +153,11 @@ static void optimize_strings(Parser* p) {
             case OP_CTX_QUERY: offset += 1; break;
             case OP_IO_BIT_U: case OP_IO_BIT_I: case OP_IO_BIT_BOOL: offset += 1; break;
             case OP_ALIGN_PAD: case OP_ALIGN_FILL: offset += 1; break;
-            case OP_ARR_FIXED: offset += 5; break;
-            case OP_ARR_PRE_U8: case OP_ARR_PRE_U16: case OP_ARR_PRE_U32: offset += 1; break;
+            case OP_ARR_FIXED: offset += 4; break; // u32 count
+            case OP_ARR_PRE_U8: case OP_ARR_PRE_U16: case OP_ARR_PRE_U32: break; // No extra args
             case OP_RAW_BYTES: {
                 if (offset + 4 > len) break;
-                uint32_t count = *(uint32_t*)(bc + offset); offset += 4;
-                offset += count;
+                offset += 4; // u32 count
                 break;
             }
             case OP_CONST_CHECK: {
@@ -191,12 +192,8 @@ static void optimize_strings(Parser* p) {
             case OP_TRANS_ADD: case OP_TRANS_SUB: case OP_TRANS_MUL: case OP_TRANS_DIV: offset += 8; break;
             case OP_JUMP_IF_NOT: case OP_JUMP: offset += 4; break;
             case OP_SWITCH: {
-                if (offset + 3 > len) break;
-                uint8_t type = bc[offset++];
-                uint16_t count = *(uint16_t*)(bc + offset); offset += 2;
-                int sz = get_type_size(type);
-                offset += count * (sz + 4);
-                offset += 4;
+                if (offset + 4 > len) break;
+                offset += 4; // Table Offset
                 break;
             }
             case OP_PUSH_IMM: {
@@ -205,7 +202,8 @@ static void optimize_strings(Parser* p) {
                 offset += get_type_size(type);
                 break;
             }
-            case OP_STR_NULL: case OP_STR_PRE_U8: case OP_STR_PRE_U16: case OP_STR_PRE_U32: offset += 2; break;
+            case OP_STR_NULL: offset += 2; break; // max_len
+            case OP_STR_PRE_U8: case OP_STR_PRE_U16: case OP_STR_PRE_U32: break; // No extra args
         }
     }
 

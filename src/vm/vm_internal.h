@@ -3,24 +3,181 @@
 
 #include "concordia.h"
 
-// IL Reading
-uint16_t read_il_u16(cnd_vm_ctx* ctx);
-uint8_t read_il_u8(cnd_vm_ctx* ctx);
-uint32_t read_il_u32(cnd_vm_ctx* ctx);
-uint64_t read_il_u64(cnd_vm_ctx* ctx);
+// --- IL Access ---
 
-// Data Reading
-uint8_t read_u8(const uint8_t* buf);
-uint16_t read_u16(const uint8_t* buf, cnd_endian_t endian);
-uint32_t read_u32(const uint8_t* buf, cnd_endian_t endian);
-uint64_t read_u64(const uint8_t* buf, cnd_endian_t endian);
-uint64_t read_bits(cnd_vm_ctx* ctx, uint8_t count);
+static inline uint16_t read_il_u16(cnd_vm_ctx* ctx) {
+    if (ctx->ip + 2 > ctx->program->bytecode_len) return 0; 
+    uint16_t val = ctx->program->bytecode[ctx->ip] | (ctx->program->bytecode[ctx->ip + 1] << 8);
+    ctx->ip += 2;
+    return val;
+}
 
-// Data Writing
-void write_u8(uint8_t* buf, uint8_t val);
-void write_u16(uint8_t* buf, uint16_t val, cnd_endian_t endian);
-void write_u32(uint8_t* buf, uint32_t val, cnd_endian_t endian);
-void write_u64(uint8_t* buf, uint64_t val, cnd_endian_t endian);
-void write_bits(cnd_vm_ctx* ctx, uint64_t val, uint8_t count);
+static inline uint8_t read_il_u8(cnd_vm_ctx* ctx) {
+    if (ctx->ip + 1 > ctx->program->bytecode_len) return 0; 
+    uint8_t val = ctx->program->bytecode[ctx->ip];
+    ctx->ip += 1;
+    return val;
+}
+
+static inline uint32_t read_il_u32(cnd_vm_ctx* ctx) {
+    if (ctx->ip + 4 > ctx->program->bytecode_len) return 0;
+    uint32_t val = ctx->program->bytecode[ctx->ip] | 
+                   (ctx->program->bytecode[ctx->ip + 1] << 8) | 
+                   (ctx->program->bytecode[ctx->ip + 2] << 16) | 
+                   (ctx->program->bytecode[ctx->ip + 3] << 24);
+    ctx->ip += 4;
+    return val;
+}
+
+static inline uint64_t read_il_u64(cnd_vm_ctx* ctx) {
+    if (ctx->ip + 8 > ctx->program->bytecode_len) return 0;
+    const uint8_t* b = &ctx->program->bytecode[ctx->ip];
+    uint64_t val = ((uint64_t)b[0]) | 
+                   ((uint64_t)b[1] << 8) | 
+                   ((uint64_t)b[2] << 16) | 
+                   ((uint64_t)b[3] << 24) |
+                   ((uint64_t)b[4] << 32) | 
+                   ((uint64_t)b[5] << 40) | 
+                   ((uint64_t)b[6] << 48) | 
+                   ((uint64_t)b[7] << 56);
+    ctx->ip += 8;
+    return val;
+}
+
+// --- Data Access (Read) ---
+
+static inline uint8_t read_u8(const uint8_t* buf) {
+    return *buf;
+}
+
+static inline uint16_t read_u16(const uint8_t* buf, cnd_endian_t endian) {
+    if (endian == CND_LE) {
+        return buf[0] | (buf[1] << 8);
+    } else {
+        return (buf[0] << 8) | buf[1];
+    }
+}
+
+static inline uint32_t read_u32(const uint8_t* buf, cnd_endian_t endian) {
+    if (endian == CND_LE) {
+        return buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
+    } else {
+        return (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
+    }
+}
+
+static inline uint64_t read_u64(const uint8_t* buf, cnd_endian_t endian) {
+    if (endian == CND_LE) {
+        return ((uint64_t)buf[0]) | 
+               ((uint64_t)buf[1] << 8) | 
+               ((uint64_t)buf[2] << 16) | 
+               ((uint64_t)buf[3] << 24) |
+               ((uint64_t)buf[4] << 32) | 
+               ((uint64_t)buf[5] << 40) | 
+               ((uint64_t)buf[6] << 48) | 
+               ((uint64_t)buf[7] << 56);
+    } else {
+        return ((uint64_t)buf[0] << 56) | 
+               ((uint64_t)buf[1] << 48) | 
+               ((uint64_t)buf[2] << 40) | 
+               ((uint64_t)buf[3] << 32) |
+               ((uint64_t)buf[4] << 24) | 
+               ((uint64_t)buf[5] << 16) | 
+               ((uint64_t)buf[6] << 8) | 
+               ((uint64_t)buf[7]);
+    }
+}
+
+static inline uint64_t read_bits(cnd_vm_ctx* ctx, uint8_t count) {
+    uint64_t val = 0;
+    for (uint8_t i = 0; i < count; i++) {
+        if (ctx->cursor >= ctx->data_len) break; 
+
+        uint8_t current_byte = ctx->data_buffer[ctx->cursor];
+        uint8_t bit = (current_byte >> ctx->bit_offset) & 1;
+        
+        if (bit) val |= ((uint64_t)1 << i);
+        
+        ctx->bit_offset++;
+        if (ctx->bit_offset >= 8) {
+            ctx->bit_offset = 0;
+            ctx->cursor++;
+        }
+    }
+    return val;
+}
+
+// --- Data Access (Write) ---
+
+static inline void write_u8(uint8_t* buf, uint8_t val) {
+    *buf = val;
+}
+
+static inline void write_u16(uint8_t* buf, uint16_t val, cnd_endian_t endian) {
+    if (endian == CND_LE) {
+        buf[0] = val & 0xFF;
+        buf[1] = (val >> 8) & 0xFF;
+    } else {
+        buf[0] = (val >> 8) & 0xFF;
+        buf[1] = val & 0xFF;
+    }
+}
+
+static inline void write_u32(uint8_t* buf, uint32_t val, cnd_endian_t endian) {
+    if (endian == CND_LE) {
+        buf[0] = val & 0xFF;
+        buf[1] = (val >> 8) & 0xFF;
+        buf[2] = (val >> 16) & 0xFF;
+        buf[3] = (val >> 24) & 0xFF;
+    } else {
+        buf[0] = (val >> 24) & 0xFF;
+        buf[1] = (val >> 16) & 0xFF;
+        buf[2] = (val >> 8) & 0xFF;
+        buf[3] = val & 0xFF;
+    }
+}
+
+static inline void write_u64(uint8_t* buf, uint64_t val, cnd_endian_t endian) {
+    if (endian == CND_LE) {
+        buf[0] = val & 0xFF;
+        buf[1] = (val >> 8) & 0xFF;
+        buf[2] = (val >> 16) & 0xFF;
+        buf[3] = (val >> 24) & 0xFF;
+        buf[4] = (val >> 32) & 0xFF;
+        buf[5] = (val >> 40) & 0xFF;
+        buf[6] = (val >> 48) & 0xFF;
+        buf[7] = (val >> 56) & 0xFF;
+    } else {
+        buf[0] = (val >> 56) & 0xFF;
+        buf[1] = (val >> 48) & 0xFF;
+        buf[2] = (val >> 40) & 0xFF;
+        buf[3] = (val >> 32) & 0xFF;
+        buf[4] = (val >> 24) & 0xFF;
+        buf[5] = (val >> 16) & 0xFF;
+        buf[6] = (val >> 8) & 0xFF;
+        buf[7] = val & 0xFF;
+    }
+}
+
+static inline void write_bits(cnd_vm_ctx* ctx, uint64_t val, uint8_t count) {
+    for (uint8_t i = 0; i < count; i++) {
+        if (ctx->cursor >= ctx->data_len) return; 
+
+        uint8_t bit = (val >> i) & 1;
+        uint8_t mask = 1 << ctx->bit_offset;
+        uint8_t current_byte = ctx->data_buffer[ctx->cursor];
+        
+        if (bit) current_byte |= mask;
+        else current_byte &= ~mask;
+        
+        ctx->data_buffer[ctx->cursor] = current_byte;
+        
+        ctx->bit_offset++;
+        if (ctx->bit_offset >= 8) {
+            ctx->bit_offset = 0;
+            ctx->cursor++;
+        }
+    }
+}
 
 #endif

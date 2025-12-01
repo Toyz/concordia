@@ -94,24 +94,68 @@ void consume(Parser* p, TokenType type, const char* msg) {
 
 int match_keyword(Token t, const char* kw) {
     if (t.type != TOK_IDENTIFIER) return 0;
-    if (strlen(kw) != (size_t)t.length) return 0;
-    return strncmp(t.start, kw, t.length) == 0;
+    size_t len = strlen(kw);
+    if (len != (size_t)t.length) return 0;
+    return memcmp(t.start, kw, len) == 0;
 }
 
 uint32_t parse_number(Token t) {
-    char buf[64];
-    if (t.length >= 63) return 0;
-    memcpy(buf, t.start, t.length);
-    buf[t.length] = '\0';
-    return (uint32_t)strtoul(buf, NULL, 0); 
+    const char* s = t.start;
+    int len = t.length;
+    uint32_t res = 0;
+    
+    // Handle hex
+    if (len > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
+        for (int i = 2; i < len; i++) {
+            char c = s[i];
+            res <<= 4;
+            if (c >= '0' && c <= '9') res |= (c - '0');
+            else if (c >= 'a' && c <= 'f') res |= (c - 'a' + 10);
+            else if (c >= 'A' && c <= 'F') res |= (c - 'A' + 10);
+        }
+    } else {
+        for (int i = 0; i < len; i++) {
+            if (s[i] >= '0' && s[i] <= '9') {
+                res = res * 10 + (s[i] - '0');
+            }
+        }
+    }
+    return res;
 }
 
 int64_t parse_int64(Token t) {
-    char buf[64];
-    if (t.length >= 63) return 0;
-    memcpy(buf, t.start, t.length);
-    buf[t.length] = '\0';
-    return (int64_t)strtoll(buf, NULL, 0); 
+    const char* s = t.start;
+    int len = t.length;
+    if (len == 0) return 0;
+    
+    int neg = 0;
+    int i = 0;
+    if (s[0] == '-') {
+        neg = 1;
+        i++;
+    } else if (s[0] == '+') {
+        i++;
+    }
+    
+    uint64_t res = 0;
+    if (len > i + 2 && s[i] == '0' && (s[i+1] == 'x' || s[i+1] == 'X')) {
+        i += 2;
+        for (; i < len; i++) {
+            char c = s[i];
+            res <<= 4;
+            if (c >= '0' && c <= '9') res |= (c - '0');
+            else if (c >= 'a' && c <= 'f') res |= (c - 'a' + 10);
+            else if (c >= 'A' && c <= 'F') res |= (c - 'A' + 10);
+        }
+    } else {
+        for (; i < len; i++) {
+            if (s[i] >= '0' && s[i] <= '9') {
+                res = res * 10 + (s[i] - '0');
+            }
+        }
+    }
+    
+    return neg ? -(int64_t)res : (int64_t)res;
 }
 
 double parse_double(Token t) {

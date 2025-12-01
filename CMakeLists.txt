@@ -78,88 +78,27 @@ if(NOT cjson_POPULATED)
   target_include_directories(cjson PUBLIC ${cjson_SOURCE_DIR})
 endif()
 
-# --- Targets ---
+# --- Subdirectories ---
 
-# Library
-add_library(concordia 
-    src/vm/vm_exec.c 
-    src/vm/vm_io.c
-)
-target_include_directories(concordia PUBLIC include)
+# Core Libraries
+add_subdirectory(src/vm)
+add_subdirectory(src/compiler)
 
-# Compiler Library
-add_library(cnd_compiler 
-    src/compiler/cndc.c
-    src/compiler/cnd_utils.c
-    src/compiler/cnd_lexer.c
-    src/compiler/cnd_parser.c
-    src/compiler/cnd_fmt.c
-)
-target_include_directories(cnd_compiler PUBLIC include)
+# Tools & CLI
+add_subdirectory(src/tools)
+add_subdirectory(src/cli)
 
-add_executable(hexview src/tools/hexview.c)
+# Tests & Benchmarks
+add_subdirectory(tests)
+add_subdirectory(benchmarks)
 
-# Main CLI Tool (cnd)
-set(CND_SOURCES
-    src/cli/main.c
-    src/cli/cli_helpers.c
-    src/cli/json_binding.c
-    src/cli/cmd_compile.c
-    src/cli/cmd_encode.c
-    src/cli/cmd_decode.c
-    src/cli/cmd_fmt.c
-    src/cli/cmd_inspect.c
-    src/cli/cmd_lsp.c
-)
-add_executable(cnd ${CND_SOURCES})
-target_link_libraries(cnd concordia cnd_compiler cjson)
-
-# Test Executable
-set(TEST_SOURCES
-    tests/test_common.cpp
-    tests/vm_tests.cpp
-    tests/compiler_test.cpp 
-    tests/lexer_test.cpp
-    tests/compiler_integration_test.cpp
-    tests/coverage_test.cpp
-    tests/language_features_test.cpp
-)
-add_executable(test_runner ${TEST_SOURCES})
-target_link_libraries(test_runner concordia cnd_compiler gtest_main)
-
-# --- Benchmarks ---
-set(BENCHMARK_SOURCES
-    benchmarks/main.cpp
-    benchmarks/bench_common.cpp
-    benchmarks/bench_core.cpp
-    benchmarks/bench_features.cpp
-    benchmarks/bench_ifelse.cpp
-    benchmarks/bench_switch.cpp
-)
-add_executable(vm_benchmark ${BENCHMARK_SOURCES})
-target_link_libraries(vm_benchmark concordia cnd_compiler benchmark::benchmark)
+# Examples & Demos
+add_subdirectory(demos)
+add_subdirectory(examples)
 
 # --- Installation ---
 
 include(GNUInstallDirs)
 
-install(TARGETS cnd
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
-
-install(TARGETS concordia cnd_compiler
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-)
-
+# Install headers
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-
-# --- Demos ---
-add_executable(demo_c demos/demo_c.c)
-target_link_libraries(demo_c concordia)
-
-add_executable(demo_cpp demos/demo_cpp.cpp)
-target_link_libraries(demo_cpp concordia)
-
-add_executable(kitchen_sink examples/kitchen_sink/kitchen_sink.c)
-target_link_libraries(kitchen_sink concordia cnd_compiler)
