@@ -125,32 +125,31 @@ uint32_t parse_number(Token t) {
 
 int64_t parse_int64(Token t) {
     const char* s = t.start;
-    int len = t.length;
-    if (len == 0) return 0;
+    const char* end = s + t.length;
+    if (s == end) return 0;
     
     int neg = 0;
-    int i = 0;
-    if (s[0] == '-') {
+    if (*s == '-') {
         neg = 1;
-        i++;
-    } else if (s[0] == '+') {
-        i++;
+        s++;
+    } else if (*s == '+') {
+        s++;
     }
     
     uint64_t res = 0;
-    if (len > i + 2 && s[i] == '0' && (s[i+1] == 'x' || s[i+1] == 'X')) {
-        i += 2;
-        for (; i < len; i++) {
-            char c = s[i];
-            res <<= 4;
-            if (c >= '0' && c <= '9') res |= (c - '0');
-            else if (c >= 'a' && c <= 'f') res |= (c - 'a' + 10);
-            else if (c >= 'A' && c <= 'F') res |= (c - 'A' + 10);
+    if (end - s > 2 && *s == '0' && (s[1] == 'x' || s[1] == 'X')) {
+        s += 2;
+        while (s < end) {
+            uint8_t c = (uint8_t)*s++;
+            // Branchless hex conversion: (c & 0xF) + 9 * (c >> 6)
+            // Works for '0'-'9', 'a'-'f', 'A'-'F'
+            res = (res << 4) | ((c & 0xF) + 9 * (c >> 6));
         }
     } else {
-        for (; i < len; i++) {
-            if (s[i] >= '0' && s[i] <= '9') {
-                res = res * 10 + (s[i] - '0');
+        while (s < end) {
+            char c = *s++;
+            if (c >= '0' && c <= '9') {
+                res = res * 10 + (c - '0');
             }
         }
     }
