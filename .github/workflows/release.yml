@@ -9,8 +9,53 @@ permissions:
   contents: write
 
 jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate Changelog
+        run: |
+          CURRENT_TAG=${GITHUB_REF#refs/tags/}
+          echo "Current tag: $CURRENT_TAG"
+          
+          # Find previous tag
+          # git describe --tags --abbrev=0 HEAD^ might fail if no tags or shallow
+          # We fetched depth 0 so we have history.
+          
+          # Get list of tags sorted by date desc
+          TAGS=$(git tag --sort=-creatordate)
+          # Assuming CURRENT_TAG is the first one
+          PREV_TAG=$(echo "$TAGS" | sed -n '2p')
+          
+          echo "Previous tag: $PREV_TAG"
+          
+          echo "## What's Changed" > changelog.md
+          echo "" >> changelog.md
+          
+          if [ -z "$PREV_TAG" ]; then
+            git log --pretty=format:"* %s (%h)" >> changelog.md
+          else
+            echo "Changes from $PREV_TAG to $CURRENT_TAG:" >> changelog.md
+            echo "" >> changelog.md
+            git log --pretty=format:"* %s (%h)" $PREV_TAG..$CURRENT_TAG >> changelog.md
+          fi
+          
+          echo "" >> changelog.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: changelog.md
+          draft: false
+          prerelease: false
+
   build-release:
     name: Build Release (${{ matrix.os }})
+    needs: create-release
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:

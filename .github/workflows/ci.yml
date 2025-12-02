@@ -26,6 +26,13 @@ jobs:
     - name: Build
       run: cmake --build build --config Debug
 
+    - name: Check Bindings (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        ./build/src/tools/gen_bindings include/concordia.h go > go/consts.go.tmp
+        diff go/consts.go go/consts.go.tmp || (echo "go/consts.go is out of date. Please run gen_bindings." && exit 1)
+        rm go/consts.go.tmp
+
     - name: Run Tests (Unix)
       if: runner.os != 'Windows'
       run: ./build/tests/test_runner
