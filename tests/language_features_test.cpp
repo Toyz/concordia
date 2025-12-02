@@ -894,3 +894,62 @@ TEST_F(ConcordiaTest, MatchRTT_U32_BigEndian) {
     err = cnd_execute(&ctx);
     EXPECT_EQ(err, CND_ERR_VALIDATION);
 }
+
+TEST_F(ConcordiaTest, PolynomialTransform) {
+    // Test @poly(5.0, 2.0, 0.5) -> y = 5 + 2x + 0.5x^2
+    CompileAndLoad("packet Poly { @poly(5.0, 2.0, 0.5) uint8 val; }");
+    
+    uint8_t buffer[1] = {10}; // Raw value = 10
+    
+    // DECODE
+    // Expected: 5 + 2(10) + 0.5(100) = 5 + 20 + 50 = 75.0
+    clear_test_data();
+    
+    cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    EXPECT_EQ(cnd_execute(&ctx), CND_ERR_OK);
+    
+    // Check result
+    EXPECT_EQ(g_test_data[0].key, 0); // First field
+    EXPECT_DOUBLE_EQ(g_test_data[0].f64_val, 75.0);
+    
+    // ENCODE
+    // Should succeed now that we have Newton-Raphson
+    clear_test_data();
+    g_test_data[0] = {0, 0, 75.0, ""};
+    
+    buffer[0] = 0; // Reset buffer
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    EXPECT_EQ(cnd_execute(&ctx), CND_ERR_OK);
+    
+    // Raw value should be 10
+    EXPECT_EQ(buffer[0], 10);
+}
+
+TEST_F(ConcordiaTest, PolynomialRTT) {
+    // Round Trip Test
+    // y = 2x^2 + 3x + 1
+    CompileAndLoad("packet PolyRTT { @poly(1.0, 3.0, 2.0) uint8 val; }");
+    
+    uint8_t buffer[1] = {0};
+    
+    // 1. Encode 55.0
+    // 2x^2 + 3x + 1 = 55
+    // 2x^2 + 3x - 54 = 0
+    // Roots: x = 4.5 (not integer), x = -6 (out of range for uint8)
+    // Wait, let's pick an integer root. x=4 -> 2(16) + 3(4) + 1 = 32 + 12 + 1 = 45.
+    
+    clear_test_data();
+    g_test_data[0] = {0, 0, 45.0, ""};
+    
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    EXPECT_EQ(cnd_execute(&ctx), CND_ERR_OK);
+    
+    EXPECT_EQ(buffer[0], 4); // x should be 4
+    
+    // 2. Decode back
+    clear_test_data();
+    cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    EXPECT_EQ(cnd_execute(&ctx), CND_ERR_OK);
+    
+    EXPECT_DOUBLE_EQ(g_test_data[0].f64_val, 45.0);
+}

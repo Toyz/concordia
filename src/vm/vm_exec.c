@@ -39,6 +39,53 @@
                   SYNC_IP(); \
                   if (ctx->io_callback(ctx, key, OP_IO_F64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
               } \
+          } else if (ctx->trans_type == CND_TRANS_POLY) { \
+              double eng_val = 0; \
+              if (ctx->mode == CND_MODE_ENCODE) { \
+                  SYNC_IP(); \
+                  if (ctx->io_callback(ctx, key, OP_IO_F64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
+                  double x = 0; \
+                  for(int iter=0; iter<20; iter++) { \
+                      double y = 0; \
+                      double dy = 0; \
+                      if (ctx->trans_poly_count > 0) { \
+                          uint64_t tmp; \
+                          memcpy(&tmp, ctx->trans_poly_data + (ctx->trans_poly_count - 1) * 8, 8); \
+                          memcpy(&y, &tmp, 8); \
+                          for (int i = ctx->trans_poly_count - 2; i >= 0; i--) { \
+                              double c; \
+                              memcpy(&tmp, ctx->trans_poly_data + i * 8, 8); \
+                              memcpy(&c, &tmp, 8); \
+                              dy = dy * x + y; \
+                              y = y * x + c; \
+                          } \
+                      } \
+                      double diff = y - eng_val; \
+                      if (diff > -0.001 && diff < 0.001) break; \
+                      if (dy == 0) break; \
+                      x = x - diff / dy; \
+                  } \
+                  ctype val = (ctype)x; \
+                  WRITE_EXPR; \
+              } else { \
+                  ctype raw = (READ_EXPR); \
+                  double x = (double)raw; \
+                  double y = 0; \
+                  if (ctx->trans_poly_count > 0) { \
+                      uint64_t tmp; \
+                      memcpy(&tmp, ctx->trans_poly_data + (ctx->trans_poly_count - 1) * 8, 8); \
+                      memcpy(&y, &tmp, 8); \
+                      for (int i = ctx->trans_poly_count - 2; i >= 0; i--) { \
+                          double c; \
+                          memcpy(&tmp, ctx->trans_poly_data + i * 8, 8); \
+                          memcpy(&c, &tmp, 8); \
+                          y = y * x + c; \
+                      } \
+                  } \
+                  eng_val = y; \
+                  SYNC_IP(); \
+                  if (ctx->io_callback(ctx, key, OP_IO_F64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
+              } \
           } else { \
               int64_t eng_val = 0; \
               if (ctx->mode == CND_MODE_ENCODE) { \
@@ -507,6 +554,7 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
 
     while (pc < end) {
         uint8_t opcode = *pc++;
+        // printf("Opcode: %02X at IP %zu\n", opcode, (size_t)(pc - ctx->program->bytecode - 1));
 
         // Check alignment
         if (ALIGN_TABLE[opcode]) {
@@ -711,6 +759,16 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 ctx->trans_type = CND_TRANS_SCALE_F64;
                 ctx->trans_f_factor = fac;
                 ctx->trans_f_offset = off;
+                break;
+            }
+
+            case OP_TRANS_POLY: {
+                uint8_t count = FETCH_IL_U8(ctx);
+                ctx->trans_type = CND_TRANS_POLY;
+                ctx->trans_poly_count = count;
+                ctx->trans_poly_data = pc;
+                pc += (count * 8);
+                if (pc > end) return CND_ERR_OOB;
                 break;
             }
 

@@ -67,11 +67,13 @@ packet KitchenSink {
 
     // PROOF: Storing 2025 in a uint8 (max 255)
     // 2025 - 1900 = 125 (Fits in uint8!)
-    @add(1900)
-    uint8 year;
+        @add(1900)
+    uint16 year; // Key 24
 
-    // Conditional
-    bool has_extra; // Key 18
+    @poly(5.0, 2.0, 0.5)
+    uint8 poly_val; // Key 25
+    
+    bool has_extra; // Key 26
     if (has_extra) {
         string extra_data prefix uint8; // Key 19
     }

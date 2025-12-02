@@ -39,6 +39,8 @@ typedef struct {
     uint8_t percentage;
     double temperature;
     
+    double poly_val;
+
     bool has_extra;
     char extra_data[64]; // For has_extra=true
     
@@ -148,6 +150,10 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
         if (ENCODE) *(double*)ptr = obj->temperature;
         else obj->temperature = *(double*)ptr;
     }
+    else if (strcmp(key_name, "poly_val") == 0) {
+        if (ENCODE) *(double*)ptr = obj->poly_val;
+        else obj->poly_val = *(double*)ptr;
+    }
     else if (strcmp(key_name, "has_extra") == 0) {
         if (ENCODE) *(uint8_t*)ptr = obj->has_extra; else obj->has_extra = *(uint8_t*)ptr;
     }
@@ -207,6 +213,7 @@ int main() {
         .points_len = 3, .points = {10, 20, 30},
         .status = STATUS_OK, .confidence = 100,
         .percentage = 50, .temperature = 25.5,
+        .poly_val = 75.0, // 5 + 2(10) + 0.5(100) = 75.0. Raw should be 10.
         .has_extra = true,
         .adv_mode = 0, .adv_simple_val = 777
     };
@@ -241,6 +248,7 @@ int main() {
     printf("  Status: %d\n", out.status);
     printf("  Confidence: %d, Error: %d, Reason: %s\n", out.confidence, out.error_code, out.reason);
     printf("  Percentage: %d%%, Temp: %.2f\n", out.percentage, out.temperature);
+    printf("  Poly Val: %.2f\n", out.poly_val);
     printf("  Has Extra: %s\n", out.has_extra ? "true" : "false");
     if (out.has_extra) printf("    Extra Data: %s\n", out.extra_data);
     printf("  Adv Mode: %d\n", out.adv_mode);

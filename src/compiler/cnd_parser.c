@@ -603,6 +603,8 @@ void parse_field(Parser* p, const char* doc) {
     double trans_scale = 1.0;
     double trans_offset = 0.0;
     int64_t trans_int_val = 0;
+    double poly_coeffs[16];
+    uint8_t poly_count = 0;
     
     // CRC State
     int has_crc = 0;
@@ -690,6 +692,26 @@ void parse_field(Parser* p, const char* doc) {
             } else if (match_keyword(dec_name_token, "sub")) {
                 Token num = p->current; if (num.type == TOK_NUMBER) advance(p); else consume(p, TOK_NUMBER, "Expect sub value");
                 trans_type = CND_TRANS_SUB_I64; trans_int_val = parse_int64(num);
+            } else if (match_keyword(dec_name_token, "poly")) {
+                trans_type = CND_TRANS_POLY;
+                while (true) {
+                    Token num = p->current;
+                    if (num.type == TOK_NUMBER) {
+                        advance(p);
+                        if (poly_count < 16) {
+                            poly_coeffs[poly_count++] = parse_double(num);
+                        } else {
+                            parser_error(p, "Too many polynomial coefficients (max 16)");
+                        }
+                    } else {
+                        consume(p, TOK_NUMBER, "Expect coefficient");
+                    }
+                    if (p->current.type == TOK_COMMA) {
+                        advance(p);
+                    } else {
+                        break;
+                    }
+                }
             } else { 
                 parser_error(p, "Unknown decorator");
                 while (p->current.type != TOK_RPAREN && p->current.type != TOK_EOF) advance(p);
@@ -716,6 +738,12 @@ void parse_field(Parser* p, const char* doc) {
         buf_push(p->target, OP_TRANS_ADD); buf_push_u64(p->target, (uint64_t)trans_int_val);
     } else if (trans_type == CND_TRANS_SUB_I64) {
         buf_push(p->target, OP_TRANS_SUB); buf_push_u64(p->target, (uint64_t)trans_int_val);
+    } else if (trans_type == CND_TRANS_POLY) {
+        buf_push(p->target, OP_TRANS_POLY);
+        buf_push(p->target, poly_count);
+        for (int i = 0; i < poly_count; i++) {
+            buf_push_u64(p->target, *(uint64_t*)&poly_coeffs[i]);
+        }
     }
 
     Token type_tok = p->current;
