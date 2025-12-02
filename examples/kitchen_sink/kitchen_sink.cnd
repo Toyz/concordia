@@ -53,6 +53,23 @@ packet KitchenSink {
     @scale(0.1)
     uint16 temperature; // Key 17 (Stored as u16, App sees float)
     
+    @add(10)
+    uint8 val_add;
+
+    @sub(5)
+    uint8 val_sub;
+
+    @mul(2)
+    uint8 val_mul;
+
+    @div(4)
+    uint8 val_div;
+
+    // PROOF: Storing 2025 in a uint8 (max 255)
+    // 2025 - 1900 = 125 (Fits in uint8!)
+    @add(1900)
+    uint8 year;
+
     // Conditional
     bool has_extra; // Key 18
     if (has_extra) {

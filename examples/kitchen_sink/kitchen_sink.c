@@ -56,8 +56,10 @@ typedef struct {
 // This allows the Schema to evolve (Hot Reload) without breaking the Firmware.
 
 cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
+    // printf("Callback: key_id=%d, type=%d\n", key_id, type);
     KitchenSink* obj = (KitchenSink*)ctx->user_ptr;
     const char* key_name = cnd_get_key_name(ctx->program, key_id); // Optional: Use name lookup for debug/robustness
+    // printf("Key Name: %s\n", key_name ? key_name : "NULL");
     
     // Helper macros
     #define ENCODE (ctx->mode == CND_MODE_ENCODE)

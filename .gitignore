@@ -34,3 +34,22 @@ gha-creds-*.json
 nob
 build_nob/
 nob_deps/
+
+# Go / CGO
+_obj/
+_test/
+_testmain.go
+test.out
+build.out
+*.cgo1.go
+*.cgo2.c
+_cgo_defun.c
+_cgo_gotypes.go
+_cgo_export.*
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+demos/go/main

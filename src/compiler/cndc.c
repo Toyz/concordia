@@ -34,10 +34,10 @@ static void optimize_strings(Parser* p) {
             (op >= OP_IO_BIT_U && op <= OP_IO_BIT_BOOL) ||
             (op >= OP_STR_NULL && op <= OP_STR_PRE_U32) ||
             (op >= OP_ARR_FIXED && op <= OP_ARR_PRE_U32) ||
-            op == OP_RAW_BYTES ||
             op == OP_CONST_CHECK ||
             op == OP_SWITCH ||
-            op == OP_LOAD_CTX) {
+            op == OP_LOAD_CTX ||
+            op == OP_CTX_QUERY) {
             
             if (offset + 2 > len) break;
             uint16_t id = *(uint16_t*)(bc + offset);
@@ -48,7 +48,6 @@ static void optimize_strings(Parser* p) {
         // Skip other arguments
         switch (op) {
             case OP_META_VERSION: offset += 1; break;
-            case OP_CTX_QUERY: offset += 1; break;
             case OP_IO_BIT_U: case OP_IO_BIT_I: case OP_IO_BIT_BOOL: offset += 1; break;
             case OP_ALIGN_PAD: case OP_ALIGN_FILL: offset += 1; break;
             case OP_ARR_FIXED: offset += 4; break; // u32 count
@@ -56,7 +55,9 @@ static void optimize_strings(Parser* p) {
             
             case OP_RAW_BYTES: {
                 if (offset + 4 > len) break;
+                uint32_t count = *(uint32_t*)(bc + offset);
                 offset += 4; // u32 count
+                offset += count; // payload
                 break;
             }
 
@@ -133,10 +134,10 @@ static void optimize_strings(Parser* p) {
             (op >= OP_IO_BIT_U && op <= OP_IO_BIT_BOOL) ||
             (op >= OP_STR_NULL && op <= OP_STR_PRE_U32) ||
             (op >= OP_ARR_FIXED && op <= OP_ARR_PRE_U32) ||
-            op == OP_RAW_BYTES ||
             op == OP_CONST_CHECK ||
             op == OP_SWITCH ||
-            op == OP_LOAD_CTX) {
+            op == OP_LOAD_CTX ||
+            op == OP_CTX_QUERY) {
             
             if (offset + 2 > len) break;
             uint16_t* id_ptr = (uint16_t*)(bc + offset);
@@ -150,14 +151,15 @@ static void optimize_strings(Parser* p) {
         // Skip other arguments (same as above)
         switch (op) {
             case OP_META_VERSION: offset += 1; break;
-            case OP_CTX_QUERY: offset += 1; break;
             case OP_IO_BIT_U: case OP_IO_BIT_I: case OP_IO_BIT_BOOL: offset += 1; break;
             case OP_ALIGN_PAD: case OP_ALIGN_FILL: offset += 1; break;
             case OP_ARR_FIXED: offset += 4; break; // u32 count
             case OP_ARR_PRE_U8: case OP_ARR_PRE_U16: case OP_ARR_PRE_U32: break; // No extra args
             case OP_RAW_BYTES: {
                 if (offset + 4 > len) break;
+                uint32_t count = *(uint32_t*)(bc + offset);
                 offset += 4; // u32 count
+                offset += count; // payload
                 break;
             }
             case OP_CONST_CHECK: {
@@ -329,6 +331,6 @@ int cnd_compile_file(const char* in_path, const char* out_path, int json_output)
         for(size_t i=0; i<p.imports.count; i++) free(p.imports.strings[i]);
         free(p.imports.strings);
     }
-
+    
     return ret;
 }
