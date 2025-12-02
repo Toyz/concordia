@@ -81,13 +81,6 @@ func (c *Context) FreePending() {
 	c.pendingStrings = c.pendingStrings[:0]
 }
 
-// OpCode represents a Concordia VM opcode
-type OpCode uint8
-
-const (
-	OpLoadCtx OpCode = 0x60
-)
-
 // Value wraps the unsafe pointer passed to the callback
 type Value struct {
 	ptr unsafe.Pointer
