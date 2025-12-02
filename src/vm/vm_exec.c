@@ -86,6 +86,54 @@
                   SYNC_IP(); \
                   if (ctx->io_callback(ctx, key, OP_IO_F64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
               } \
+          } else if (ctx->trans_type == CND_TRANS_SPLINE) { \
+              double eng_val = 0; \
+              if (ctx->mode == CND_MODE_ENCODE) { \
+                  SYNC_IP(); \
+                  if (ctx->io_callback(ctx, key, OP_IO_F64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
+                  double x = 0; \
+                  /* Reverse Spline: Find x given y (eng_val) */ \
+                  if (ctx->trans_spline_count >= 2) { \
+                      for (int i = 0; i < ctx->trans_spline_count - 1; i++) { \
+                          double x0, y0, x1, y1; \
+                          uint64_t tmp; \
+                          memcpy(&tmp, ctx->trans_spline_data + (i * 2) * 8, 8); memcpy(&x0, &tmp, 8); \
+                          memcpy(&tmp, ctx->trans_spline_data + (i * 2 + 1) * 8, 8); memcpy(&y0, &tmp, 8); \
+                          memcpy(&tmp, ctx->trans_spline_data + ((i + 1) * 2) * 8, 8); memcpy(&x1, &tmp, 8); \
+                          memcpy(&tmp, ctx->trans_spline_data + ((i + 1) * 2 + 1) * 8, 8); memcpy(&y1, &tmp, 8); \
+                          if ((eng_val >= y0 && eng_val <= y1) || (eng_val <= y0 && eng_val >= y1)) { \
+                              if (y1 == y0) x = x0; \
+                              else x = x0 + (eng_val - y0) * (x1 - x0) / (y1 - y0); \
+                              break; \
+                          } \
+                      } \
+                  } \
+                  ctype val = (ctype)x; \
+                  WRITE_EXPR; \
+              } else { \
+                  ctype raw = (READ_EXPR); \
+                  double x = (double)raw; \
+                  double y = 0; \
+                  /* Forward Spline: Find y given x (raw) */ \
+                  if (ctx->trans_spline_count >= 2) { \
+                      for (int i = 0; i < ctx->trans_spline_count - 1; i++) { \
+                          double x0, y0, x1, y1; \
+                          uint64_t tmp; \
+                          memcpy(&tmp, ctx->trans_spline_data + (i * 2) * 8, 8); memcpy(&x0, &tmp, 8); \
+                          memcpy(&tmp, ctx->trans_spline_data + (i * 2 + 1) * 8, 8); memcpy(&y0, &tmp, 8); \
+                          memcpy(&tmp, ctx->trans_spline_data + ((i + 1) * 2) * 8, 8); memcpy(&x1, &tmp, 8); \
+                          memcpy(&tmp, ctx->trans_spline_data + ((i + 1) * 2 + 1) * 8, 8); memcpy(&y1, &tmp, 8); \
+                          if ((x >= x0 && x <= x1) || (i == ctx->trans_spline_count - 2)) { \
+                              if (x1 == x0) y = y0; \
+                              else y = y0 + (x - x0) * (y1 - y0) / (x1 - x0); \
+                              break; \
+                          } \
+                      } \
+                  } \
+                  eng_val = y; \
+                  SYNC_IP(); \
+                  if (ctx->io_callback(ctx, key, OP_IO_F64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
+              } \
           } else { \
               int64_t eng_val = 0; \
               if (ctx->mode == CND_MODE_ENCODE) { \
@@ -768,6 +816,16 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 ctx->trans_poly_count = count;
                 ctx->trans_poly_data = pc;
                 pc += (count * 8);
+                if (pc > end) return CND_ERR_OOB;
+                break;
+            }
+
+            case OP_TRANS_SPLINE: {
+                uint8_t count = FETCH_IL_U8(ctx);
+                ctx->trans_type = CND_TRANS_SPLINE;
+                ctx->trans_spline_count = count;
+                ctx->trans_spline_data = pc;
+                pc += (count * 2 * 8); // 2 doubles per point
                 if (pc > end) return CND_ERR_OOB;
                 break;
             }

@@ -606,6 +606,9 @@ void parse_field(Parser* p, const char* doc) {
     double poly_coeffs[16];
     uint8_t poly_count = 0;
     
+    double spline_points[32]; // x0, y0, x1, y1...
+    uint8_t spline_count = 0; // Number of points (pairs)
+
     // CRC State
     int has_crc = 0;
     uint32_t crc_width = 0;
@@ -712,6 +715,31 @@ void parse_field(Parser* p, const char* doc) {
                         break;
                     }
                 }
+            } else if (match_keyword(dec_name_token, "spline")) {
+                trans_type = CND_TRANS_SPLINE;
+                while (true) {
+                    Token num = p->current;
+                    if (num.type == TOK_NUMBER) {
+                        advance(p);
+                        if (spline_count < 16) { // 16 pairs = 32 doubles
+                            spline_points[spline_count * 2] = parse_double(num);
+                            consume(p, TOK_COMMA, "Expect comma between x and y");
+                            Token y_tok = p->current;
+                            consume(p, TOK_NUMBER, "Expect y value");
+                            spline_points[spline_count * 2 + 1] = parse_double(y_tok);
+                            spline_count++;
+                        } else {
+                            parser_error(p, "Too many spline points (max 16)");
+                        }
+                    } else {
+                        consume(p, TOK_NUMBER, "Expect x value");
+                    }
+                    if (p->current.type == TOK_COMMA) {
+                        advance(p);
+                    } else {
+                        break;
+                    }
+                }
             } else { 
                 parser_error(p, "Unknown decorator");
                 while (p->current.type != TOK_RPAREN && p->current.type != TOK_EOF) advance(p);
@@ -743,6 +771,12 @@ void parse_field(Parser* p, const char* doc) {
         buf_push(p->target, poly_count);
         for (int i = 0; i < poly_count; i++) {
             buf_push_u64(p->target, *(uint64_t*)&poly_coeffs[i]);
+        }
+    } else if (trans_type == CND_TRANS_SPLINE) {
+        buf_push(p->target, OP_TRANS_SPLINE);
+        buf_push(p->target, spline_count);
+        for (int i = 0; i < spline_count * 2; i++) {
+            buf_push_u64(p->target, *(uint64_t*)&spline_points[i]);
         }
     }
 

@@ -72,6 +72,9 @@ packet KitchenSink {
 
     @poly(5.0, 2.0, 0.5)
     uint8 poly_val; // Key 25
+
+    @spline(0.0, 0.0, 10.0, 100.0, 20.0, 400.0)
+    uint8 spline_val;
     
     bool has_extra; // Key 26
     if (has_extra) {

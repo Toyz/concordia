@@ -91,6 +91,18 @@ static void optimize_strings(Parser* p) {
             case OP_CRC_32: offset += 13; break; // poly(4), init(4), xor(4), flags(1)
             case OP_SCALE_LIN: offset += 16; break; // double, double
             case OP_TRANS_ADD: case OP_TRANS_SUB: case OP_TRANS_MUL: case OP_TRANS_DIV: offset += 8; break; // double
+            case OP_TRANS_POLY: {
+                if (offset + 1 > len) break;
+                uint8_t count = bc[offset++];
+                offset += count * 8;
+                break;
+            }
+            case OP_TRANS_SPLINE: {
+                if (offset + 1 > len) break;
+                uint8_t count = bc[offset++];
+                offset += count * 16; // 2 doubles per point
+                break;
+            }
             
             case OP_JUMP_IF_NOT: case OP_JUMP: offset += 4; break;
             case OP_SWITCH: {

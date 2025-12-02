@@ -67,6 +67,7 @@ extern "C" {
 #define OP_MARK_OPTIONAL    0x4A
 #define OP_ENUM_CHECK       0x4B
 #define OP_TRANS_POLY       0x4C
+#define OP_TRANS_SPLINE     0x4D
 
 // Category F: Control Flow
 #define OP_JUMP_IF_NOT      0x50
@@ -128,7 +129,8 @@ typedef enum {
     CND_TRANS_SUB_I64,
     CND_TRANS_MUL_I64,
     CND_TRANS_DIV_I64,
-    CND_TRANS_POLY
+    CND_TRANS_POLY,
+    CND_TRANS_SPLINE
 } cnd_trans_t;
 
 #define CND_MAX_LOOP_DEPTH 8
@@ -185,6 +187,10 @@ typedef struct cnd_vm_ctx_t {
     // Polynomial State
     const uint8_t* trans_poly_data; // Pointer to doubles in bytecode
     uint8_t trans_poly_count;
+
+    // Spline State
+    const uint8_t* trans_spline_data; // Pointer to (double, double) pairs in bytecode
+    uint8_t trans_spline_count;
 
     bool is_next_optional;      // If true, OOB reads return 0 instead of error
 

@@ -51,7 +51,8 @@ type KitchenSink struct {
 
 	Year uint16 // Proof: 2025 fits in uint8 via @add(1900)
 
-	PolyVal float64
+	PolyVal   float64
+	SplineVal float64
 
 	HasExtra  bool
 	ExtraData string
@@ -113,6 +114,7 @@ func main() {
 		ValDiv:        20,
 		Year:          2025, // Requires 2 bytes normally, but fits in 1 byte here!
 		PolyVal:       75.0, // Raw 10 -> 5 + 20 + 50 = 75
+		SplineVal:     50.0, // Raw 5 -> 50.0
 		HasExtra:      true,
 		ExtraData:     "Some extra payload",
 		Checksum:      0,
@@ -198,6 +200,8 @@ func main() {
 			val.SetUint16(data.Year)
 		case "poly_val":
 			val.SetFloat64(data.PolyVal)
+		case "spline_val":
+			val.SetFloat64(data.SplineVal)
 		case "has_extra":
 			val.SetBool(data.HasExtra)
 		case "extra_data":
@@ -313,6 +317,8 @@ func main() {
 			decoded.Year = val.Uint16()
 		case "poly_val":
 			decoded.PolyVal = val.Float64()
+		case "spline_val":
+			decoded.SplineVal = val.Float64()
 		case "has_extra":
 			if isQuery {
 				val.SetBool(decoded.HasExtra)

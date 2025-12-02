@@ -4,7 +4,7 @@ package concordia
 
 /*
 #cgo CFLAGS: -I../include
-#include "concordia.h"
+#include "../include/concordia.h"
 */
 import "C"
 
@@ -65,4 +65,19 @@ const (
     OpArrPreU32 = C.OP_ARR_PRE_U32
     OpArrEnd = C.OP_ARR_END
     OpRawBytes = C.OP_RAW_BYTES
+
+    OpConstCheck = C.OP_CONST_CHECK
+    OpConstWrite = C.OP_CONST_WRITE
+    OpRangeCheck = C.OP_RANGE_CHECK
+    OpScaleLin = C.OP_SCALE_LIN
+    OpCrc16 = C.OP_CRC_16
+    OpTransAdd = C.OP_TRANS_ADD
+    OpTransSub = C.OP_TRANS_SUB
+    OpTransMul = C.OP_TRANS_MUL
+    OpTransDiv = C.OP_TRANS_DIV
+    OpCrc32 = C.OP_CRC_32
+    OpMarkOptional = C.OP_MARK_OPTIONAL
+    OpEnumCheck = C.OP_ENUM_CHECK
+    OpTransPoly = C.OP_TRANS_POLY
+    OpTransSpline = C.OP_TRANS_SPLINE
 )

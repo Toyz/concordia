@@ -76,6 +76,8 @@ static const char* get_opcode_name(uint8_t op) {
         case OP_TRANS_SUB: return "TRANS_SUB";
         case OP_TRANS_MUL: return "TRANS_MUL";
         case OP_TRANS_DIV: return "TRANS_DIV";
+        case OP_TRANS_POLY: return "TRANS_POLY";
+        case OP_TRANS_SPLINE: return "TRANS_SPLINE";
         case OP_CRC_32: return "CRC_32";
         case OP_MARK_OPTIONAL: return "MARK_OPTIONAL";
         case OP_ENUM_CHECK: return "ENUM_CHECK";
@@ -294,6 +296,34 @@ int cmd_inspect(int argc, char** argv) {
                 case OP_TRANS_DIV:
                     printf(" Val=%lld", (int64_t)read_u64(&ptr, end));
                     break;
+
+                case OP_TRANS_POLY: {
+                    uint8_t count = read_u8(&ptr, end);
+                    printf(" Count=%d Coeffs=[", count);
+                    for (int i = 0; i < count; i++) {
+                        uint64_t tmp = read_u64(&ptr, end);
+                        double val;
+                        memcpy(&val, &tmp, 8);
+                        printf("%f%s", val, i == count - 1 ? "" : ", ");
+                    }
+                    printf("]");
+                    break;
+                }
+
+                case OP_TRANS_SPLINE: {
+                    uint8_t count = read_u8(&ptr, end);
+                    printf(" Count=%d Points=[", count);
+                    for (int i = 0; i < count; i++) {
+                        uint64_t tmp_x = read_u64(&ptr, end);
+                        uint64_t tmp_y = read_u64(&ptr, end);
+                        double x, y;
+                        memcpy(&x, &tmp_x, 8);
+                        memcpy(&y, &tmp_y, 8);
+                        printf("(%f, %f)%s", x, y, i == count - 1 ? "" : ", ");
+                    }
+                    printf("]");
+                    break;
+                }
 
                 case OP_CRC_16:
                     printf(" Poly=0x%04X Init=0x%04X Xor=0x%04X Flags=%d", 

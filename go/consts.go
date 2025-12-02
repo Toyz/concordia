@@ -60,4 +60,19 @@ const (
 	OpArrPreU32	= 0x37
 	OpArrEnd	= 0x38
 	OpRawBytes	= 0x39
+
+	OpConstCheck	= 0x40
+	OpConstWrite	= 0x41
+	OpRangeCheck	= 0x42
+	OpScaleLin	= 0x43
+	OpCrc16		= 0x44
+	OpTransAdd	= 0x45
+	OpTransSub	= 0x46
+	OpTransMul	= 0x47
+	OpTransDiv	= 0x48
+	OpCrc32		= 0x49
+	OpMarkOptional	= 0x4a
+	OpEnumCheck	= 0x4b
+	OpTransPoly	= 0x4c
+	OpTransSpline	= 0x4d
 )

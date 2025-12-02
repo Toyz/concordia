@@ -12,15 +12,22 @@ This folder demonstrates how to use the Concordia VM from Go using `cgo`.
 
 The `main.go` file uses `cgo` to include the Concordia C headers and source files directly. This allows it to statically link the VM without needing a separate library build step for this demo.
 
-It defines a Go struct `TelemetryData` and a callback function `go_io_callback` that maps the VM's requests to the Go struct fields.
+It defines a Go struct `KitchenSink` and a callback function that maps the VM's requests to the Go struct fields.
 
 ## Usage
 
 1.  **Compile the Schema**:
-    You need the `telemetry.il` file. You can compile the one from the parent directory.
+    You need the `kitchen_sink.il` file. You can compile the one from the `examples/kitchen_sink` directory.
 
     ```bash
-    ../../build/Debug/cnd.exe compile ../telemetry.cnd ../telemetry.il
+    # From repo root
+    ./build/src/cli/cnd compile examples/kitchen_sink/kitchen_sink.cnd kitchen_sink.il
+    ```
+
+2.  **Run the Demo**:
+    ```bash
+    cd demos/go
+    go run main.go ../../kitchen_sink.il
     ```
 
 2.  **Run the Demo**:

@@ -953,3 +953,42 @@ TEST_F(ConcordiaTest, PolynomialRTT) {
     
     EXPECT_DOUBLE_EQ(g_test_data[0].f64_val, 45.0);
 }
+
+TEST_F(ConcordiaTest, SplineTransform) {
+    // Test @spline(0, 0, 10, 100, 20, 400)
+    // Segment 1: (0,0) to (10,100) -> y = 10x
+    // Segment 2: (10,100) to (20,400) -> y = 100 + 30(x-10) = 30x - 200
+    CompileAndLoad("packet Spline { @spline(0.0, 0.0, 10.0, 100.0, 20.0, 400.0) uint8 val; }");
+    
+    uint8_t buffer[1];
+    
+    // DECODE Test 1: Raw 5 (Segment 1) -> Eng 50
+    buffer[0] = 5;
+    clear_test_data();
+    cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    EXPECT_EQ(cnd_execute(&ctx), CND_ERR_OK);
+    EXPECT_DOUBLE_EQ(g_test_data[0].f64_val, 50.0);
+    
+    // DECODE Test 2: Raw 15 (Segment 2) -> Eng 250
+    buffer[0] = 15;
+    clear_test_data();
+    cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    EXPECT_EQ(cnd_execute(&ctx), CND_ERR_OK);
+    EXPECT_DOUBLE_EQ(g_test_data[0].f64_val, 250.0);
+    
+    // ENCODE Test 1: Eng 50 -> Raw 5
+    clear_test_data();
+    g_test_data[0] = {0, 0, 50.0, ""};
+    buffer[0] = 0;
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    EXPECT_EQ(cnd_execute(&ctx), CND_ERR_OK);
+    EXPECT_EQ(buffer[0], 5);
+    
+    // ENCODE Test 2: Eng 250 -> Raw 15
+    clear_test_data();
+    g_test_data[0] = {0, 0, 250.0, ""};
+    buffer[0] = 0;
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    EXPECT_EQ(cnd_execute(&ctx), CND_ERR_OK);
+    EXPECT_EQ(buffer[0], 15);
+}

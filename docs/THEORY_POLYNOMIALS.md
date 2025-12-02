@@ -22,7 +22,7 @@ uint16 sensor_val;
 ### Implementation
 *   **IL**: `[OP_TRANS_POLY] [Count: u8] [Coeffs: double...]` (Inline coefficients).
 *   **Runtime**: Evaluate polynomial using Horner's method.
-*   **Reverse (Encode)**: Not supported (returns Validation Error).
+*   **Reverse (Encode)**: Supported via Newton-Raphson approximation. The VM iteratively solves for $x$ given $y$.
 
 ---
 
@@ -43,7 +43,7 @@ uint8 temp_sensor;
 ```
 
 ### Implementation
-*   **IL**: `[OP_TRANS_SPLINE] [ConstID: u16]` pointing to a table of `(double, double)` pairs.
+*   **IL**: `[OP_TRANS_SPLINE] [Count: u8] [Points: double...]` (Inline points).
 *   **Runtime**:
     1.  Binary search to find the segment $[x_i, x_{i+1}]$ containing the raw value.
     2.  Linear interpolation: $y = y_i + (val - x_i) \frac{y_{i+1} - y_i}{x_{i+1} - x_i}$
@@ -76,11 +76,14 @@ uint16 complex_val;
 
 | Feature | Priority | Difficulty | Encode Support? |
 | :--- | :--- | :--- | :--- |
-| **Polynomial** | High | Medium | Hard (Roots) |
-| **Spline** | High | Medium | Yes (if monotonic) |
+| **Polynomial** | High | Medium | Yes (Newton-Raphson) |
+| **Spline** | High | Medium | Yes (Monotonic) |
 | **Math** | Low | High | No |
 
 ### Action Items
-1.  [x] Implement `OP_TRANS_POLY` (Forward).
-2.  [ ] Implement `OP_TRANS_SPLINE` (Forward & Reverse).
+1.  [x] Implement `OP_TRANS_POLY` (Forward & Reverse).
+2.  [x] Implement `OP_TRANS_SPLINE` (Forward & Reverse).
+3.  [ ] Design `@expr` syntax and RPN bytecode.
+4.  [ ] Implement Shunting-yard algorithm in Compiler.
+5.  [ ] Implement RPN Evaluator in VM.
 
