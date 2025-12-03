@@ -18,7 +18,11 @@ target_include_directories(concordia PUBLIC
 
 # Compiler definitions
 if(MSVC)
-  target_compile_definitions(concordia PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_definitions(concordia PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
+
+if(NOT WIN32)
+    target_link_libraries(concordia PRIVATE m)
 endif()
 
 # Installation rules for the VM library

@@ -1,6 +1,9 @@
 #include "vm_internal.h"
 #include <string.h>
-#include <stdio.h> // For debug prints
+
+#ifndef CND_NO_MATH
+#include <math.h>
+#endif
 
 // --- Instruction Fetch Macros ---
 // Can be overridden in cnd_execute for optimization
@@ -611,8 +614,6 @@ static inline cnd_error_t stack_pop(cnd_vm_ctx* ctx, uint64_t* val) {
 #define UNARY_OP(OP) \
     uint64_t a; if (stack_pop(ctx, &a) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW; \
     if (stack_push(ctx, OP a) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
-
-#include <math.h>
 
 // Helper for float binary operations
 #define BINARY_OP_F(OP) \
@@ -1360,6 +1361,7 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             case OP_FNEG: { UNARY_OP_F(-); break; }
 
             // Math Functions
+#ifndef CND_NO_MATH
             case OP_SIN:  { UNARY_OP_F(sin); break; }
             case OP_COS:  { UNARY_OP_F(cos); break; }
             case OP_TAN:  { UNARY_OP_F(tan); break; }
@@ -1375,6 +1377,7 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 if (stack_push(ctx, res_bits) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
                 break;
             }
+#endif
 
             // Conversion
             case OP_ITOF: {

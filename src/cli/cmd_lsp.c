@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <inttypes.h>
 #include <cJSON.h>
 #include "../compiler/cnd_internal.h"
 #include "cli_helpers.h"
@@ -330,7 +331,7 @@ static void analyze_source(const char* source, const char* file_path, int line, 
                 buf_append(&tb, (uint8_t*)tmp, strlen(tmp));
                 
                 for(size_t i=0; i<edef->count; i++) {
-                    snprintf(tmp, sizeof(tmp), "- `%s` = `%lld`\n", edef->values[i].name, edef->values[i].value);
+                    snprintf(tmp, sizeof(tmp), "- `%s` = `%" PRId64 "`\n", edef->values[i].name, edef->values[i].value);
                     buf_append(&tb, (uint8_t*)tmp, strlen(tmp));
                 }
                 buf_push(&tb, 0);

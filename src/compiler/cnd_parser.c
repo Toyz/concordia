@@ -1292,7 +1292,7 @@ void parse_struct(Parser* p, const char* doc) {
 
     if (p->in_bit_mode && !was_in_bit_mode) {
         if (p->is_bit_count_valid && (p->current_bit_count % 8 != 0)) {
-            char msg[128];
+            char msg[256];
             // Use a simpler name for error message
             char struct_name[64];
             int len = p->current_struct_name_len < 63 ? p->current_struct_name_len : 63;

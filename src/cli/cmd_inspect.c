@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include "concordia.h"
 
 // Helper to read bytes from memory safely
@@ -262,7 +263,7 @@ int cmd_inspect(int argc, char** argv) {
                     if (type == OP_IO_U8) printf("%u", read_u8(&ptr, end));
                     else if (type == OP_IO_U16) printf("%u", read_u16(&ptr, end));
                     else if (type == OP_IO_U32) printf("%u", read_u32(&ptr, end));
-                    else if (type == OP_IO_U64) printf("%llu", read_u64(&ptr, end));
+                    else if (type == OP_IO_U64) printf("%" PRIu64, read_u64(&ptr, end));
                     break;
                 }
 
@@ -273,7 +274,7 @@ int cmd_inspect(int argc, char** argv) {
                     if (type == OP_IO_U8 || type == OP_IO_I8) printf("%u", read_u8(&ptr, end));
                     else if (type == OP_IO_U16 || type == OP_IO_I16) printf("%u", read_u16(&ptr, end));
                     else if (type == OP_IO_U32 || type == OP_IO_I32) printf("%u", read_u32(&ptr, end));
-                    else if (type == OP_IO_U64 || type == OP_IO_I64) printf("%llu", read_u64(&ptr, end));
+                    else if (type == OP_IO_U64 || type == OP_IO_I64) printf("%" PRIu64, read_u64(&ptr, end));
                     break;
                 }
 
@@ -286,8 +287,8 @@ int cmd_inspect(int argc, char** argv) {
                     else if (type == OP_IO_I16) { printf("%d, %d]", (int16_t)read_u16(&ptr, end), (int16_t)read_u16(&ptr, end)); }
                     else if (type == OP_IO_U32) { printf("%u, %u]", read_u32(&ptr, end), read_u32(&ptr, end)); }
                     else if (type == OP_IO_I32) { printf("%d, %d]", (int32_t)read_u32(&ptr, end), (int32_t)read_u32(&ptr, end)); }
-                    else if (type == OP_IO_U64) { printf("%llu, %llu]", read_u64(&ptr, end), read_u64(&ptr, end)); }
-                    else if (type == OP_IO_I64) { printf("%lld, %lld]", (int64_t)read_u64(&ptr, end), (int64_t)read_u64(&ptr, end)); }
+                    else if (type == OP_IO_U64) { printf("%" PRIu64 ", %" PRIu64 "]", read_u64(&ptr, end), read_u64(&ptr, end)); }
+                    else if (type == OP_IO_I64) { printf("%" PRId64 ", %" PRId64 "]", (int64_t)read_u64(&ptr, end), (int64_t)read_u64(&ptr, end)); }
                     else if (type == OP_IO_F32) { printf("F32 Range"); ptr += 8; }
                     else if (type == OP_IO_F64) { printf("F64 Range"); ptr += 16; }
                     break;
@@ -307,7 +308,7 @@ int cmd_inspect(int argc, char** argv) {
                 case OP_TRANS_SUB:
                 case OP_TRANS_MUL:
                 case OP_TRANS_DIV:
-                    printf(" Val=%lld", (int64_t)read_u64(&ptr, end));
+                    printf(" Val=%" PRId64, (int64_t)read_u64(&ptr, end));
                     break;
 
                 case OP_TRANS_POLY: {
@@ -357,11 +358,11 @@ int cmd_inspect(int argc, char** argv) {
                         if (type == OP_IO_U8) printf("%u", read_u8(&ptr, end));
                         else if (type == OP_IO_U16) printf("%u", read_u16(&ptr, end));
                         else if (type == OP_IO_U32) printf("%u", read_u32(&ptr, end));
-                        else if (type == OP_IO_U64) printf("%llu", read_u64(&ptr, end));
+                        else if (type == OP_IO_U64) printf("%" PRIu64, read_u64(&ptr, end));
                         else if (type == OP_IO_I8) printf("%d", (int8_t)read_u8(&ptr, end));
                         else if (type == OP_IO_I16) printf("%d", (int16_t)read_u16(&ptr, end));
                         else if (type == OP_IO_I32) printf("%d", (int32_t)read_u32(&ptr, end));
-                        else if (type == OP_IO_I64) printf("%lld", (int64_t)read_u64(&ptr, end));
+                        else if (type == OP_IO_I64) printf("%" PRId64, (int64_t)read_u64(&ptr, end));
                     }
                     printf("]");
                     break;
@@ -400,7 +401,7 @@ int cmd_inspect(int argc, char** argv) {
 
                 case OP_PUSH_IMM: {
                     uint64_t v = read_u64(&ptr, end);
-                    printf(" Val=%llu", v);
+                    printf(" Val=%" PRIu64, v);
                     break;
                 }
 
