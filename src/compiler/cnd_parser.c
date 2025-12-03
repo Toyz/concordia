@@ -628,29 +628,79 @@ void parse_switch(Parser* p) {
     }
     consume(p, TOK_RBRACE, "Expect }");
     
+    // Analyze cases for Jump Table optimization
+    int use_jump_table = 0;
+    uint64_t min_val = UINT64_MAX;
+    uint64_t max_val = 0;
+    
+    if (case_count > 3) { // Only optimize if enough cases
+        min_val = cases[0].val;
+        max_val = cases[0].val;
+        for(size_t i=1; i<case_count; i++) {
+            if (cases[i].val < min_val) min_val = cases[i].val;
+            if (cases[i].val > max_val) max_val = cases[i].val;
+        }
+        
+        uint64_t range = max_val - min_val;
+        // Heuristic: Range must be reasonable (e.g. < 256) and density > 50%
+        // Or just small range. Let's say range < 256 is always good.
+        if (range < 256) {
+            use_jump_table = 1;
+        }
+    }
+
     // Emit Table
     size_t table_start = buf_current_offset(p->target);
-    buf_push_u16(p->target, (uint16_t)case_count);
+    size_t table_end = 0;
     
-    // Calculate default offset
-    // Default offset is relative to code_start_loc.
-    // If no default case provided, we want to skip the whole switch block?
-    // i.e. jump to table_end?
-    // But we don't know table_end yet.
-    // If default_offset is -1, we will patch it later or calculate it if possible.
-    // Actually, we can calculate table size!
-    // Table Size = 2 (count) + 4 (def) + count * (8+4).
-    size_t table_size = 2 + 4 + case_count * 12;
-    size_t table_end = table_start + table_size;
-    
-    if (default_offset == -1) {
-        default_offset = (int32_t)(table_end - code_start_loc);
-    }
-    buf_push_u32(p->target, (uint32_t)default_offset);
-    
-    for(size_t i=0; i<case_count; i++) {
-        buf_push_u64(p->target, cases[i].val);
-        buf_push_u32(p->target, (uint32_t)cases[i].offset);
+    if (use_jump_table) {
+        // Patch Opcode
+        buf_write_u8_at(p->target, switch_instr_loc, OP_SWITCH_TABLE);
+        
+        // Table Layout: Min(8), Max(8), Default(4), [Offset(4)] * (Range+1)
+        buf_push_u64(p->target, min_val);
+        buf_push_u64(p->target, max_val);
+        
+        // We need to know table_end to calculate default_offset if it's missing
+        size_t range = (size_t)(max_val - min_val);
+        size_t table_size = 8 + 8 + 4 + (range + 1) * 4;
+        table_end = table_start + table_size;
+        
+        if (default_offset == -1) {
+            default_offset = (int32_t)(table_end - code_start_loc);
+        }
+        buf_push_u32(p->target, (uint32_t)default_offset);
+        
+        // Fill table
+        for (size_t i = 0; i <= range; i++) {
+            uint64_t current_val = min_val + i;
+            int32_t target = default_offset;
+            // Find case (linear search is fine for compile time)
+            for (size_t j = 0; j < case_count; j++) {
+                if (cases[j].val == current_val) {
+                    target = cases[j].offset;
+                    break;
+                }
+            }
+            buf_push_u32(p->target, (uint32_t)target);
+        }
+        
+    } else {
+        // Sparse Table Layout: Count(2), Default(4), [Val(8), Offset(4)] * Count
+        buf_push_u16(p->target, (uint16_t)case_count);
+        
+        size_t table_size = 2 + 4 + case_count * 12;
+        table_end = table_start + table_size;
+        
+        if (default_offset == -1) {
+            default_offset = (int32_t)(table_end - code_start_loc);
+        }
+        buf_push_u32(p->target, (uint32_t)default_offset);
+        
+        for(size_t i=0; i<case_count; i++) {
+            buf_push_u64(p->target, cases[i].val);
+            buf_push_u32(p->target, (uint32_t)cases[i].offset);
+        }
     }
     
     // Fixup Jumps to point to AFTER the table

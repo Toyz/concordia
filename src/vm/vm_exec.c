@@ -1039,11 +1039,21 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 } else {
                     size_t start = ctx->cursor;
                     size_t len = 0;
-                    while (len < max_len && ctx->cursor < ctx->data_len) {
-                        if (ctx->data_buffer[ctx->cursor] == 0x00) break;
-                        ctx->cursor++;
-                        len++;
+                    
+                    // Optimization: Use memchr to find the null terminator quickly
+                    size_t remaining = ctx->data_len - ctx->cursor;
+                    size_t search_len = (remaining < max_len) ? remaining : max_len;
+                    
+                    void* found = memchr(ctx->data_buffer + ctx->cursor, 0x00, search_len);
+                    
+                    if (found) {
+                        len = (uint8_t*)found - (ctx->data_buffer + ctx->cursor);
+                        ctx->cursor += len;
+                    } else {
+                        len = search_len;
+                        ctx->cursor += len;
                     }
+
                     if (ctx->cursor >= ctx->data_len) return CND_ERR_OOB; 
                     
                     const char* ptr = (const char*)(ctx->data_buffer + start);
@@ -1167,6 +1177,64 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 
                 // Target offset is relative to code_start_ip (original_ip)
                 ctx->ip = original_ip; // Restore just in case calculations need it, or just set new
+                
+                if (target_off < 0) {
+                     if (code_start_ip < (size_t)(-target_off)) return CND_ERR_OOB;
+                     ctx->ip = code_start_ip - (size_t)(-target_off);
+                } else {
+                     ctx->ip = code_start_ip + (size_t)target_off;
+                }
+                
+                if (ctx->ip > ctx->program->bytecode_len) return CND_ERR_OOB;
+                RELOAD_PC();
+                break;
+            }
+
+            case OP_SWITCH_TABLE: {
+                uint16_t key = FETCH_IL_U16(ctx);
+                uint32_t table_rel_offset = FETCH_IL_U32(ctx);
+                
+                SYNC_IP();
+                size_t code_start_ip = ctx->ip;
+                size_t table_start_ip = code_start_ip + table_rel_offset;
+                
+                if (table_start_ip > ctx->program->bytecode_len) return CND_ERR_OOB;
+                
+                // Jump to table
+                size_t original_ip = ctx->ip;
+                ctx->ip = table_start_ip;
+                
+                uint64_t min_val = read_il_u64(ctx);
+                uint64_t max_val = read_il_u64(ctx);
+                int32_t default_off = (int32_t)read_il_u32(ctx);
+                
+                uint64_t disc_val = 0;
+                if (ctx->io_callback(ctx, key, OP_CTX_QUERY, &disc_val) != CND_ERR_OK) return CND_ERR_CALLBACK;
+                
+                int32_t target_off = default_off;
+                
+                if (disc_val >= min_val && disc_val <= max_val) {
+                    uint64_t index = disc_val - min_val;
+                    // Offset is at table_start + 8 + 8 + 4 + index * 4
+                    // We are currently at table_start + 20
+                    // So we need to skip index * 4 bytes
+                    size_t offset_loc = ctx->ip + (size_t)(index * 4);
+                    if (offset_loc + 4 > ctx->program->bytecode_len) return CND_ERR_OOB;
+                    
+                    // Read offset directly
+                    // We can't use read_il_u32 because it advances ip.
+                    // We can use helper or just read from buffer.
+                    // But read_il_u32 handles endianness if needed? 
+                    // The bytecode is little endian usually? Or host endian?
+                    // The compiler writes in host endian? No, buf_push writes LE.
+                    // read_il_u32 reads LE.
+                    // So we need to read 4 bytes at offset_loc.
+                    const uint8_t* p = ctx->program->bytecode + offset_loc;
+                    uint32_t val = (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+                    target_off = (int32_t)val;
+                }
+                
+                ctx->ip = original_ip;
                 
                 if (target_off < 0) {
                      if (code_start_ip < (size_t)(-target_off)) return CND_ERR_OOB;

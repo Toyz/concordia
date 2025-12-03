@@ -375,6 +375,44 @@ static void BM_EnumEncode(benchmark::State& state) {
 }
 BENCHMARK(BM_EnumEncode);
 
+static void BM_EnumDecode(benchmark::State& state) {
+    std::vector<uint8_t> il_image;
+    CompileSchema(
+        "enum Status : uint8 { Ok = 0, Error = 1, Unknown = 2 }"
+        "packet P { Status s; }", 
+        il_image
+    );
+    
+    cnd_program program;
+    cnd_program_load_il(&program, il_image.data(), il_image.size());
+    
+    uint8_t buffer[16];
+    cnd_vm_ctx ctx;
+    
+    // Simple callback that just writes 1 (Error)
+    auto cb = [](cnd_vm_ctx* ctx, uint16_t key, uint8_t type, void* ptr) -> cnd_error_t {
+        if (ctx->mode == CND_MODE_ENCODE) {
+            *(uint8_t*)ptr = 1;
+        } else {
+            // Decode: read value
+            volatile uint8_t val = *(uint8_t*)ptr;
+            (void)val;
+        }
+        return CND_ERR_OK;
+    };
+    
+    // Pre-encode
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), cb, NULL);
+    cnd_execute(&ctx);
+    size_t encoded_size = ctx.cursor;
+    
+    for (auto _ : state) {
+        cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, encoded_size, cb, NULL);
+        cnd_execute(&ctx);
+    }
+}
+BENCHMARK(BM_EnumDecode);
+
 // --- String Array Benchmark ---
 
 struct StringArrayBenchContext {

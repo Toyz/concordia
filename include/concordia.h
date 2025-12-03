@@ -75,6 +75,7 @@ extern "C" {
 #define OP_JUMP_IF_NOT      0x50
 #define OP_SWITCH           0x51
 #define OP_JUMP             0x52
+#define OP_SWITCH_TABLE     0x53
 
 // Category G: Expression Stack & ALU
 #define OP_LOAD_CTX         0x60

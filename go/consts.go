@@ -14,6 +14,7 @@ const (
 	ErrCallback Error = 4
 	ErrStackOverflow Error = 5
 	ErrStackUnderflow Error = 6
+	ErrCRCMismatch Error = 7
 )
 
 const (
@@ -86,6 +87,7 @@ const (
 	OpJumpIfNot OpCode = 0x50
 	OpSwitch OpCode = 0x51
 	OpJump OpCode = 0x52
+	OpSwitchTable OpCode = 0x53
 	OpLoadCtx OpCode = 0x60
 	OpStoreCtx OpCode = 0x78
 	OpPushImm OpCode = 0x61

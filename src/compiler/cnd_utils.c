@@ -60,6 +60,11 @@ void buf_write_u32_at(Buffer* b, size_t offset, uint32_t val) {
     b->data[offset + 3] = (val >> 24) & 0xFF;
 }
 
+void buf_write_u8_at(Buffer* b, size_t offset, uint8_t val) {
+    if (offset + 1 > b->size) return;
+    b->data[offset] = val;
+}
+
 size_t buf_current_offset(Buffer* b) {
     return b->size;
 }
