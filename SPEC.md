@@ -148,6 +148,29 @@ packet SwitchPacket {
 }
 ```
 
+### Example: Computed Fields (Expressions)
+
+Concordia supports a stack-based expression engine for computed fields using the `@expr` decorator. This allows fields to be derived from other fields or constants at runtime.
+
+```concordia
+packet Telemetry {
+    uint8 voltage_a;
+    uint8 voltage_b;
+    
+    // 'total_voltage' is not transmitted on the wire.
+    // It is computed by the VM during decode.
+    @expr(voltage_a + voltage_b)
+    uint16 total_voltage;
+}
+```
+
+Supported operators include:
+- Arithmetic: `+`, `-`, `*`, `/`, `%`
+- Bitwise: `&`, `|`, `^`, `~`, `<<`, `>>`
+- Logical: `&&`, `||`, `!`
+- Comparison: `==`, `!=`, `<`, `>`, `<=`, `>=`
+- Math Functions: `sin`, `cos`, `tan`, `sqrt`, `pow`, `log`, `abs`
+
 ---
 
 ## 3. Supported Decorators
@@ -170,6 +193,7 @@ packet SwitchPacket {
 | `@sub(n)` | Integer subtraction transform. |
 | `@mul(n)` | Integer multiplication transform. |
 | `@div(n)` | Integer division transform. |
+| `@expr(expression)` | Computes field value using an expression. |
 | `@optional` | Marks a field as optional (implementation specific). |
 | `@crc(width)` | Calculates CRC over previous fields (16 or 32). |
 | `@crc_poly(val)` | Sets custom CRC polynomial. |
