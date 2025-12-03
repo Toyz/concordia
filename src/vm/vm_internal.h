@@ -94,9 +94,19 @@ static inline uint64_t read_bits(cnd_vm_ctx* ctx, uint8_t count) {
         if (ctx->cursor >= ctx->data_len) break; 
 
         uint8_t current_byte = ctx->data_buffer[ctx->cursor];
-        uint8_t bit = (current_byte >> ctx->bit_offset) & 1;
-        
-        if (bit) val |= ((uint64_t)1 << i);
+        uint8_t bit;
+
+        if (ctx->endianness == CND_BE) {
+            // BE: bit_offset 0 is MSB (7), 7 is LSB (0)
+            // Read from MSB of stream, shift into LSB of val
+            bit = (current_byte >> (7 - ctx->bit_offset)) & 1;
+            val = (val << 1) | bit;
+        } else {
+            // LE: bit_offset 0 is LSB (0)
+            // Read from LSB of stream, pack into LSB of val
+            bit = (current_byte >> ctx->bit_offset) & 1;
+            if (bit) val |= ((uint64_t)1 << i);
+        }
         
         ctx->bit_offset++;
         if (ctx->bit_offset >= 8) {
@@ -163,8 +173,19 @@ static inline void write_bits(cnd_vm_ctx* ctx, uint64_t val, uint8_t count) {
     for (uint8_t i = 0; i < count; i++) {
         if (ctx->cursor >= ctx->data_len) return; 
 
-        uint8_t bit = (val >> i) & 1;
-        uint8_t mask = 1 << ctx->bit_offset;
+        uint8_t bit;
+        uint8_t mask;
+
+        if (ctx->endianness == CND_BE) {
+            // BE: Write MSB of val first to MSB of stream
+            bit = (val >> (count - 1 - i)) & 1;
+            mask = 1 << (7 - ctx->bit_offset);
+        } else {
+            // LE: Write LSB of val first to LSB of stream
+            bit = (val >> i) & 1;
+            mask = 1 << ctx->bit_offset;
+        }
+
         uint8_t current_byte = ctx->data_buffer[ctx->cursor];
         
         if (bit) current_byte |= mask;

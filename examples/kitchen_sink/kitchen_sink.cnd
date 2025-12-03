@@ -9,6 +9,17 @@ struct Vec3 {
     float z;
 }
 
+@unaligned_bytes
+struct BitPacked {
+    uint8 a_3bits : 3;
+    uint8 b_5bits : 5; // Completes Byte 0
+    uint8 c_4bits : 4; // Start Byte 1 (4 bits used)
+
+    @fill(1);          // Skip 4 bits (fill with 1s) -> Align to Byte 2
+
+    uint8 d_aligned;   // Byte 2
+}
+
 packet KitchenSink {
     // Primitives & Endianness
     @big_endian
@@ -75,6 +86,9 @@ packet KitchenSink {
 
     @spline(0.0, 0.0, 10.0, 100.0, 20.0, 400.0)
     uint8 spline_val;
+
+    // Unaligned Struct Test
+    BitPacked bit_packed;
     
     bool has_extra; // Key 26
     if (has_extra) {

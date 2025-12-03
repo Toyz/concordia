@@ -42,6 +42,13 @@ typedef struct {
     double poly_val;
     double spline_val;
 
+    struct {
+        uint8_t a_3bits;
+        uint8_t b_5bits;
+        uint8_t c_4bits;
+        uint8_t d_aligned;
+    } bit_packed;
+
     bool has_extra;
     char extra_data[64]; // For has_extra=true
     
@@ -159,6 +166,18 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
         if (ENCODE) *(double*)ptr = obj->spline_val;
         else obj->spline_val = *(double*)ptr;
     }
+    else if (strcmp(key_name, "a_3bits") == 0) {
+        if (ENCODE) *(uint8_t*)ptr = obj->bit_packed.a_3bits; else obj->bit_packed.a_3bits = *(uint8_t*)ptr;
+    }
+    else if (strcmp(key_name, "b_5bits") == 0) {
+        if (ENCODE) *(uint8_t*)ptr = obj->bit_packed.b_5bits; else obj->bit_packed.b_5bits = *(uint8_t*)ptr;
+    }
+    else if (strcmp(key_name, "c_4bits") == 0) {
+        if (ENCODE) *(uint8_t*)ptr = obj->bit_packed.c_4bits; else obj->bit_packed.c_4bits = *(uint8_t*)ptr;
+    }
+    else if (strcmp(key_name, "d_aligned") == 0) {
+        if (ENCODE) *(uint8_t*)ptr = obj->bit_packed.d_aligned; else obj->bit_packed.d_aligned = *(uint8_t*)ptr;
+    }
     else if (strcmp(key_name, "has_extra") == 0) {
         if (ENCODE) *(uint8_t*)ptr = obj->has_extra; else obj->has_extra = *(uint8_t*)ptr;
     }
@@ -195,7 +214,7 @@ int main() {
     
     // 1. Compile
     printf("Compiling schema...\n");
-    if (cnd_compile_file("examples/kitchen_sink/kitchen_sink.cnd", "kitchen_sink.il", 0) != 0) {
+    if (cnd_compile_file("examples/kitchen_sink/kitchen_sink.cnd", "kitchen_sink.il", 0, 0) != 0) {
         printf("Compile failed\n"); return 1;
     }
     
@@ -220,6 +239,7 @@ int main() {
         .percentage = 50, .temperature = 25.5,
         .poly_val = 75.0, // 5 + 2(10) + 0.5(100) = 75.0. Raw should be 10.
         .spline_val = 50.0, // Raw 5 -> 50.0 (Segment 1)
+        .bit_packed = { .a_3bits = 7, .b_5bits = 31, .c_4bits = 15, .d_aligned = 255 },
         .has_extra = true,
         .adv_mode = 0, .adv_simple_val = 777
     };
@@ -256,6 +276,7 @@ int main() {
     printf("  Percentage: %d%%, Temp: %.2f\n", out.percentage, out.temperature);
     printf("  Poly Val: %.2f\n", out.poly_val);
     printf("  Spline Val: %.2f\n", out.spline_val);
+    printf("  BitPacked: A=%d, B=%d, C=%d, D=%d\n", out.bit_packed.a_3bits, out.bit_packed.b_5bits, out.bit_packed.c_4bits, out.bit_packed.d_aligned);
     printf("  Has Extra: %s\n", out.has_extra ? "true" : "false");
     if (out.has_extra) printf("    Extra Data: %s\n", out.extra_data);
     printf("  Adv Mode: %d\n", out.adv_mode);

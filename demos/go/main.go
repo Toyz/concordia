@@ -54,6 +54,13 @@ type KitchenSink struct {
 	PolyVal   float64
 	SplineVal float64
 
+	BitPacked struct {
+		A3bits   uint8
+		B5bits   uint8
+		C4bits   uint8
+		DAligned uint8
+	}
+
 	HasExtra  bool
 	ExtraData string
 
@@ -94,27 +101,38 @@ func main() {
 	// --- Encode Example ---
 	fmt.Println("--- Encoding ---")
 	data := &KitchenSink{
-		Magic:         0xDEADBEEF,
-		FlagsA:        1,
-		FlagB:         true,
-		ValC:          -5,
-		Timestamp:     1678886400,
-		Position:      Vec3{X: 1.0, Y: 2.0, Z: 3.0},
-		Matrix:        [4]uint8{10, 20, 30, 40},
-		Points:        []uint16{100, 200, 300},
-		Name:          "Concordia Go",
-		Status:        StatusFail,
-		ErrorCode:     404,
-		Reason:        "Not Found",
-		Percentage:    75,
-		Temperature:   36.65, // @scale(0.1) -> Should truncate to 36.6
-		ValAdd:        20,
-		ValSub:        20,
-		ValMul:        11, // @mul(2) -> 11/2 = 5 -> 5*2 = 10. Lossy!
-		ValDiv:        20,
-		Year:          2025, // Requires 2 bytes normally, but fits in 1 byte here!
-		PolyVal:       75.0, // Raw 10 -> 5 + 20 + 50 = 75
-		SplineVal:     50.0, // Raw 5 -> 50.0
+		Magic:       0xDEADBEEF,
+		FlagsA:      1,
+		FlagB:       true,
+		ValC:        -5,
+		Timestamp:   1678886400,
+		Position:    Vec3{X: 1.0, Y: 2.0, Z: 3.0},
+		Matrix:      [4]uint8{10, 20, 30, 40},
+		Points:      []uint16{100, 200, 300},
+		Name:        "Concordia Go",
+		Status:      StatusFail,
+		ErrorCode:   404,
+		Reason:      "Not Found",
+		Percentage:  75,
+		Temperature: 36.65, // @scale(0.1) -> Should truncate to 36.6
+		ValAdd:      20,
+		ValSub:      20,
+		ValMul:      11, // @mul(2) -> 11/2 = 5 -> 5*2 = 10. Lossy!
+		ValDiv:      20,
+		Year:        2025, // Requires 2 bytes normally, but fits in 1 byte here!
+		PolyVal:     75.0, // Raw 10 -> 5 + 20 + 50 = 75
+		SplineVal:   50.0, // Raw 5 -> 50.0
+		BitPacked: struct {
+			A3bits   uint8
+			B5bits   uint8
+			C4bits   uint8
+			DAligned uint8
+		}{
+			A3bits:   7,
+			B5bits:   31,
+			C4bits:   15,
+			DAligned: 255,
+		},
 		HasExtra:      true,
 		ExtraData:     "Some extra payload",
 		Checksum:      0,
@@ -202,6 +220,14 @@ func main() {
 			val.SetFloat64(data.PolyVal)
 		case "spline_val":
 			val.SetFloat64(data.SplineVal)
+		case "a_3bits":
+			val.SetUint8(data.BitPacked.A3bits)
+		case "b_5bits":
+			val.SetUint8(data.BitPacked.B5bits)
+		case "c_4bits":
+			val.SetUint8(data.BitPacked.C4bits)
+		case "d_aligned":
+			val.SetUint8(data.BitPacked.DAligned)
 		case "has_extra":
 			val.SetBool(data.HasExtra)
 		case "extra_data":
@@ -319,6 +345,14 @@ func main() {
 			decoded.PolyVal = val.Float64()
 		case "spline_val":
 			decoded.SplineVal = val.Float64()
+		case "a_3bits":
+			decoded.BitPacked.A3bits = val.Uint8()
+		case "b_5bits":
+			decoded.BitPacked.B5bits = val.Uint8()
+		case "c_4bits":
+			decoded.BitPacked.C4bits = val.Uint8()
+		case "d_aligned":
+			decoded.BitPacked.DAligned = val.Uint8()
 		case "has_extra":
 			if isQuery {
 				val.SetBool(decoded.HasExtra)

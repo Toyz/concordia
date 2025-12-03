@@ -2,12 +2,6 @@
 
 static char* append_doc(char* current, Token t);
 
-// ANSI Color Codes
-#define COLOR_RESET   "\033[0m"
-#define COLOR_RED     "\033[31m"
-#define COLOR_BOLD    "\033[1m"
-#define COLOR_CYAN    "\033[36m"
-
 void parser_error(Parser* p, const char* msg) {
     p->had_error = 1;
     p->error_count++;
@@ -410,6 +404,7 @@ void parse_switch(Parser* p) {
     consume(p, TOK_LPAREN, "Expect ( after switch");
     Token field_tok = p->current;
     consume(p, TOK_IDENTIFIER, "Expect discriminator field name");
+    if (p->verbose) printf("  [Switch] Discriminator: '%.*s'\n", field_tok.length, field_tok.start);
     uint16_t key_id = strtab_add(&p->strtab, field_tok.start, field_tok.length);
     consume(p, TOK_RPAREN, "Expect )");
     consume(p, TOK_LBRACE, "Expect {");
@@ -593,6 +588,7 @@ void parse_field(Parser* p, const char* doc) {
     uint64_t const_val = 0;
     int has_const = 0;
     int is_big_endian_field = 0;
+    int is_standalone_op = 0;
     
     int has_range = 0;
     Token range_min_tok = {0};
@@ -624,6 +620,7 @@ void parse_field(Parser* p, const char* doc) {
     while (p->current.type == TOK_AT) {
         advance(p); // Consume the '@'
         Token dec_name_token = p->current; // Save token of decorator name
+        if (p->verbose) printf("    [Decorator] @%.*s\n", dec_name_token.length, dec_name_token.start);
         consume(p, TOK_IDENTIFIER, "Expect decorator name");
         
         if (match_keyword(dec_name_token, "big_endian") || match_keyword(dec_name_token, "be")) {
@@ -631,6 +628,7 @@ void parse_field(Parser* p, const char* doc) {
         } else if (match_keyword(dec_name_token, "little_endian") || match_keyword(dec_name_token, "le")) {
              is_big_endian_field = 0;
         } else if (match_keyword(dec_name_token, "fill")) {
+            is_standalone_op = 1;
             uint8_t fill_val = 0;
             if (p->current.type == TOK_LPAREN) {
                 advance(p);
@@ -644,6 +642,11 @@ void parse_field(Parser* p, const char* doc) {
             }
             buf_push(p->target, OP_ALIGN_FILL);
             buf_push(p->target, fill_val);
+            
+            // Reset bit count on fill (aligns to byte)
+            if (p->in_bit_mode && p->is_bit_count_valid) {
+                p->current_bit_count = 0;
+            }
         } else if (match_keyword(dec_name_token, "crc_refin")) {
             crc_flags |= 1;
         } else if (match_keyword(dec_name_token, "crc_refout")) {
@@ -659,8 +662,12 @@ void parse_field(Parser* p, const char* doc) {
                 Token num = p->current; consume(p, TOK_NUMBER, "Expect const/match value");
                 const_val = (uint64_t)parse_int64(num); has_const = 1;
             } else if (match_keyword(dec_name_token, "pad")) {
+                is_standalone_op = 1;
                 Token num = p->current; consume(p, TOK_NUMBER, "Expect pad bits");
                 uint32_t pad_bits = parse_number(num); buf_push(p->target, OP_ALIGN_PAD); buf_push(p->target, (uint8_t)pad_bits);
+                if (p->in_bit_mode && p->is_bit_count_valid) {
+                    p->current_bit_count += pad_bits;
+                }
             } else if (match_keyword(dec_name_token, "range")) {
                 range_min_tok = p->current; if (range_min_tok.type == TOK_NUMBER) advance(p); else consume(p, TOK_NUMBER, "Expect min");
                 consume(p, TOK_COMMA, "Expect ,");
@@ -748,6 +755,11 @@ void parse_field(Parser* p, const char* doc) {
         }
     } 
 
+    if (is_standalone_op && (p->current.type == TOK_SEMICOLON || p->current.type == TOK_RBRACE)) {
+        if (p->current.type == TOK_SEMICOLON) advance(p);
+        return;
+    }
+    
     // Emit CRC
     if (has_crc) {
         // Do nothing here, wait until type is parsed
@@ -808,6 +820,16 @@ void parse_field(Parser* p, const char* doc) {
             array_fixed_count = parse_number(num); has_fixed_array_count = 1;
             consume(p, TOK_RBRACKET, "Expect ]");
         }
+    }
+    
+    if (p->verbose) {
+        printf("  [Field] Name: '%.*s', Type: '%.*s'", name_tok.length, name_tok.start, type_tok.length, type_tok.start);
+        if (bit_width > 0) printf(", Bits: %d", bit_width);
+        if (is_array_field) {
+            if (has_fixed_array_count) printf(", Array[%d]", array_fixed_count);
+            else printf(", Array[]");
+        }
+        printf("\n");
     }
     
     if (match_keyword(p->current, "prefix")) {
@@ -959,6 +981,19 @@ void parse_field(Parser* p, const char* doc) {
             }
         } else {
             uint8_t op = OP_NOOP;
+            
+            if (p->in_bit_mode && bit_width == 0) {
+                 if (match_keyword(type_tok, "uint8") || match_keyword(type_tok, "byte") || match_keyword(type_tok, "u8") ||
+                     match_keyword(type_tok, "int8") || match_keyword(type_tok, "i8")) bit_width = 8;
+                 else if (match_keyword(type_tok, "uint16") || match_keyword(type_tok, "u16") ||
+                          match_keyword(type_tok, "int16") || match_keyword(type_tok, "i16")) bit_width = 16;
+                 else if (match_keyword(type_tok, "uint32") || match_keyword(type_tok, "u32") ||
+                          match_keyword(type_tok, "int32") || match_keyword(type_tok, "i32")) bit_width = 32;
+                 else if (match_keyword(type_tok, "uint64") || match_keyword(type_tok, "u64") ||
+                          match_keyword(type_tok, "int64") || match_keyword(type_tok, "i64")) bit_width = 64;
+                 else if (match_keyword(type_tok, "bool")) bit_width = 1;
+            }
+
             if (bit_width > 0) {
                  if (match_keyword(type_tok, "uint8") || match_keyword(type_tok, "byte") || match_keyword(type_tok, "u8") ||
                      match_keyword(type_tok, "uint16") || match_keyword(type_tok, "u16") ||
@@ -978,7 +1013,16 @@ void parse_field(Parser* p, const char* doc) {
                  else { parser_error(p, "Bitfields only supported for integer/bool types"); return; }
                  
                  buf_push(p->target, op); buf_push_u16(p->target, key_id); buf_push(p->target, bit_width);
+                 
+                 if (p->in_bit_mode && p->is_bit_count_valid) {
+                     p->current_bit_count += bit_width;
+                 }
             } else {
+                if (p->in_bit_mode) {
+                    parser_error(p, "Only integer and bool types allowed in unaligned_bytes struct");
+                    return;
+                }
+
                 if (match_keyword(type_tok, "uint8") || match_keyword(type_tok, "byte") || match_keyword(type_tok, "u8")) op = OP_IO_U8;
                 else if (match_keyword(type_tok, "uint16") || match_keyword(type_tok, "u16")) op = OP_IO_U16;
                 else if (match_keyword(type_tok, "uint32") || match_keyword(type_tok, "u32")) op = OP_IO_U32;
@@ -1041,6 +1085,7 @@ void parse_block(Parser* p) {
 
 void parse_enum(Parser* p, const char* doc) {
     Token name = p->current; consume(p, TOK_IDENTIFIER, "Expect enum name");
+    if (p->verbose) printf("[VERBOSE] Parsing enum '%.*s'\n", name.length, name.start);
     EnumDef* def = enum_reg_add(&p->enums, name.start, name.length, name.line, p->current_path, doc);
     
     // Optional underlying type: enum MyEnum : uint8 { ... }
@@ -1107,6 +1152,7 @@ void parse_enum(Parser* p, const char* doc) {
 
 void parse_struct(Parser* p, const char* doc) {
     Token name = p->current; consume(p, TOK_IDENTIFIER, "Expect struct name");
+    if (p->verbose) printf("[VERBOSE] Parsing struct '%.*s'\n", name.length, name.start);
     StructDef* def = reg_add(&p->registry, name.start, name.length, name.line, p->current_path, doc);
     
     const char* prev_name = p->current_struct_name;
@@ -1115,7 +1161,42 @@ void parse_struct(Parser* p, const char* doc) {
     p->current_struct_name_len = name.length;
 
     Buffer* prev = p->target; p->target = &def->bytecode;
+
+    int was_in_bit_mode = p->in_bit_mode;
+    int prev_bit_count = p->current_bit_count;
+    int prev_bit_valid = p->is_bit_count_valid;
+
+    if (p->pending_unaligned) {
+        buf_push(p->target, OP_ENTER_BIT_MODE);
+        buf_push(p->target, OP_SET_ENDIAN_BE);
+        p->in_bit_mode = 1;
+        p->pending_unaligned = 0;
+        p->current_bit_count = 0;
+        p->is_bit_count_valid = 1;
+    }
+
     parse_block(p);
+
+    if (p->in_bit_mode && !was_in_bit_mode) {
+        if (p->is_bit_count_valid && (p->current_bit_count % 8 != 0)) {
+            char msg[128];
+            // Use a simpler name for error message
+            char struct_name[64];
+            int len = p->current_struct_name_len < 63 ? p->current_struct_name_len : 63;
+            memcpy(struct_name, p->current_struct_name, len);
+            struct_name[len] = '\0';
+            
+            snprintf(msg, sizeof(msg), "Unaligned struct '%s' must end on byte boundary (current bits: %d). Use @fill.", 
+                     struct_name, p->current_bit_count);
+            parser_error(p, msg);
+        }
+        buf_push(p->target, OP_EXIT_BIT_MODE);
+        p->in_bit_mode = 0;
+    }
+    p->in_bit_mode = was_in_bit_mode;
+    p->current_bit_count = prev_bit_count;
+    p->is_bit_count_valid = prev_bit_valid;
+
     p->target = prev;
 
     p->current_struct_name = prev_name;
@@ -1126,6 +1207,7 @@ void parse_packet(Parser* p, const char* doc) {
     (void)doc;
     // TODO: Store doc comment for packet?
     Token name = p->current; consume(p, TOK_IDENTIFIER, "Expect packet name");
+    if (p->verbose) printf("[VERBOSE] Parsing packet '%.*s'\n", name.length, name.start);
     
     // Emit META_NAME with placeholder key
     size_t meta_loc = buf_current_offset(p->target);
@@ -1250,7 +1332,8 @@ void parse_top_level(Parser* p) {
             continue;
         }
 
-        if (p->current.type == TOK_AT) {
+        // Handle Decorators (Stackable)
+        while (p->current.type == TOK_AT) {
             advance(p); 
             Token dec = p->current; consume(p, TOK_IDENTIFIER, "Expect decorator name");
             
@@ -1264,6 +1347,8 @@ void parse_top_level(Parser* p) {
                 buf_push(p->target, OP_SET_ENDIAN_BE);
             } else if (match_keyword(dec, "little_endian") || match_keyword(dec, "le")) {
                 buf_push(p->target, OP_SET_ENDIAN_LE);
+            } else if (match_keyword(dec, "unaligned_bytes")) {
+                p->pending_unaligned = 1;
             } else {
                 if (p->current.type == TOK_LPAREN) {
                     consume(p, TOK_LPAREN, "Expect (");
@@ -1271,11 +1356,9 @@ void parse_top_level(Parser* p) {
                     consume(p, TOK_RPAREN, "Expect )");
                 }
             }
-            // Decorators don't consume doc comments, they attach to the next item?
-            // Usually doc comments should be immediately before the item. 
-            // If we have decorators, doc comments might be above them.
-            // For simplicity, we keep pending_doc through decorators.
-        } else if (p->current.type == TOK_STRUCT) {
+        }
+
+        if (p->current.type == TOK_STRUCT) {
             advance(p); parse_struct(p, pending_doc);
             if(pending_doc) { free(pending_doc); pending_doc = NULL; }
         } else if (p->current.type == TOK_ENUM) {
@@ -1291,7 +1374,7 @@ void parse_top_level(Parser* p) {
         } else if (p->current.type == TOK_SEMICOLON) {
             advance(p); // Ignore top-level semicolons
             if(pending_doc) { free(pending_doc); pending_doc = NULL; } // Orphaned comment
-        } else {
+        } else if (p->current.type != TOK_EOF) {
             parser_error(p, "Unexpected token");
             if(pending_doc) { free(pending_doc); pending_doc = NULL; }
         }

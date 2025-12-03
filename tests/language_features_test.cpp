@@ -553,7 +553,7 @@ TEST(CompilerIfTest, IfStatement) {
     fwrite(source, 1, strlen(source), f);
     fclose(f);
     
-    int result = cnd_compile_file("test_if.cnd", "test_if.cndil", 0);
+    int result = cnd_compile_file("test_if.cnd", "test_if.cndil", 0, 0);
     EXPECT_EQ(result, 0);
     
     // Read back the bytecode
@@ -606,7 +606,7 @@ TEST(CompilerIfTest, IfElseStatement) {
     fwrite(source, 1, strlen(source), f);
     fclose(f);
     
-    int result = cnd_compile_file("test_if_else.cnd", "test_if_else.cndil", 0);
+    int result = cnd_compile_file("test_if_else.cnd", "test_if_else.cndil", 0, 0);
     EXPECT_EQ(result, 0);
     
     remove("test_if_else.cnd");
@@ -629,7 +629,7 @@ TEST(CompilerIfTest, NestedIf) {
     fwrite(source, 1, strlen(source), f);
     fclose(f);
     
-    int result = cnd_compile_file("test_nested_if.cnd", "test_nested_if.cndil", 0);
+    int result = cnd_compile_file("test_nested_if.cnd", "test_nested_if.cndil", 0, 0);
     EXPECT_EQ(result, 0);
     
     remove("test_nested_if.cnd");
@@ -650,7 +650,7 @@ TEST(CompilerIfTest, ComplexExpression) {
     fwrite(source, 1, strlen(source), f);
     fclose(f);
     
-    int result = cnd_compile_file("test_complex_expr.cnd", "test_complex_expr.cndil", 0);
+    int result = cnd_compile_file("test_complex_expr.cnd", "test_complex_expr.cndil", 0, 0);
     EXPECT_EQ(result, 0);
     
     remove("test_complex_expr.cnd");

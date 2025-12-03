@@ -28,7 +28,7 @@ protected:
 
 TEST_F(CompilerTest, BasicStruct) {
     WriteSource("struct Point { float x; float y; }");
-    int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
     EXPECT_TRUE(CheckOutputExists());
 }
@@ -41,7 +41,7 @@ TEST_F(CompilerTest, AllPrimitives) {
         "  float f32; double f64;"
         "}"
     );
-    int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
     EXPECT_TRUE(CheckOutputExists());
 }
@@ -55,7 +55,7 @@ TEST_F(CompilerTest, ArraysAndStrings) {
         "  string s2 prefix uint16;"
         "}"
     );
-    int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
     EXPECT_TRUE(CheckOutputExists());
 }
@@ -68,7 +68,7 @@ TEST_F(CompilerTest, Decorators) {
         "  @big_endian uint32 be_val;"
         "}"
     );
-    int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
     EXPECT_TRUE(CheckOutputExists());
 }
@@ -79,7 +79,7 @@ TEST_F(CompilerTest, InvalidSyntax) {
     WriteSource("struct Broken { uint8 x;"); 
     
     // testing::internal::CaptureStdout();
-    int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     // testing::internal::GetCapturedStdout();
     
     EXPECT_NE(res, 0);
@@ -90,7 +90,7 @@ TEST_F(CompilerTest, UnknownType) {
     WriteSource("struct BadType { mystery_type x; };");
     
     // testing::internal::CaptureStdout();
-    int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     // testing::internal::GetCapturedStdout();
     
     EXPECT_NE(res, 0);
@@ -101,7 +101,7 @@ TEST_F(CompilerTest, NestedStructs) {
         "struct Inner { uint8 val; }"
         "struct Outer { Inner i; }"
     );
-    int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
     EXPECT_TRUE(CheckOutputExists());
 }
@@ -113,7 +113,7 @@ TEST_F(CompilerTest, PacketDefinition) {
         "  uint32 timestamp;"
         "}"
     );
-    int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
     EXPECT_TRUE(CheckOutputExists());
 }
@@ -126,7 +126,7 @@ TEST_F(CompilerTest, BitfieldSyntax) {
         "  uint16 f3 : 12;"
         "}"
     );
-    int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
     EXPECT_TRUE(CheckOutputExists());
 }
@@ -138,7 +138,7 @@ TEST_F(CompilerTest, CRC32Syntax) {
         "  @crc(32) uint32 crc;"
         "}"
     );
-    int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
     EXPECT_TRUE(CheckOutputExists());
 }
@@ -151,7 +151,7 @@ TEST_F(CompilerTest, PaddingAndFill) {
         "  @fill uint8 aligned;"
         "}"
     );
-    int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
     EXPECT_TRUE(CheckOutputExists());
 }
@@ -164,14 +164,14 @@ TEST_F(CompilerTest, Transformations) {
         "  @scale(0.5) @offset(100.0) float val3;"
         "}"
     );
-    int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
     EXPECT_TRUE(CheckOutputExists());
 }
 
 TEST_F(CompilerTest, EmptyStruct) {
     WriteSource("struct Empty {}");
-    int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
     EXPECT_TRUE(CheckOutputExists());
 }
@@ -180,7 +180,7 @@ TEST_F(CompilerTest, InvalidDecorator) {
     WriteSource("struct BadDec { @nonexistent(1) uint8 x; }");
     
     // testing::internal::CaptureStdout();
-    int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     // testing::internal::GetCapturedStdout();
     
     EXPECT_NE(res, 0);
@@ -197,7 +197,7 @@ TEST_F(CompilerTest, ShorthandTypes) {
         "  @const(4) u64 l;"
         "}"
     );
-    int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
     EXPECT_TRUE(CheckOutputExists());
 }
@@ -213,7 +213,7 @@ TEST_F(CompilerTest, ParameterizedFill) {
         "  @fill u8 f;"
         "}"
     );
-    int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
     EXPECT_TRUE(CheckOutputExists());
 }
@@ -222,7 +222,7 @@ TEST_F(CompilerTest, InvalidFillParam) {
     WriteSource("struct BadFill { @fill(2) u8 x; }");
     
     // testing::internal::CaptureStdout();
-    int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     // testing::internal::GetCapturedStdout();
     
     EXPECT_NE(res, 0);
@@ -235,7 +235,7 @@ TEST_F(CompilerTest, MultiplePacketsFail) {
     );
     
     // testing::internal::CaptureStdout();
-    int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     // testing::internal::GetCapturedStdout();
     
     EXPECT_NE(res, 0);

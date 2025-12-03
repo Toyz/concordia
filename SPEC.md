@@ -154,22 +154,31 @@ packet SwitchPacket {
 
 | Decorator | Purpose |
 |----------|---------|
-| `@const(value)` | Hardcoded field value (commands) |
-| `@match(value)` | Field must match value (telemetry) |
-| `@little_endian` / `@big_endian` | Byte order override |
-| `@range(min, max)` | Input validation |
-| `@scale(factor)` | Apply linear scaling (float/double) |
-| `@offset(value)` | Apply linear offset (float/double) |
-| `@add(n)` | Integer addition transform |
-| `@sub(n)` | Integer subtraction transform |
-| `@mul(n)` | Integer multiplication transform |
-| `@div(n)` | Integer division transform |
-| `@optional` | Optional field |
-| `@crc16` | CRC-16 validation or generation |
-| `@crc32` | CRC-32 validation or generation |
-| `@count(n)` | Fixed array size |
-| `@pad(n)` | Explicit padding (bits or bytes) |
-| `@import("file")` | Import definitions from another file |
+| `@version(N)` | Sets the schema version. |
+| `@import("file")` | Import definitions from another file. |
+| `@unaligned_bytes` | Marks a struct as containing unaligned bitfields (allows non-byte-aligned fields). |
+| `@fill(0\|1)` | Inserts padding bits/bytes to align to next byte boundary. |
+| `@const(value)` / `@match(value)` | Hardcoded field value (commands) or validation (telemetry). |
+| `@little_endian` / `@le` | Sets byte order to Little Endian for following fields. |
+| `@big_endian` / `@be` | Sets byte order to Big Endian for following fields. |
+| `@range(min, max)` | Input validation for numeric types. |
+| `@scale(factor)` | Apply linear scaling (float/double) `y = x * scale`. |
+| `@offset(value)` | Apply linear offset (float/double) `y = x + offset`. |
+| `@poly(c0, c1...)` | Apply polynomial transform `y = c0 + c1*x + c2*x^2...`. |
+| `@spline(x0, y0...)` | Apply spline interpolation. |
+| `@add(n)` | Integer addition transform. |
+| `@sub(n)` | Integer subtraction transform. |
+| `@mul(n)` | Integer multiplication transform. |
+| `@div(n)` | Integer division transform. |
+| `@optional` | Marks a field as optional (implementation specific). |
+| `@crc(width)` | Calculates CRC over previous fields (16 or 32). |
+| `@crc_poly(val)` | Sets custom CRC polynomial. |
+| `@crc_init(val)` | Sets custom CRC initial value. |
+| `@crc_xor(val)` | Sets custom CRC XOR value. |
+| `@crc_refin` | Sets CRC input reflection. |
+| `@crc_refout` | Sets CRC output reflection. |
+| `@count(n)` / `@len(n)` | Sets fixed array size. |
+| `@pad(n)` | Inserts explicit padding bits. |
 
 ---
 

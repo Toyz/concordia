@@ -51,7 +51,7 @@ protected:
         out << source;
         out.close();
         
-        int res = cnd_compile_file(tmp_src, tmp_il, 0);
+        int res = cnd_compile_file(tmp_src, tmp_il, 0, 0);
         
         remove(tmp_src);
         remove(tmp_il);
@@ -70,7 +70,7 @@ protected:
         out << source;
         out.close();
         
-        int res = cnd_compile_file(tmp_src, tmp_il, 0);
+        int res = cnd_compile_file(tmp_src, tmp_il, 0, 0);
         ASSERT_EQ(res, 0) << "Compilation failed";
         
         std::ifstream f(tmp_il, std::ios::binary | std::ios::ate);

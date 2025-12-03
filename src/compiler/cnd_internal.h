@@ -17,6 +17,16 @@
 extern "C" {
 #endif
 
+// ANSI Color Codes
+#define COLOR_RESET   "\033[0m"
+#define COLOR_RED     "\033[31m"
+#define COLOR_GREEN   "\033[32m"
+#define COLOR_YELLOW  "\033[33m"
+#define COLOR_BLUE    "\033[34m"
+#define COLOR_MAGENTA "\033[35m"
+#define COLOR_CYAN    "\033[36m"
+#define COLOR_BOLD    "\033[1m"
+
 // --- Tokens ---
 typedef enum {
     TOK_EOF,
@@ -183,8 +193,19 @@ typedef struct {
     int error_count; // Total number of errors encountered
     int json_output; // Flag for JSON error output
     int silent;      // Flag to suppress all output (for LSP)
+    int verbose;     // Flag for verbose debug output
     int packet_count; // Track number of packets defined
     
+    // Decorator State
+    int pending_unaligned; // Flag: Next struct is @unaligned_bytes
+    int pending_be;        // Flag: Next struct is @big_endian
+    int pending_le;        // Flag: Next struct is @little_endian
+    int in_bit_mode;       // Flag: Currently parsing inside @unaligned_bytes struct
+    
+    // Bit Tracking for Validation
+    int current_bit_count; // Bits consumed in current struct
+    int is_bit_count_valid; // 1 if bit count is deterministic, 0 if dynamic (loops/ifs)
+
     CompilerError* errors; // List of errors for LSP
     size_t error_cap;
 } Parser;

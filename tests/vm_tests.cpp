@@ -535,7 +535,7 @@ TEST_F(ConcordiaTest, IntegrationPipeline) {
 
     // 2. Compile and Load generated IL file
     // Compile the example file
-    int res = cnd_compile_file(src_path, il_path, 0);
+    int res = cnd_compile_file(src_path, il_path, 0, 0);
     ASSERT_EQ(res, 0) << "Failed to compile " << src_path;
 
     FILE* f = fopen(il_path, "rb");
@@ -992,7 +992,7 @@ TEST_F(ConcordiaTest, ComplexIntegration) {
     out.close();
 
     // Compile
-    int res = cnd_compile_file(src_path, il_path, 0);
+    int res = cnd_compile_file(src_path, il_path, 0, 0);
     ASSERT_EQ(res, 0) << "Failed to compile " << src_path;
 
     // Load IL

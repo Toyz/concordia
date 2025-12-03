@@ -1,0 +1,22 @@
+@unaligned_bytes
+struct BitPacked {
+    uint8 a : 3;
+    uint8 b : 5;
+    uint16 c : 10;
+    uint8 d : 6; 
+    // Total: 3+5+10+6 = 24 bits = 3 bytes
+}
+
+@unaligned_bytes
+struct EndianTest {
+    @be uint16 big : 10;
+    @le uint16 little : 10;
+    // Total: 20 bits. 
+    // Must explicitly pad to 24 bits (3 bytes)
+    uint8 _pad : 4;
+}
+
+packet Main {
+    BitPacked packed;
+    EndianTest endian;
+}

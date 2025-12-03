@@ -37,7 +37,7 @@ TEST_F(ImportTest, BasicImport) {
         "packet Path { Point p1; Point p2; }"
     );
     
-    int res = cnd_compile_file(kFileB, kOutFile, 0);
+    int res = cnd_compile_file(kFileB, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
     EXPECT_TRUE(CheckOutputExists());
 }
@@ -53,7 +53,7 @@ TEST_F(ImportTest, DuplicateImport) {
         "packet Path { Point p1; }"
     );
     
-    int res = cnd_compile_file(kFileB, kOutFile, 0);
+    int res = cnd_compile_file(kFileB, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
     EXPECT_TRUE(CheckOutputExists());
 }
@@ -62,7 +62,7 @@ TEST_F(ImportTest, MissingFile) {
     WriteFile(kFileB, "@import(\"non_existent.cnd\")");
     
     // testing::internal::CaptureStdout();
-    int res = cnd_compile_file(kFileB, kOutFile, 0);
+    int res = cnd_compile_file(kFileB, kOutFile, 0, 0);
     // testing::internal::GetCapturedStdout();
     
     EXPECT_NE(res, 0);
@@ -91,7 +91,7 @@ protected:
     bool CompileShouldFail(const std::string& source) {
         WriteSource(source);
         // testing::internal::CaptureStdout(); // Suppress error output
-        int res = cnd_compile_file(kSourceFile, kOutFile, 0);
+        int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
         // testing::internal::GetCapturedStdout();
         return res != 0;
     }

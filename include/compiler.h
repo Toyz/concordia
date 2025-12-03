@@ -9,7 +9,7 @@ extern "C" {
 
 // Compile a .cnd file to a .il file
 // Returns 0 on success, non-zero on error
-int cnd_compile_file(const char* in_path, const char* out_path, int json_output);
+int cnd_compile_file(const char* in_path, const char* out_path, int json_output, int verbose);
 
 // Format a .cnd file
 // If out_path is NULL, prints to stdout

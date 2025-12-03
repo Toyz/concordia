@@ -93,7 +93,9 @@ Token lexer_next(Lexer* lexer) {
             case ';': token.type = TOK_SEMICOLON; return token;
             case ':': token.type = TOK_COLON; return token;
             case ',': token.type = TOK_COMMA; return token;
-            case '@': token.type = TOK_AT; return token;
+            case '@': 
+                // printf("LEX: AT\n");
+                token.type = TOK_AT; return token;
             case '=': 
                 if (*lexer->current == '=') { lexer->current++; token.length++; token.type = TOK_EQ_EQ; }
                 else token.type = TOK_EQUALS; 

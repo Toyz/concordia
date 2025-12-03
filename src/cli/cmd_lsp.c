@@ -12,6 +12,46 @@
 #include <io.h>
 #endif
 
+// --- Built-in Decorators ---
+typedef struct {
+    const char* name;
+    const char* doc;
+    const char* detail;
+} BuiltinDecorator;
+
+static const BuiltinDecorator BUILTIN_DECORATORS[] = {
+    {"version", "Sets the version of the schema.", "version(1)"},
+    {"import", "Imports another CND file.", "import(\"path/to/file.cnd\")"},
+    {"big_endian", "Sets the byte order to Big Endian for the following fields.", "big_endian"},
+    {"be", "Alias for @big_endian.", "be"},
+    {"little_endian", "Sets the byte order to Little Endian for the following fields.", "little_endian"},
+    {"le", "Alias for @little_endian.", "le"},
+    {"unaligned_bytes", "Marks a struct as containing unaligned bitfields.", "unaligned_bytes"},
+    {"fill", "Inserts padding bits/bytes. Can be used as a standalone statement.", "fill(1) or fill(0)"},
+    {"crc_refin", "Sets CRC input reflection.", "crc_refin"},
+    {"crc_refout", "Sets CRC output reflection.", "crc_refout"},
+    {"optional", "Marks a field as optional (implementation specific).", "optional"},
+    {"count", "Sets the fixed count for an array.", "count(N)"},
+    {"len", "Alias for @count.", "len(N)"},
+    {"const", "Enforces a constant value for a field.", "const(VALUE)"},
+    {"match", "Alias for @const.", "match(VALUE)"},
+    {"pad", "Inserts padding bits.", "pad(BITS)"},
+    {"range", "Enforces a value range.", "range(MIN, MAX)"},
+    {"crc", "Calculates CRC over previous fields.", "crc(WIDTH)"},
+    {"crc_poly", "Sets CRC polynomial.", "crc_poly(POLY)"},
+    {"crc_init", "Sets CRC initial value.", "crc_init(VAL)"},
+    {"crc_xor", "Sets CRC XOR value.", "crc_xor(VAL)"},
+    {"scale", "Applies linear scaling (y = x * scale + offset).", "scale(FACTOR)"},
+    {"offset", "Applies offset for scaling.", "offset(VAL)"},
+    {"mul", "Multiplies value by factor.", "mul(FACTOR)"},
+    {"div", "Divides value by factor.", "div(FACTOR)"},
+    {"add", "Adds value.", "add(VAL)"},
+    {"sub", "Subtracts value.", "sub(VAL)"},
+    {"poly", "Applies polynomial transformation.", "poly(c0, c1, ...)"},
+    {"spline", "Applies spline transformation.", "spline(x0, y0, x1, y1, ...)"},
+    {NULL, NULL, NULL}
+};
+
 // --- LSP Protocol Helpers ---
 
 static void send_json(cJSON* json) {
@@ -147,6 +187,9 @@ static const char* get_type_name(uint8_t type) {
         case OP_IO_I16: return "i16";
         case OP_IO_I32: return "i32";
         case OP_IO_I64: return "i64";
+        case OP_IO_BIT_U: return "bit_u";
+        case OP_IO_BIT_I: return "bit_i";
+        case OP_IO_BIT_BOOL: return "bit_bool";
         default: return "unknown";
     }
 }
@@ -202,6 +245,8 @@ static void analyze_source(const char* source, const char* file_path, int line, 
     lexer_init(&scanner, source);
     
     Token target_token = {TOK_EOF, NULL, 0, 0};
+    int target_is_decorator = 0;
+    Token prev_token = {TOK_EOF, NULL, 0, 0};
     
     for (;;) {
         Token t = lexer_next(&scanner);
@@ -228,13 +273,30 @@ static void analyze_source(const char* source, const char* file_path, int line, 
             
             if (character >= col_start && character <= col_end) {
                 target_token = t;
+                if (prev_token.type == TOK_AT) target_is_decorator = 1;
                 break;
             }
         }
         if (tok_line > line) break; 
+        prev_token = t;
     }
     
     if (target_token.type == TOK_IDENTIFIER) {
+        if (target_is_decorator) {
+             for (int i = 0; BUILTIN_DECORATORS[i].name; i++) {
+                 if (strlen(BUILTIN_DECORATORS[i].name) == (size_t)target_token.length &&
+                     strncmp(BUILTIN_DECORATORS[i].name, target_token.start, target_token.length) == 0) {
+                     res->found = 1;
+                     res->symbol_name = strdup(BUILTIN_DECORATORS[i].name);
+                     res->doc_comment = strdup(BUILTIN_DECORATORS[i].doc);
+                     res->type_details = strdup(BUILTIN_DECORATORS[i].detail);
+                     res->def_file = strdup("built-in");
+                     res->def_line = 0;
+                     goto cleanup;
+                 }
+             }
+        }
+
         // Look up in registry
         StructDef* sdef = reg_find(&p.registry, target_token.start, target_token.length);
         if (sdef) {
@@ -278,6 +340,7 @@ static void analyze_source(const char* source, const char* file_path, int line, 
     }
     
     // Cleanup
+cleanup:
     buf_free(&bc);
     buf_free(&p.global_bc);
     // free registries... (leak for now in demo, but in loop should clean)
@@ -433,6 +496,23 @@ static void handle_completion(cJSON* id, cJSON* params) {
             cJSON* item = cJSON_CreateObject();
             cJSON_AddStringToObject(item, "label", keywords[i]);
             cJSON_AddNumberToObject(item, "kind", 14); // Keyword
+            cJSON_AddItemToArray(items, item);
+        }
+        
+        // Add Decorators
+        for (int i = 0; BUILTIN_DECORATORS[i].name; i++) {
+            cJSON* item = cJSON_CreateObject();
+            // Add @ prefix to label for convenience, or just name? 
+            // Usually completion is triggered by @, so maybe just name?
+            // But if triggered by space, @name is better.
+            // Let's provide both or just @name.
+            // If user typed @, VS Code filters.
+            char label[64];
+            snprintf(label, sizeof(label), "@%s", BUILTIN_DECORATORS[i].name);
+            cJSON_AddStringToObject(item, "label", label);
+            cJSON_AddNumberToObject(item, "kind", 3); // Function/Method-like
+            cJSON_AddStringToObject(item, "detail", BUILTIN_DECORATORS[i].detail);
+            cJSON_AddStringToObject(item, "documentation", BUILTIN_DECORATORS[i].doc);
             cJSON_AddItemToArray(items, item);
         }
         

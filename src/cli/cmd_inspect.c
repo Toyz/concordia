@@ -55,6 +55,8 @@ static const char* get_opcode_name(uint8_t op) {
         case OP_IO_BIT_U: return "IO_BIT_U";
         case OP_IO_BIT_I: return "IO_BIT_I";
         case OP_IO_BIT_BOOL: return "IO_BIT_BOOL";
+        case OP_ENTER_BIT_MODE: return "ENTER_BIT_MODE";
+        case OP_EXIT_BIT_MODE: return "EXIT_BIT_MODE";
         case OP_ALIGN_PAD: return "ALIGN_PAD";
         case OP_ALIGN_FILL: return "ALIGN_FILL";
         case OP_STR_NULL: return "STR_NULL";
@@ -196,6 +198,10 @@ int cmd_inspect(int argc, char** argv) {
                 case OP_IO_BOOL:
                 case OP_ENTER_STRUCT:
                     printf(" KeyID=%d", read_u16(&ptr, end));
+                    break;
+
+                case OP_ENTER_BIT_MODE:
+                case OP_EXIT_BIT_MODE:
                     break;
 
                 case OP_STR_NULL: {

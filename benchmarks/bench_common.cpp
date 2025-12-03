@@ -12,7 +12,7 @@ void CompileSchema(const char* schema, std::vector<uint8_t>& bytecode) {
     fwrite(schema, 1, strlen(schema), f);
     fclose(f);
 
-    if (cnd_compile_file("bench_temp.cnd", "bench_temp.il", 2) != 0) {
+    if (cnd_compile_file("bench_temp.cnd", "bench_temp.il", 0, 0) != 0) {
         fprintf(stderr, "Compilation failed for schema: %s\n", schema);
         exit(1);
     }

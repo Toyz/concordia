@@ -884,6 +884,33 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
 
             // ... Category C (Bitfields) ...
             case OP_IO_BIT_U: { uint16_t k=FETCH_IL_U16(ctx); uint8_t b=FETCH_IL_U8(ctx); uint64_t v=0; if(ctx->mode==CND_MODE_ENCODE){ SYNC_IP(); if(ctx->io_callback(ctx,k,opcode,&v)) return CND_ERR_CALLBACK; write_bits(ctx,v,b); } else { v=read_bits(ctx,b); SYNC_IP(); if(ctx->io_callback(ctx,k,opcode,&v)) return CND_ERR_CALLBACK; } break; } 
+            
+            case OP_ENTER_BIT_MODE: {
+                // No-op for now
+                break;
+            }
+
+            case OP_EXIT_BIT_MODE: {
+                if (ctx->bit_offset > 0) {
+                    return CND_ERR_VALIDATION; // Unaligned exit is not allowed
+                }
+                break;
+            }
+
+            case OP_ALIGN_FILL: {
+                uint8_t fill_bit = FETCH_IL_U8(ctx);
+                if (ctx->bit_offset > 0) {
+                    uint8_t bits_needed = 8 - ctx->bit_offset;
+                    uint64_t fill_val = (fill_bit ? 0xFFFFFFFFFFFFFFFF : 0);
+                    
+                    if (ctx->mode == CND_MODE_ENCODE) {
+                        write_bits(ctx, fill_val, bits_needed);
+                    } else {
+                        read_bits(ctx, bits_needed); // Discard
+                    }
+                }
+                break;
+            } 
             case OP_IO_BIT_I: { 
                 uint16_t k=FETCH_IL_U16(ctx); 
                 uint8_t b=FETCH_IL_U8(ctx); 
@@ -917,21 +944,6 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 break;
             }
             case OP_ALIGN_PAD: { uint8_t b=FETCH_IL_U8(ctx); for(int i=0;i<b;i++) { ctx->bit_offset++; if(ctx->bit_offset>=8){ctx->bit_offset=0; ctx->cursor++;} } break; } 
-            case OP_ALIGN_FILL: { 
-                uint8_t fill_bit = FETCH_IL_U8(ctx);
-                if (ctx->bit_offset != 0) {
-                    if (ctx->mode == CND_MODE_ENCODE) {
-                        uint8_t bits_to_fill = 8 - ctx->bit_offset;
-                        uint64_t fill_val = (fill_bit) ? ((1ULL << bits_to_fill) - 1) : 0;
-                        write_bits(ctx, fill_val, bits_to_fill); 
-                    } else {
-                        // For decoding, just skip
-                        ctx->cursor++;
-                        ctx->bit_offset = 0;
-                    }
-                }
-                break; 
-            } 
 
             // ... Category D: Arrays & Strings ...
             

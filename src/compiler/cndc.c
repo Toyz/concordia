@@ -231,7 +231,7 @@ static void optimize_strings(Parser* p) {
 }
 
 // Implementation of cnd_compile_file using the new modular structure
-int cnd_compile_file(const char* in_path, const char* out_path, int json_output) {
+int cnd_compile_file(const char* in_path, const char* out_path, int json_output, int verbose) {
     setbuf(stdout, NULL); // Ensure debug prints are flushed immediately
     FILE* f = fopen(in_path, "rb");
     if (!f) { 
@@ -245,6 +245,7 @@ int cnd_compile_file(const char* in_path, const char* out_path, int json_output)
 
     Parser p;
     memset(&p, 0, sizeof(Parser)); // Zero init
+    p.verbose = verbose;
     lexer_init(&p.lexer, source);
     buf_init(&p.global_bc);
     strtab_init(&p.strtab);
@@ -254,6 +255,7 @@ int cnd_compile_file(const char* in_path, const char* out_path, int json_output)
     p.target = &p.global_bc;
     p.current_path = in_path;
     p.json_output = json_output;
+    p.verbose = verbose;
     
     // Add main file to imports to prevent self-import
     strtab_add(&p.imports, in_path, (int)strlen(in_path));
@@ -270,8 +272,8 @@ int cnd_compile_file(const char* in_path, const char* out_path, int json_output)
 
         FILE* out = fopen(out_path, "wb");
         if (!out) { 
-            if (json_output) printf("{\"error\": \"Error opening output file: %s\"}\n", out_path);
-            else printf("Error opening output file: %s\n", out_path); 
+            if (json_output) printf("{\"status\": \"error\", \"message\": \"Error opening output file: %s\"}\n", out_path);
+            else printf(COLOR_BOLD COLOR_RED "[ERROR]" COLOR_RESET " Error opening output file: %s\n", out_path); 
             ret = 1; 
         } else {
             fwrite("CNDIL", 1, 5, out); fputc(1, out);
@@ -289,10 +291,15 @@ int cnd_compile_file(const char* in_path, const char* out_path, int json_output)
             fwrite(p.global_bc.data, 1, p.global_bc.size, out);
             
             fclose(out);
-            if (json_output == 0) {
-                printf("Successfully compiled %s to %s\n", in_path, out_path);
-                printf("  Strings: %zu\n", p.strtab.count);
-                printf("  Bytecode: %zu bytes\n", p.global_bc.size);
+            if (json_output) {
+                // Escape paths for JSON (simple check)
+                // For now assuming paths don't have crazy characters, but in production should be escaped properly
+                printf("{\"status\": \"success\", \"input\": \"%s\", \"output\": \"%s\", \"stats\": {\"strings\": %zu, \"bytecode_size\": %zu}}\n",
+                    in_path, out_path, p.strtab.count, p.global_bc.size);
+            } else {
+                printf(COLOR_BOLD COLOR_GREEN "[SUCCESS]" COLOR_RESET " Compiled " COLOR_CYAN "%s" COLOR_RESET "\n", in_path);
+                printf("  " COLOR_BOLD "Output:" COLOR_RESET "   %s\n", out_path);
+                printf("  " COLOR_BOLD "Stats:" COLOR_RESET "    %zu strings, %zu bytes bytecode\n", p.strtab.count, p.global_bc.size);
             }
         }
     }

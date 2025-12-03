@@ -186,7 +186,7 @@ func (p *Program) Execute(data []byte, mode Mode, cb CallbackFunc) error {
 		cDataLen = C.size_t(len(data))
 	}
 
-	cCtx := (*C.cnd_vm_ctx)(C.malloc(C.size_t(unsafe.Sizeof(C.cnd_vm_ctx{}))))
+	cCtx := (*C.cnd_vm_ctx)(C.calloc(1, C.size_t(unsafe.Sizeof(C.cnd_vm_ctx{}))))
 	if cCtx == nil {
 		return errors.New("failed to allocate C context struct")
 	}
@@ -195,8 +195,9 @@ func (p *Program) Execute(data []byte, mode Mode, cb CallbackFunc) error {
 	cCtx.program = p.cProg
 	cCtx.data_buffer = (*C.uint8_t)(cData)
 	cCtx.data_len = cDataLen
-	cCtx.cursor = 0
-	cCtx.bit_offset = 0
+	// cCtx.cursor = 0 // calloc zeroes it
+	// cCtx.ip = 0
+	// cCtx.bit_offset = 0
 	cCtx.mode = C.cnd_mode_t(mode)
 	cCtx.endianness = C.CND_LE // Default
 
