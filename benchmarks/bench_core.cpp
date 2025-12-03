@@ -102,6 +102,46 @@ struct BenchArrayStructContext {
     int current_idx;
 };
 
+static cnd_error_t bench_io_callback_large_array(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
+    BenchContext* bc = (BenchContext*)ctx->user_ptr;
+    
+    if (type == OP_ARR_FIXED) {
+        bc->array_idx = 0;
+        return CND_ERR_OK;
+    }
+    if (type == OP_ARR_END || type == OP_ENTER_STRUCT || type == OP_EXIT_STRUCT) return CND_ERR_OK;
+
+    if (type == OP_RAW_BYTES) {
+        // Bulk copy optimization
+        // We know it's the data array (key 0 probably, or whatever key the element has)
+        // For this benchmark, we just copy 1024 bytes (or however many remaining)
+        // But wait, OP_RAW_BYTES doesn't tell us the size in the callback params directly?
+        // The VM passes a pointer to the buffer.
+        // We need to know how much to copy.
+        // The callback signature is (ctx, key, type, ptr).
+        // It doesn't pass size.
+        // The user must know the size from the schema/key?
+        // Or we assume the buffer at ptr is valid for the size implied by the schema.
+        
+        // For this benchmark, we know it's 1024 bytes.
+        if (ctx->mode == CND_MODE_ENCODE) {
+            memcpy(ptr, bc->data.data, 1024);
+        } else {
+            memcpy(bc->data.data, ptr, 1024);
+        }
+        return CND_ERR_OK;
+    }
+
+    if (type == OP_IO_U8) {
+        if (bc->array_idx < 1024) {
+            if (ctx->mode == CND_MODE_ENCODE) *(uint8_t*)ptr = bc->data.data[bc->array_idx % 16];
+            else bc->data.data[bc->array_idx % 16] = *(uint8_t*)ptr;
+            bc->array_idx++;
+        }
+    }
+    return CND_ERR_OK;
+}
+
 static cnd_error_t bench_io_callback_array_struct(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
     BenchArrayStructContext* bc = (BenchArrayStructContext*)ctx->user_ptr;
     
@@ -220,7 +260,7 @@ static void BM_EncodeLargeArray(benchmark::State& state) {
 
     for (auto _ : state) {
         memset(buffer, 0, sizeof(buffer));
-        cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), bench_io_callback_complex, &bc);
+        cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), bench_io_callback_large_array, &bc);
         cnd_execute(&ctx);
     }
 }

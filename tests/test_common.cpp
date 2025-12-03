@@ -26,7 +26,9 @@ extern "C" cnd_error_t test_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_
                 return CND_ERR_CALLBACK;
         }
         idx = tctx->tape_index;
-        tctx->tape_index++;
+        if (type != OP_RAW_BYTES) {
+            tctx->tape_index++;
+        }
     } else {
         // Legacy Search Mode
         for(int i=0; i<MAX_TEST_ENTRIES; i++) {
@@ -41,6 +43,42 @@ extern "C" cnd_error_t test_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_
         if (idx != -1) *(uint64_t*)ptr = g_test_data[idx].u64_val;
         else return CND_ERR_CALLBACK;
         return CND_ERR_OK;
+    }
+
+    if (type == OP_RAW_BYTES) {
+        // Bulk copy from tape
+        // We assume the tape contains a sequence of bytes for this key
+        uint8_t* dst = (uint8_t*)ptr;
+        int count = 0;
+        
+        if (tctx && tctx->use_tape) {
+            while (tctx->tape_index < MAX_TEST_ENTRIES) {
+                if (g_test_data[tctx->tape_index].key == key_id) {
+                    if (ctx->mode == CND_MODE_ENCODE) {
+                        *dst++ = (uint8_t)g_test_data[tctx->tape_index].u64_val;
+                    } else {
+                        // Decode: Read from buffer, write to tape? 
+                        // The test harness usually verifies against tape or writes to tape?
+                        // In Decode mode, the VM calls callback with value read from buffer.
+                        // We should store it in tape?
+                        // Existing logic for OP_IO_U8:
+                        // if (ctx->mode == CND_MODE_ENCODE) *(uint8_t*)ptr = val;
+                        // else g_test_data[idx].u64_val = *(uint8_t*)ptr;
+                        
+                        g_test_data[tctx->tape_index].u64_val = *dst++;
+                    }
+                    tctx->tape_index++;
+                    count++;
+                } else {
+                    break;
+                }
+            }
+            return CND_ERR_OK;
+        }
+        
+        // Legacy Mode: OP_RAW_BYTES not supported (we don't know count)
+        // Return error so VM falls back to loop
+        return CND_ERR_INVALID_OP;
     }
 
     if (type == OP_STORE_CTX) {

@@ -303,6 +303,34 @@ static void loop_pop(cnd_vm_ctx* ctx) {
     if (ctx->loop_depth > 0) ctx->loop_depth--;
 }
 
+// --- Optimization Helpers ---
+
+static bool try_optimize_byte_array(cnd_vm_ctx* ctx, uint32_t count) {
+    if (count == 0) return false;
+    if (ctx->ip + 3 >= ctx->program->bytecode_len) return false;
+    
+    uint8_t next_op = ctx->program->bytecode[ctx->ip];
+    uint8_t after_op = ctx->program->bytecode[ctx->ip + 3];
+    
+    if ((next_op == OP_IO_U8 || next_op == OP_IO_I8) && after_op == OP_ARR_END) {
+        uint16_t elem_key = (uint16_t)(ctx->program->bytecode[ctx->ip + 1] | (ctx->program->bytecode[ctx->ip + 2] << 8));
+        
+        if (ctx->cursor + count > ctx->data_len) return false; // Let normal loop handle OOB
+        
+        void* ptr = ctx->data_buffer + ctx->cursor;
+        
+        // Call callback with OP_RAW_BYTES
+        if (ctx->io_callback(ctx, elem_key, OP_RAW_BYTES, ptr) != CND_ERR_OK) {
+            return false; // Fallback to loop if callback fails (e.g. doesn't handle RAW_BYTES)
+        }
+        
+        ctx->cursor += count;
+        ctx->ip += 4; // Skip OP_IO_U8(1) + KEY(2) + OP_ARR_END(1)
+        return true;
+    }
+    return false;
+}
+
 // --- Array/String Helpers ---
 
 #define HANDLE_ARRAY_PRE(size, ctype, READ_EXPR, WRITE_EXPR) \
@@ -324,6 +352,7 @@ static void loop_pop(cnd_vm_ctx* ctx) {
         } \
         if (count > 0) { \
             SYNC_IP(); \
+            if (try_optimize_byte_array(ctx, (uint32_t)count)) { RELOAD_PC(); break; } \
             if (!loop_push(ctx, ctx->ip, (uint32_t)count)) return CND_ERR_OOB; \
         } else { \
              SYNC_IP(); \
@@ -640,15 +669,17 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 uint16_t key = FETCH_IL_U16(ctx);
                 // printf("VM_DEBUG: Calling callback for ENTER_STRUCT (Key %d)\n", key);
                 SYNC_IP();
+                // Allow callback to return error, but also allow it to just return OK.
+                // If callback returns error, we stop.
                 if (ctx->io_callback(ctx, key, opcode, NULL) != CND_ERR_OK) return CND_ERR_CALLBACK;
-                break; // VM continues with next instruction, which is the first field of the struct
+                break; 
             }
             
             case OP_EXIT_STRUCT: {
                 // printf("VM_DEBUG: Calling callback for EXIT_STRUCT\n");
                 SYNC_IP();
                 if (ctx->io_callback(ctx, 0, opcode, NULL) != CND_ERR_OK) return CND_ERR_CALLBACK;
-                break; // VM continues with next instruction after the struct
+                break; 
             }
 
             case OP_META_VERSION: {
@@ -1037,6 +1068,7 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
 
                 if (count > 0) {
                     SYNC_IP();
+                    if (try_optimize_byte_array(ctx, count)) { RELOAD_PC(); break; }
                     if (!loop_push(ctx, ctx->ip, count)) return CND_ERR_OOB;
                 } else {
                      SYNC_IP();
