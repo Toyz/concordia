@@ -80,6 +80,8 @@ endif()
 
 # --- Subdirectories ---
 
+enable_testing()
+
 # Core Libraries
 add_subdirectory(src/vm)
 add_subdirectory(src/compiler)

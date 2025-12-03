@@ -31,3 +31,6 @@ target_include_directories(test_runner PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../in
 if(MSVC)
   target_compile_definitions(test_runner PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
+
+include(GoogleTest)
+gtest_discover_tests(test_runner)
