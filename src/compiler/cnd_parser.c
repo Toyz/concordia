@@ -1407,7 +1407,9 @@ void parse_import(Parser* p) {
     p->current_path = full_path;
     
     advance(p);
+    p->import_depth++;
     parse_top_level(p);
+    p->import_depth--;
     
     // Restore state
     p->lexer = old_lexer;
@@ -1494,7 +1496,7 @@ void parse_top_level(Parser* p) {
     }
     if(pending_doc) free(pending_doc);
 
-    if (p->packet_count == 0) {
+    if (p->packet_count == 0 && p->import_depth == 0) {
         parser_error(p, "No packet definition found. A .cnd file must contain exactly one 'packet Name { ... }' block.");
     }
 }

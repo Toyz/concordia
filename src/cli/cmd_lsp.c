@@ -49,6 +49,7 @@ static const BuiltinDecorator BUILTIN_DECORATORS[] = {
     {"sub", "Subtracts value.", "sub(VAL)"},
     {"poly", "Applies polynomial transformation.", "poly(c0, c1, ...)"},
     {"spline", "Applies spline transformation.", "spline(x0, y0, x1, y1, ...)"},
+    {"expr", "Calculates a value based on an expression.", "expr(expression)"},
     {NULL, NULL, NULL}
 };
 

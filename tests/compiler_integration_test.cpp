@@ -98,19 +98,19 @@ protected:
 };
 
 TEST_F(ValidationTest, ScaleOnString) {
-    EXPECT_TRUE(CompileShouldFail("struct S { @scale(1.0) string s; }"));
+    EXPECT_TRUE(CompileShouldFail("struct S { @scale(1.0) string s; } packet P { S s; }"));
 }
 
 TEST_F(ValidationTest, RangeOnString) {
-    EXPECT_TRUE(CompileShouldFail("struct S { @range(0, 10) string s; }"));
+    EXPECT_TRUE(CompileShouldFail("struct S { @range(0, 10) string s; } packet P { S s; }"));
 }
 
 TEST_F(ValidationTest, BitfieldOnFloat) {
-    EXPECT_TRUE(CompileShouldFail("struct S { float f : 4; }"));
+    EXPECT_TRUE(CompileShouldFail("struct S { float f : 4; } packet P { S s; }"));
 }
 
 TEST_F(ValidationTest, BitfieldOnString) {
-    EXPECT_TRUE(CompileShouldFail("struct S { string s : 4; }"));
+    EXPECT_TRUE(CompileShouldFail("struct S { string s : 4; } packet P { S s; }"));
 }
 
 TEST_F(ValidationTest, CRCOnString) {
@@ -119,20 +119,20 @@ TEST_F(ValidationTest, CRCOnString) {
 
 TEST_F(ValidationTest, InvalidRangeArgs) {
     // Min > Max
-    EXPECT_TRUE(CompileShouldFail("struct S { @range(10, 0) int x; }"));
+    EXPECT_TRUE(CompileShouldFail("struct S { @range(10, 0) int x; } packet P { S s; }"));
 }
 
 TEST_F(ValidationTest, DuplicateField) {
-    EXPECT_TRUE(CompileShouldFail("struct S { int x; int x; }"));
+    EXPECT_TRUE(CompileShouldFail("struct S { int x; int x; } packet P { S s; }"));
 }
 
 TEST_F(ValidationTest, RecursiveStruct) {
-    EXPECT_TRUE(CompileShouldFail("struct S { S s; }"));
+    EXPECT_TRUE(CompileShouldFail("struct S { S s; } packet P { S s; }"));
 }
 
 TEST_F(ValidationTest, InvalidConstType) {
     // String literal for int const
-    EXPECT_TRUE(CompileShouldFail("struct S { @const(\"abc\") int x; }"));
+    EXPECT_TRUE(CompileShouldFail("struct S { @const(\"abc\") int x; } packet P { S s; }"));
 }
 
 TEST_F(ValidationTest, ScaleTypeMismatch) {
@@ -141,12 +141,12 @@ TEST_F(ValidationTest, ScaleTypeMismatch) {
     // But maybe @scale on a type that doesn't support math?
     // We already tested ScaleOnString.
     // What about @scale on a struct?
-    EXPECT_TRUE(CompileShouldFail("struct Inner { int x; } struct S { @scale(2.0) Inner i; }"));
+    EXPECT_TRUE(CompileShouldFail("struct Inner { int x; } struct S { @scale(2.0) Inner i; } packet P { S s; }"));
 }
 
 TEST_F(ValidationTest, ArrayPrefixTypeMismatch) {
     // Prefix must be integer
-    EXPECT_TRUE(CompileShouldFail("struct S { int arr[] prefix float; }"));
+    EXPECT_TRUE(CompileShouldFail("struct S { int arr[] prefix float; } packet P { S s; }"));
 }
 
 TEST_F(ValidationTest, ConstBounds_Uint8_TooLarge) {

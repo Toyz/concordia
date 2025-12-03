@@ -1,6 +1,8 @@
 #include "bench_common.h"
 #include <cstdio>
 #include <cstdlib>
+#include <unistd.h>
+#include <fcntl.h>
 
 void CompileSchema(const char* schema, std::vector<uint8_t>& bytecode) {
     // We use a temporary file for compilation as the compiler API currently works with files
@@ -12,7 +14,22 @@ void CompileSchema(const char* schema, std::vector<uint8_t>& bytecode) {
     fwrite(schema, 1, strlen(schema), f);
     fclose(f);
 
-    if (cnd_compile_file("bench_temp.cnd", "bench_temp.il", 0, 0) != 0) {
+    // Silence stdout/stderr during compilation
+    int stdout_fd = dup(STDOUT_FILENO);
+    int stderr_fd = dup(STDERR_FILENO);
+    int null_fd = open("/dev/null", O_WRONLY);
+    dup2(null_fd, STDOUT_FILENO);
+    dup2(null_fd, STDERR_FILENO);
+    close(null_fd);
+
+    int res = cnd_compile_file("bench_temp.cnd", "bench_temp.il", 0, 0);
+
+    dup2(stdout_fd, STDOUT_FILENO);
+    dup2(stderr_fd, STDERR_FILENO);
+    close(stdout_fd);
+    close(stderr_fd);
+
+    if (res != 0) {
         fprintf(stderr, "Compilation failed for schema: %s\n", schema);
         exit(1);
     }

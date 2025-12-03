@@ -27,7 +27,7 @@ static void BM_EncodeBitfields(benchmark::State& state) {
         bytecode);
     
     cnd_program program;
-    cnd_program_load(&program, bytecode.data(), bytecode.size());
+    cnd_program_load_il(&program, bytecode.data(), bytecode.size());
     
     Flags f = { 0x1F, 0xABC, 0x7, 0xFFF };
     
@@ -49,7 +49,7 @@ static void BM_DecodeBitfields(benchmark::State& state) {
         bytecode);
     
     cnd_program program;
-    cnd_program_load(&program, bytecode.data(), bytecode.size());
+    cnd_program_load_il(&program, bytecode.data(), bytecode.size());
     
     Flags f = { 0x1F, 0xABC, 0x7, 0xFFF };
     
@@ -96,7 +96,7 @@ static void BM_EncodeOptional(benchmark::State& state) {
         bytecode);
     
     cnd_program program;
-    cnd_program_load(&program, bytecode.data(), bytecode.size());
+    cnd_program_load_il(&program, bytecode.data(), bytecode.size());
     
     OptionalData d = { 0x11223344, 0x55667788 };
     
@@ -119,7 +119,7 @@ static void BM_DecodeOptional(benchmark::State& state) {
         bytecode);
     
     cnd_program program;
-    cnd_program_load(&program, bytecode.data(), bytecode.size());
+    cnd_program_load_il(&program, bytecode.data(), bytecode.size());
     
     OptionalData d = { 0x11223344, 0x55667788 };
     
@@ -162,7 +162,7 @@ static void BM_EncodeTransform(benchmark::State& state) {
         bytecode);
     
     cnd_program program;
-    cnd_program_load(&program, bytecode.data(), bytecode.size());
+    cnd_program_load_il(&program, bytecode.data(), bytecode.size());
     
     TransformData d = { 25.5f }; // (25.5 - 10) / 0.1 = 155
     
@@ -184,7 +184,7 @@ static void BM_DecodeTransform(benchmark::State& state) {
         bytecode);
     
     cnd_program program;
-    cnd_program_load(&program, bytecode.data(), bytecode.size());
+    cnd_program_load_il(&program, bytecode.data(), bytecode.size());
     
     TransformData d = { 25.5f }; 
     

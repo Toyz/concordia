@@ -27,7 +27,7 @@ protected:
 };
 
 TEST_F(CompilerTest, BasicStruct) {
-    WriteSource("struct Point { float x; float y; }");
+    WriteSource("struct Point { float x; float y; } packet P { Point p; }");
     int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
     EXPECT_TRUE(CheckOutputExists());
@@ -40,6 +40,7 @@ TEST_F(CompilerTest, AllPrimitives) {
         "  int8 i8; int16 i16; int32 i32; int64 i64;"
         "  float f32; double f64;"
         "}"
+        "packet P { AllTypes t; }"
     );
     int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
@@ -54,6 +55,7 @@ TEST_F(CompilerTest, ArraysAndStrings) {
         "  string s1;"
         "  string s2 prefix uint16;"
         "}"
+        "packet P { Arrays a; }"
     );
     int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
@@ -67,6 +69,7 @@ TEST_F(CompilerTest, Decorators) {
         "  @const(0xCAFE) uint16 magic;"
         "  @big_endian uint32 be_val;"
         "}"
+        "packet P { Decorated d; }"
     );
     int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
@@ -87,7 +90,7 @@ TEST_F(CompilerTest, InvalidSyntax) {
 */
 
 TEST_F(CompilerTest, UnknownType) {
-    WriteSource("struct BadType { mystery_type x; };");
+    WriteSource("struct BadType { mystery_type x; }; packet P { BadType b; }");
     
     // testing::internal::CaptureStdout();
     int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
@@ -100,6 +103,7 @@ TEST_F(CompilerTest, NestedStructs) {
     WriteSource(
         "struct Inner { uint8 val; }"
         "struct Outer { Inner i; }"
+        "packet P { Outer o; }"
     );
     int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
@@ -125,6 +129,7 @@ TEST_F(CompilerTest, BitfieldSyntax) {
         "  uint8 f2 : 3;"
         "  uint16 f3 : 12;"
         "}"
+        "packet P { Bitfields b; }"
     );
     int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
@@ -150,6 +155,7 @@ TEST_F(CompilerTest, PaddingAndFill) {
         "  @pad(4) uint8 dummy;"
         "  @fill uint8 aligned;"
         "}"
+        "packet P { Layout l; }"
     );
     int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
@@ -163,6 +169,7 @@ TEST_F(CompilerTest, Transformations) {
         "  @div(2) @sub(1) uint16 val2;"
         "  @scale(0.5) @offset(100.0) float val3;"
         "}"
+        "packet P { Transforms t; }"
     );
     int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
@@ -170,14 +177,14 @@ TEST_F(CompilerTest, Transformations) {
 }
 
 TEST_F(CompilerTest, EmptyStruct) {
-    WriteSource("struct Empty {}");
+    WriteSource("struct Empty {} packet P { Empty e; }");
     int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
     EXPECT_TRUE(CheckOutputExists());
 }
 
 TEST_F(CompilerTest, InvalidDecorator) {
-    WriteSource("struct BadDec { @nonexistent(1) uint8 x; }");
+    WriteSource("struct BadDec { @nonexistent(1) uint8 x; } packet P { BadDec b; }");
     
     // testing::internal::CaptureStdout();
     int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
@@ -196,6 +203,7 @@ TEST_F(CompilerTest, ShorthandTypes) {
         "  @const(3) u32 k;"
         "  @const(4) u64 l;"
         "}"
+        "packet P { Shorthands s; }"
     );
     int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
@@ -212,6 +220,7 @@ TEST_F(CompilerTest, ParameterizedFill) {
         "  u8 e : 1;"
         "  @fill u8 f;"
         "}"
+        "packet P { FillParams f; }"
     );
     int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_EQ(res, 0);
@@ -219,7 +228,7 @@ TEST_F(CompilerTest, ParameterizedFill) {
 }
 
 TEST_F(CompilerTest, InvalidFillParam) {
-    WriteSource("struct BadFill { @fill(2) u8 x; }");
+    WriteSource("struct BadFill { @fill(2) u8 x; } packet P { BadFill b; }");
     
     // testing::internal::CaptureStdout();
     int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);

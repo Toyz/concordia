@@ -200,6 +200,7 @@ typedef struct {
     int silent;      // Flag to suppress all output (for LSP)
     int verbose;     // Flag for verbose debug output
     int packet_count; // Track number of packets defined
+    int import_depth; // Track recursion depth of imports
     
     // Decorator State
     int pending_unaligned; // Flag: Next struct is @unaligned_bytes

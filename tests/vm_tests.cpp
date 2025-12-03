@@ -1475,3 +1475,19 @@ TEST_F(VmAluTest, JumpIfNotTaken) {
     EXPECT_EQ(ctx.expr_stack[0], 1);
     EXPECT_EQ(ctx.expr_stack[1], 2);
 }
+
+TEST_F(ConcordiaTest, PolyCrashRepro) {
+    const char* schema = "packet P { @poly(0.5, 2.0, 1.5) uint8 val; }";
+    CompileAndLoad(schema);
+    
+    // Setup data
+    // The compiler assigns keys sequentially. 'val' should be key 0.
+    g_test_data[0].key = 0; 
+    g_test_data[0].f64_val = 100.0; 
+    
+    memset(buffer, 0, sizeof(buffer));
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, &tctx);
+    
+    cnd_error_t err = cnd_execute(&ctx);
+    EXPECT_EQ(err, CND_ERR_OK);
+}

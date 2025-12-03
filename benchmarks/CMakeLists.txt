@@ -5,6 +5,7 @@ set(BENCHMARK_SOURCES
     bench_common.cpp
     bench_core.cpp
     bench_features.cpp
+    bench_math.cpp
     bench_ifelse.cpp
     bench_switch.cpp
 )

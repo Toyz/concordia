@@ -45,7 +45,7 @@ static void BM_EncodeNested(benchmark::State& state) {
         bytecode);
     
     cnd_program program;
-    cnd_program_load(&program, bytecode.data(), bytecode.size());
+    cnd_program_load_il(&program, bytecode.data(), bytecode.size());
     
     BenchNestedContext bc;
     bc.path.start = {1.0f, 2.0f, 3.0f};
@@ -70,7 +70,7 @@ static void BM_DecodeNested(benchmark::State& state) {
         bytecode);
     
     cnd_program program;
-    cnd_program_load(&program, bytecode.data(), bytecode.size());
+    cnd_program_load_il(&program, bytecode.data(), bytecode.size());
     
     BenchNestedContext bc;
     bc.path.start = {1.0f, 2.0f, 3.0f};
@@ -140,7 +140,7 @@ static void BM_EncodeArrayStruct(benchmark::State& state) {
         bytecode);
     
     cnd_program program;
-    cnd_program_load(&program, bytecode.data(), bytecode.size());
+    cnd_program_load_il(&program, bytecode.data(), bytecode.size());
     
     BenchArrayStructContext bc;
     for(int i=0; i<100; i++) { bc.list.items[i] = {(uint32_t)i, (uint16_t)(i*2)}; }
@@ -164,7 +164,7 @@ static void BM_DecodeArrayStruct(benchmark::State& state) {
         bytecode);
     
     cnd_program program;
-    cnd_program_load(&program, bytecode.data(), bytecode.size());
+    cnd_program_load_il(&program, bytecode.data(), bytecode.size());
     
     BenchArrayStructContext bc;
     for(int i=0; i<100; i++) { bc.list.items[i] = {(uint32_t)i, (uint16_t)(i*2)}; }
@@ -190,7 +190,7 @@ static void BM_EncodeBigEndian(benchmark::State& state) {
     CompileSchema("packet P { @big_endian uint32 val; }", bytecode);
     
     cnd_program program;
-    cnd_program_load(&program, bytecode.data(), bytecode.size());
+    cnd_program_load_il(&program, bytecode.data(), bytecode.size());
     
     BenchData d = { 0x12345678, 0, {0} };
     
@@ -210,7 +210,7 @@ static void BM_EncodeLargeArray(benchmark::State& state) {
     CompileSchema("packet P { uint8 data[1024]; }", bytecode);
     
     cnd_program program;
-    cnd_program_load(&program, bytecode.data(), bytecode.size());
+    cnd_program_load_il(&program, bytecode.data(), bytecode.size());
     
     BenchContext bc;
     memset(bc.data.data, 0xAA, 16); // Just dummy
