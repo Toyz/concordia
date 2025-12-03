@@ -537,4 +537,182 @@ TEST_F(ConcordiaTest, SpecCoverage_Match) {
     
 }
 
+TEST_F(ConcordiaTest, CRCFailure) {
+    CompileAndLoad(
+        "packet P {"
+        "  uint8 data;"
+        "  @crc(16) uint16 checksum;"
+        "}"
+    );
+
+    // Encode valid data
+    clear_test_data();
+    g_test_data[0].key = 0; g_test_data[0].u64_val = 0x12; // data
+    // CRC is calculated automatically on encode
+    
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    ASSERT_EQ(cnd_execute(&ctx), CND_ERR_OK);
+
+    // Corrupt the data (byte 0)
+    buffer[0] = 0xFF;
+
+    // Decode
+    cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    EXPECT_EQ(cnd_execute(&ctx), CND_ERR_CRC_MISMATCH);
+}
+
+TEST_F(ConcordiaTest, BitpackingBoundary) {
+    CompileAndLoad(
+        "packet P {"
+        "  uint8 a : 4;"
+        "  uint16 b : 12;" // Crosses byte boundary
+        "}"
+    );
+
+    clear_test_data();
+    g_test_data[0].key = 0; g_test_data[0].u64_val = 0xF; // 1111
+    g_test_data[1].key = 1; g_test_data[1].u64_val = 0xABC; // 1010 1011 1100
+
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    ASSERT_EQ(cnd_execute(&ctx), CND_ERR_OK);
+
+    // DECODE
+    cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    EXPECT_EQ(cnd_execute(&ctx), CND_ERR_OK);
+    
+    EXPECT_EQ(g_test_data[0].u64_val, 0xF);
+    EXPECT_EQ(g_test_data[1].u64_val, 0xABC);
+}
+
+TEST_F(ConcordiaTest, AlignmentPadding) {
+    CompileAndLoad(
+        "packet P {"
+        "  uint8 a;"
+        "  @pad(24);" // Explicit padding (3 bytes)
+        "  uint32 b;"
+        "}"
+    );
+
+    clear_test_data();
+    g_test_data[0].key = 0; g_test_data[0].u64_val = 0x11;
+    g_test_data[1].key = 1; g_test_data[1].u64_val = 0x22334455;
+
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    ASSERT_EQ(cnd_execute(&ctx), CND_ERR_OK);
+
+    // Byte 0: 0x11
+    // Byte 1: pad
+    // Byte 2: pad
+    // Byte 3: pad
+    // Byte 4-7: 0x22334455
+    
+    EXPECT_EQ(buffer[0], 0x11);
+    EXPECT_EQ(buffer[1], 0x00); // Pad
+    EXPECT_EQ(buffer[2], 0x00); // Pad
+    EXPECT_EQ(buffer[3], 0x00); // Pad
+    
+    // Verify b is at offset 4
+    uint32_t b_val = 0;
+    if (ctx.endianness == CND_LE) {
+        b_val = buffer[4] | (buffer[5] << 8) | (buffer[6] << 16) | (buffer[7] << 24);
+    } else {
+        b_val = (buffer[4] << 24) | (buffer[5] << 16) | (buffer[6] << 8) | buffer[7];
+    }
+    EXPECT_EQ(b_val, 0x22334455);
+}
+
+TEST_F(ConcordiaTest, AlignFillPatterns) {
+    // Case 1: Fill with 1s
+    CompileAndLoad(
+        "packet P1 {"
+        "  uint8 a : 4;"
+        "  @fill(1);"
+        "  uint8 b;"
+        "}"
+    );
+    clear_test_data();
+    g_test_data[0].key = 0; g_test_data[0].u64_val = 0x0; // 0000
+    g_test_data[1].key = 1; g_test_data[1].u64_val = 0xFF;
+    
+    memset(buffer, 0, sizeof(buffer));
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    ASSERT_EQ(cnd_execute(&ctx), CND_ERR_OK);
+    
+    // Byte 0: 0000 (a) + 1111 (fill) = 0x0F (LE: low bits first? No, write_bits handles it)
+    // Let's check write_bits behavior.
+    // If LE: write_bits(0, 4) -> bits 0-3. write_bits(1, 4) -> bits 4-7.
+    // 0000 (a) is written first. 1111 (fill) is written next.
+    // Result: 0xF0? Or 0x0F?
+    // write_bits LE: bit = (val >> i) & 1; mask = 1 << ctx->bit_offset;
+    // i=0..3. bit_offset=0..3.
+    // val=0. bits 0-3 = 0.
+    // fill_val=0xFF...
+    // i=0..3. bit_offset=4..7.
+    // bits 4-7 = 1.
+    // So byte is 0xF0 (binary 11110000).
+    
+    // Wait, let's verify endianness default. It is LE.
+    // write_bits LE:
+    // val=0, count=4.
+    // i=0: bit=0, mask=1<<0=1. byte|=0.
+    // ...
+    // i=3: bit=0, mask=1<<3=8. byte|=0.
+    // bit_offset becomes 4.
+    
+    // fill_val=0xFF, count=4.
+    // i=0: bit=1, mask=1<<4=16. byte|=16.
+    // ...
+    // i=3: bit=1, mask=1<<7=128. byte|=128.
+    // So byte is 0xF0.
+    
+    EXPECT_EQ(buffer[0], 0xF0);
+    EXPECT_EQ(buffer[1], 0xFF);
+
+    // Case 2: Already aligned
+    CompileAndLoad(
+        "packet P2 {"
+        "  uint8 a;"
+        "  @fill(1);" // Should do nothing
+        "  uint8 b;"
+        "}"
+    );
+    clear_test_data();
+    g_test_data[0].key = 0; g_test_data[0].u64_val = 0xAA;
+    g_test_data[1].key = 1; g_test_data[1].u64_val = 0xBB;
+    
+    memset(buffer, 0, sizeof(buffer));
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    ASSERT_EQ(cnd_execute(&ctx), CND_ERR_OK);
+    
+    EXPECT_EQ(buffer[0], 0xAA);
+    EXPECT_EQ(buffer[1], 0xBB);
+}
+
+TEST_F(ConcordiaTest, SwitchDefault) {
+    CompileAndLoad(
+        "packet P {"
+        "  uint8 tag;"
+        "  switch (tag) {"
+        "    case 1: uint8 val1;"
+        "    case 2: uint16 val2;"
+        "  }"
+        "}"
+    );
+
+    // Case 1
+    clear_test_data();
+    g_test_data[0].key = 0; g_test_data[0].u64_val = 1;
+    g_test_data[1].key = 1; g_test_data[1].u64_val = 0xAA;
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    ASSERT_EQ(cnd_execute(&ctx), CND_ERR_OK);
+    EXPECT_EQ(ctx.cursor, 2); // 1 byte tag + 1 byte val1
+
+    // Default (3) - should encode tag and skip switch
+    clear_test_data();
+    g_test_data[0].key = 0; g_test_data[0].u64_val = 3;
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    ASSERT_EQ(cnd_execute(&ctx), CND_ERR_OK);
+    EXPECT_EQ(ctx.cursor, 1); // 1 byte tag only
+}
+
 

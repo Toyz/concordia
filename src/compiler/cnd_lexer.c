@@ -21,6 +21,7 @@ static TokenType check_keyword(const char* start, int length) {
             if (memcmp(start, "case", 4) == 0) return TOK_CASE;
             if (memcmp(start, "else", 4) == 0) return TOK_ELSE;
             if (memcmp(start, "true", 4) == 0) return TOK_TRUE;
+            if (memcmp(start, "self", 4) == 0) return TOK_SELF;
             break;
         case 5:
             if (memcmp(start, "false", 5) == 0) return TOK_FALSE;

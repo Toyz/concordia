@@ -143,7 +143,8 @@ typedef enum {
     CND_ERR_VALIDATION = 3,    // Range/Const check failed
     CND_ERR_CALLBACK = 4,      // User callback returned error
     CND_ERR_STACK_OVERFLOW = 5,
-    CND_ERR_STACK_UNDERFLOW = 6
+    CND_ERR_STACK_UNDERFLOW = 6,
+    CND_ERR_CRC_MISMATCH = 7   // CRC check failed
 } cnd_error_t;
 
 typedef enum {

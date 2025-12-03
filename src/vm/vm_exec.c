@@ -823,7 +823,7 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                     write_u16(ctx->data_buffer + ctx->cursor, (uint16_t)crc, ctx->endianness);
                 } else {
                     uint16_t actual = read_u16(ctx->data_buffer + ctx->cursor, ctx->endianness);
-                    if (actual != (uint16_t)crc) return CND_ERR_VALIDATION;
+                    if (actual != (uint16_t)crc) return CND_ERR_CRC_MISMATCH;
                 }
                 ctx->cursor += 2;
                 break;
@@ -843,7 +843,7 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                     write_u32(ctx->data_buffer + ctx->cursor, crc, ctx->endianness);
                 } else {
                     uint32_t actual = read_u32(ctx->data_buffer + ctx->cursor, ctx->endianness);
-                    if (actual != crc) return CND_ERR_VALIDATION;
+                    if (actual != crc) return CND_ERR_CRC_MISMATCH;
                 }
                 ctx->cursor += 4;
                 break;
@@ -994,7 +994,21 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 }
                 break;
             }
-            case OP_ALIGN_PAD: { uint8_t b=FETCH_IL_U8(ctx); for(int i=0;i<b;i++) { ctx->bit_offset++; if(ctx->bit_offset>=8){ctx->bit_offset=0; ctx->cursor++;} } break; } 
+            case OP_ALIGN_PAD: { 
+                uint8_t b=FETCH_IL_U8(ctx); 
+                if (ctx->mode == CND_MODE_ENCODE) {
+                    write_bits(ctx, 0, b);
+                } else {
+                    for(int i=0;i<b;i++) { 
+                        ctx->bit_offset++; 
+                        if(ctx->bit_offset>=8){
+                            ctx->bit_offset=0; 
+                            ctx->cursor++;
+                        } 
+                    } 
+                }
+                break; 
+            } 
 
             // ... Category D: Arrays & Strings ...
             

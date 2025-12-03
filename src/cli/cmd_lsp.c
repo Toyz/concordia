@@ -394,6 +394,93 @@ static char* file_uri_to_path(const char* uri) {
     return decoded;
 }
 
+// --- Bytecode Helpers for Completion ---
+static uint8_t read_u8(const uint8_t** ptr, const uint8_t* end) {
+    if (*ptr >= end) return 0;
+    return *(*ptr)++;
+}
+
+static uint16_t read_u16(const uint8_t** ptr, const uint8_t* end) {
+    if (*ptr + 2 > end) return 0;
+    uint16_t v = (*ptr)[0] | ((*ptr)[1] << 8);
+    *ptr += 2;
+    return v;
+}
+
+static void skip_instruction(const uint8_t** ptr, const uint8_t* end, uint8_t op) {
+    switch (op) {
+        case OP_META_VERSION: *ptr += 1; break;
+        case OP_META_NAME: *ptr += 2; break;
+        case OP_IO_U8: case OP_IO_U16: case OP_IO_U32: case OP_IO_U64:
+        case OP_IO_I8: case OP_IO_I16: case OP_IO_I32: case OP_IO_I64:
+        case OP_IO_F32: case OP_IO_F64: case OP_IO_BOOL:
+        case OP_ENTER_STRUCT: *ptr += 2; break;
+        case OP_STR_NULL: *ptr += 4; break;
+        case OP_STR_PRE_U8: case OP_STR_PRE_U16: case OP_STR_PRE_U32:
+        case OP_ARR_PRE_U8: case OP_ARR_PRE_U16: case OP_ARR_PRE_U32: *ptr += 2; break;
+        case OP_IO_BIT_U: case OP_IO_BIT_I: *ptr += 3; break;
+        case OP_IO_BIT_BOOL: *ptr += 2; break;
+        case OP_ARR_FIXED: *ptr += 6; break;
+        case OP_RAW_BYTES: *ptr += 6; break;
+        case OP_CONST_WRITE: {
+            uint8_t type = read_u8(ptr, end);
+            if (type == OP_IO_U8) *ptr += 1;
+            else if (type == OP_IO_U16) *ptr += 2;
+            else if (type == OP_IO_U32) *ptr += 4;
+            else if (type == OP_IO_U64) *ptr += 8;
+            break;
+        }
+        case OP_CONST_CHECK: {
+            *ptr += 2; // key
+            uint8_t type = read_u8(ptr, end);
+            if (type == OP_IO_U8 || type == OP_IO_I8) *ptr += 1;
+            else if (type == OP_IO_U16 || type == OP_IO_I16) *ptr += 2;
+            else if (type == OP_IO_U32 || type == OP_IO_I32) *ptr += 4;
+            else if (type == OP_IO_U64 || type == OP_IO_I64) *ptr += 8;
+            break;
+        }
+        case OP_RANGE_CHECK: {
+            uint8_t type = read_u8(ptr, end);
+            if (type == OP_IO_U8 || type == OP_IO_I8) *ptr += 2;
+            else if (type == OP_IO_U16 || type == OP_IO_I16) *ptr += 4;
+            else if (type == OP_IO_U32 || type == OP_IO_I32 || type == OP_IO_F32) *ptr += 8;
+            else if (type == OP_IO_U64 || type == OP_IO_I64 || type == OP_IO_F64) *ptr += 16;
+            break;
+        }
+        case OP_SCALE_LIN: *ptr += 16; break;
+        case OP_TRANS_ADD: case OP_TRANS_SUB: case OP_TRANS_MUL: case OP_TRANS_DIV: *ptr += 8; break;
+        case OP_TRANS_POLY: {
+            uint8_t count = read_u8(ptr, end);
+            *ptr += count * 8;
+            break;
+        }
+        case OP_TRANS_SPLINE: {
+            uint8_t count = read_u8(ptr, end);
+            *ptr += count * 16;
+            break;
+        }
+        case OP_CRC_16: *ptr += 7; break;
+        case OP_CRC_32: *ptr += 13; break;
+        case OP_ENUM_CHECK: {
+            uint8_t type = read_u8(ptr, end);
+            uint16_t count = read_u16(ptr, end);
+            int sz = 0;
+            if (type == OP_IO_U8 || type == OP_IO_I8) sz = 1;
+            else if (type == OP_IO_U16 || type == OP_IO_I16) sz = 2;
+            else if (type == OP_IO_U32 || type == OP_IO_I32) sz = 4;
+            else if (type == OP_IO_U64 || type == OP_IO_I64) sz = 8;
+            *ptr += count * sz;
+            break;
+        }
+        case OP_SWITCH: *ptr += 6; break;
+        case OP_JUMP: case OP_JUMP_IF_NOT: *ptr += 4; break;
+        case OP_LOAD_CTX: case OP_STORE_CTX: *ptr += 2; break;
+        case OP_PUSH_IMM: *ptr += 8; break;
+        case OP_ALIGN_PAD: case OP_ALIGN_FILL: *ptr += 1; break;
+        default: break;
+    }
+}
+
 static void handle_completion(cJSON* id, cJSON* params) {
     cJSON* doc = cJSON_GetObjectItem(params, "textDocument");
     cJSON* uri_item = cJSON_GetObjectItem(doc, "uri");
@@ -446,14 +533,61 @@ static void handle_completion(cJSON* id, cJSON* params) {
     int context_is_enum_member = 0;
     char* enum_name = NULL;
     
+    // Expression Context
+    char* active_decorator = NULL;
+    int paren_depth = 0;
+    int decorator_start_depth = -1;
+    int in_expr = 0;
+
+    // Struct Context
+    char* active_struct = NULL;
+    int brace_depth = 0;
+    int struct_depth = -1;
+
     while (1) {
         Token t = lexer_next(&scanner);
         if (t.type == TOK_EOF) break;
         
         size_t token_start = t.start - source;
+        if (token_start >= cursor_offset) break; // Reached cursor
         
-        if (token_start >= cursor_offset) {
-            break; // Reached cursor
+        // Decorator Context
+        if (t.type == TOK_LPAREN) {
+            paren_depth++;
+            if (prev_token.type == TOK_IDENTIFIER && prev_prev_token.type == TOK_AT) {
+                if (active_decorator) free(active_decorator);
+                active_decorator = malloc(prev_token.length + 1);
+                memcpy(active_decorator, prev_token.start, prev_token.length);
+                active_decorator[prev_token.length] = '\0';
+                decorator_start_depth = paren_depth; 
+            }
+        } else if (t.type == TOK_RPAREN) {
+            if (active_decorator && paren_depth == decorator_start_depth) {
+                free(active_decorator);
+                active_decorator = NULL;
+                decorator_start_depth = -1;
+            }
+            paren_depth--;
+        }
+
+        // Struct Context
+        if (t.type == TOK_LBRACE) {
+            brace_depth++;
+            if ((prev_token.type == TOK_IDENTIFIER) && 
+                (prev_prev_token.type == TOK_STRUCT || prev_prev_token.type == TOK_PACKET)) {
+                 if (active_struct) free(active_struct);
+                 active_struct = malloc(prev_token.length + 1);
+                 memcpy(active_struct, prev_token.start, prev_token.length);
+                 active_struct[prev_token.length] = '\0';
+                 struct_depth = brace_depth;
+            }
+        } else if (t.type == TOK_RBRACE) {
+            if (active_struct && brace_depth == struct_depth) {
+                free(active_struct);
+                active_struct = NULL;
+                struct_depth = -1;
+            }
+            brace_depth--;
         }
         
         prev_prev_token = prev_token;
@@ -466,12 +600,16 @@ static void handle_completion(cJSON* id, cJSON* params) {
         EnumDef* edef = enum_reg_find(&p.enums, prev_prev_token.start, prev_prev_token.length);
         if (edef) {
             context_is_enum_member = 1;
-            enum_name = malloc(prev_prev_token.length + 1); // Portable replacement for strndup
+            enum_name = malloc(prev_prev_token.length + 1);
             if (enum_name) {
                 memcpy(enum_name, prev_prev_token.start, prev_prev_token.length);
                 enum_name[prev_prev_token.length] = '\0';
             }
         }
+    }
+
+    if (active_decorator && strcmp(active_decorator, "expr") == 0) {
+        in_expr = 1;
     }
     
     // Build Completion List
@@ -491,6 +629,50 @@ static void handle_completion(cJSON* id, cJSON* params) {
             }
         }
         free(enum_name);
+    } else if (in_expr) {
+        // Math Functions
+        const char* math_funcs[] = { "sin", "cos", "tan", "sqrt", "log", "abs", "pow" };
+        for (size_t i = 0; i < sizeof(math_funcs)/sizeof(char*); i++) {
+            cJSON* item = cJSON_CreateObject();
+            cJSON_AddStringToObject(item, "label", math_funcs[i]);
+            cJSON_AddNumberToObject(item, "kind", 3); // Function
+            cJSON_AddStringToObject(item, "detail", "Math Function");
+            cJSON_AddItemToArray(items, item);
+        }
+        
+        // Type Conversions
+        const char* type_convs[] = { "int", "float" };
+        for (size_t i = 0; i < sizeof(type_convs)/sizeof(char*); i++) {
+            cJSON* item = cJSON_CreateObject();
+            cJSON_AddStringToObject(item, "label", type_convs[i]);
+            cJSON_AddNumberToObject(item, "kind", 3); // Function
+            cJSON_AddStringToObject(item, "detail", "Type Conversion");
+            cJSON_AddItemToArray(items, item);
+        }
+
+        // Struct Fields
+        if (active_struct) {
+            StructDef* sdef = reg_find(&p.registry, active_struct, (int)strlen(active_struct));
+            if (sdef && sdef->bytecode.data) {
+                const uint8_t* ptr = sdef->bytecode.data;
+                const uint8_t* end = ptr + sdef->bytecode.size;
+                while (ptr < end) {
+                    uint8_t op = read_u8(&ptr, end);
+                    if (op == OP_LOAD_CTX) {
+                        uint16_t key = read_u16(&ptr, end);
+                        if (key < p.strtab.count) {
+                            cJSON* item = cJSON_CreateObject();
+                            cJSON_AddStringToObject(item, "label", p.strtab.strings[key]);
+                            cJSON_AddNumberToObject(item, "kind", 5); // Field
+                            cJSON_AddStringToObject(item, "detail", "Field");
+                            cJSON_AddItemToArray(items, item);
+                        }
+                    } else {
+                        skip_instruction(&ptr, end, op);
+                    }
+                }
+            }
+        }
     } else {
         // Top-level items
         const char* keywords[] = { "struct", "packet", "enum", "import", "true", "false", "prefix", "string", "const", "range", "if", "else", "switch", "case", "default" };
@@ -541,6 +723,8 @@ static void handle_completion(cJSON* id, cJSON* params) {
     send_response(id, result);
     
     // Cleanup
+    if (active_decorator) free(active_decorator);
+    if (active_struct) free(active_struct);
     buf_free(&bc); buf_free(&p.global_bc);
     // free registries...
     free(source); free(path);

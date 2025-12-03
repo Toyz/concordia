@@ -386,6 +386,10 @@ ExprType parse_primary(Parser* p) {
         buf_push(p->target, OP_PUSH_IMM);
         buf_push_u64(p->target, 0);
         return TYPE_INT;
+    } else if (p->current.type == TOK_SELF) {
+        advance(p);
+        buf_push(p->target, OP_DUP);
+        return TYPE_UNKNOWN;
     } else if (p->current.type == TOK_IDENTIFIER) {
         Token name = p->current;
         
@@ -905,6 +909,10 @@ void parse_field(Parser* p, const char* doc) {
     consume(p, TOK_IDENTIFIER, "Expect field type");
 
     Token name_tok = p->current;
+    if (name_tok.type == TOK_SELF) {
+        parser_error(p, "Cannot use 'self' as field name");
+        return;
+    }
     consume(p, TOK_IDENTIFIER, "Expect field name");
     uint16_t key_id = strtab_add(&p->strtab, name_tok.start, name_tok.length);
 

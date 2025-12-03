@@ -45,6 +45,7 @@ typedef enum {
     TOK_ELSE,
     TOK_TRUE,
     TOK_FALSE,
+    TOK_SELF,
 
     TOK_LBRACE,    // {
     TOK_RBRACE,    // }

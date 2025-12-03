@@ -10,6 +10,8 @@ set(TEST_SOURCES
     language_features_test.cpp
     math_expr_test.cpp
     unaligned_test.cpp
+    self_keyword_test.cpp
+    import_execution_test.cpp
 )
 
 add_executable(test_runner ${TEST_SOURCES})
