@@ -17,7 +17,7 @@ const char *KEEP_UPPER[] = {
 
 // Helper to convert SCREAMING_SNAKE_CASE to PascalCase
 void to_pascal_case(const char *input, char *output, const char *strip_prefix, const char *add_prefix) {
-    int i = 0, j = 0;
+    size_t i = 0, j = 0;
     int capitalize_next = 1;
     
     if (add_prefix) {
@@ -140,7 +140,7 @@ void process_line(char *line) {
         char *name_end = ptr;
         while (*name_end && (isalnum(*name_end) || *name_end == '_')) name_end++;
         
-        int len = name_end - ptr;
+        size_t len = name_end - ptr;
         strncpy(name, ptr, len);
         name[len] = '\0';
 

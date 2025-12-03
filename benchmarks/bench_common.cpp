@@ -1,8 +1,22 @@
 #include "bench_common.h"
 #include <cstdio>
 #include <cstdlib>
+
+#ifdef _WIN32
+#include <io.h>
+#include <fcntl.h>
+#define dup _dup
+#define dup2 _dup2
+#define close _close
+#define open _open
+#define STDOUT_FILENO 1
+#define STDERR_FILENO 2
+#define NULL_DEVICE "NUL"
+#else
 #include <unistd.h>
 #include <fcntl.h>
+#define NULL_DEVICE "/dev/null"
+#endif
 
 void CompileSchema(const char* schema, std::vector<uint8_t>& bytecode) {
     // We use a temporary file for compilation as the compiler API currently works with files
@@ -17,7 +31,7 @@ void CompileSchema(const char* schema, std::vector<uint8_t>& bytecode) {
     // Silence stdout/stderr during compilation
     int stdout_fd = dup(STDOUT_FILENO);
     int stderr_fd = dup(STDERR_FILENO);
-    int null_fd = open("/dev/null", O_WRONLY);
+    int null_fd = open(NULL_DEVICE, O_WRONLY);
     dup2(null_fd, STDOUT_FILENO);
     dup2(null_fd, STDERR_FILENO);
     close(null_fd);

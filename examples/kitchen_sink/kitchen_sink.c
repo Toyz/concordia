@@ -39,6 +39,11 @@ typedef struct {
     uint8_t percentage;
     double temperature;
     
+    uint8_t val_add;
+    uint8_t val_sub;
+    uint8_t val_mul;
+    uint8_t val_div;
+
     double poly_val;
     double spline_val;
     uint8_t expr_val;
@@ -89,6 +94,8 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
         else if (strcmp(key_name, "has_extra") == 0) *(uint64_t*)ptr = obj->has_extra;
         else if (strcmp(key_name, "adv_mode") == 0) *(uint64_t*)ptr = obj->adv_mode;
         else if (strcmp(key_name, "adv_has_details") == 0) *(uint64_t*)ptr = obj->adv_has_details;
+        else if (strcmp(key_name, "val_add") == 0) *(uint64_t*)ptr = obj->val_add;
+        else if (strcmp(key_name, "val_sub") == 0) *(uint64_t*)ptr = obj->val_sub;
         return CND_ERR_OK;
     }
 
@@ -159,6 +166,10 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
         if (ENCODE) *(double*)ptr = obj->temperature;
         else obj->temperature = *(double*)ptr;
     }
+    else if (strcmp(key_name, "val_add") == 0) IO_VAL(uint8_t, val_add)
+    else if (strcmp(key_name, "val_sub") == 0) IO_VAL(uint8_t, val_sub)
+    else if (strcmp(key_name, "val_mul") == 0) IO_VAL(uint8_t, val_mul)
+    else if (strcmp(key_name, "val_div") == 0) IO_VAL(uint8_t, val_div)
     else if (strcmp(key_name, "poly_val") == 0) {
         if (ENCODE) *(double*)ptr = obj->poly_val;
         else obj->poly_val = *(double*)ptr;
@@ -242,6 +253,7 @@ int main() {
         .points_len = 3, .points = {10, 20, 30},
         .status = STATUS_OK, .confidence = 100,
         .percentage = 50, .temperature = 25.5,
+        .val_add = 10, .val_sub = 20, .val_mul = 5, .val_div = 40,
         .poly_val = 75.0, // 5 + 2(10) + 0.5(100) = 75.0. Raw should be 10.
         .spline_val = 50.0, // Raw 5 -> 50.0 (Segment 1)
         .bit_packed = { .a_3bits = 7, .b_5bits = 31, .c_4bits = 15, .d_aligned = 255 },
@@ -279,6 +291,7 @@ int main() {
     printf("  Status: %d\n", out.status);
     printf("  Confidence: %d, Error: %d, Reason: %s\n", out.confidence, out.error_code, out.reason);
     printf("  Percentage: %d%%, Temp: %.2f\n", out.percentage, out.temperature);
+    printf("  Val Add: %d, Sub: %d, Mul: %d, Div: %d\n", out.val_add, out.val_sub, out.val_mul, out.val_div);
     printf("  Poly Val: %.2f\n", out.poly_val);
     printf("  Spline Val: %.2f\n", out.spline_val);
     printf("  Expr Val: %d\n", out.expr_val);

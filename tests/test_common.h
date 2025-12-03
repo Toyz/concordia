@@ -75,7 +75,7 @@ protected:
         
         std::ifstream f(tmp_il, std::ios::binary | std::ios::ate);
         ASSERT_TRUE(f.good()) << "IL file not created";
-        long size = f.tellg();
+        std::streamsize size = f.tellg();
         f.seekg(0, std::ios::beg);
         
         std::vector<uint8_t> file_data(size);
