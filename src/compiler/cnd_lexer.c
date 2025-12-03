@@ -125,6 +125,13 @@ Token lexer_next(Lexer* lexer) {
                 else token.type = TOK_LT; 
                 return token;
             case '.': token.type = TOK_DOT; return token;
+            case '+': token.type = TOK_PLUS; return token;
+            case '-': 
+                if (is_digit_c(*lexer->current)) break; 
+                token.type = TOK_MINUS; return token;
+            case '*': token.type = TOK_STAR; return token;
+            case '/': token.type = TOK_SLASH; return token;
+            case '%': token.type = TOK_PERCENT; return token;
             case '"': {
                 token.type = TOK_STRING;
                 token.start = lexer->current;

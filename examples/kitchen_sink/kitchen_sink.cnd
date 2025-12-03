@@ -78,7 +78,7 @@ packet KitchenSink {
 
     // PROOF: Storing 2025 in a uint8 (max 255)
     // 2025 - 1900 = 125 (Fits in uint8!)
-        @add(1900)
+    @add(1900)
     uint16 year; // Key 24
 
     @poly(5.0, 2.0, 0.5)
@@ -86,6 +86,9 @@ packet KitchenSink {
 
     @spline(0.0, 0.0, 10.0, 100.0, 20.0, 400.0)
     uint8 spline_val;
+
+    @expr(val_add + val_sub)
+    uint8 expr_val;
 
     // Unaligned Struct Test
     BitPacked bit_packed;

@@ -282,6 +282,14 @@ cnd_error_t json_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, voi
         return CND_ERR_OK;
     }
 
+    if (type == OP_STORE_CTX) {
+        if (ctx->mode == CND_MODE_DECODE) {
+            uint64_t val = *(uint64_t*)ptr;
+            cJSON_AddNumberToObject(current, key_name, (double)val);
+        }
+        return CND_ERR_OK;
+    }
+
     // Handle Primitives
     cJSON* item_to_process = NULL;
     if (io->array_depth > 0 && io->depth == io->array_start_depth[io->array_depth - 1]) {

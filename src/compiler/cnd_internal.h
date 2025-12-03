@@ -73,6 +73,11 @@ typedef enum {
     TOK_PIPE_PIPE, // ||
     TOK_LSHIFT,    // <<
     TOK_RSHIFT,    // >>
+    TOK_PLUS,      // +
+    TOK_MINUS,     // -
+    TOK_STAR,      // *
+    TOK_SLASH,     // /
+    TOK_PERCENT,   // %
     TOK_DOC_COMMENT, // /// Comment
     TOK_ERROR      // Lexer error
 } TokenType;

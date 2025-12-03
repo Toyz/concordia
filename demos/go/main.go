@@ -53,6 +53,7 @@ type KitchenSink struct {
 
 	PolyVal   float64
 	SplineVal float64
+	ExprVal   uint8
 
 	BitPacked struct {
 		A3bits   uint8
@@ -332,9 +333,17 @@ func main() {
 		case "temperature":
 			decoded.Temperature = val.Float64()
 		case "val_add":
-			decoded.ValAdd = val.Uint8()
+			if isQuery {
+				val.SetUint8(decoded.ValAdd)
+			} else {
+				decoded.ValAdd = val.Uint8()
+			}
 		case "val_sub":
-			decoded.ValSub = val.Uint8()
+			if isQuery {
+				val.SetUint8(decoded.ValSub)
+			} else {
+				decoded.ValSub = val.Uint8()
+			}
 		case "val_mul":
 			decoded.ValMul = val.Uint8()
 		case "val_div":
@@ -345,6 +354,8 @@ func main() {
 			decoded.PolyVal = val.Float64()
 		case "spline_val":
 			decoded.SplineVal = val.Float64()
+		case "expr_val":
+			decoded.ExprVal = val.Uint8()
 		case "a_3bits":
 			decoded.BitPacked.A3bits = val.Uint8()
 		case "b_5bits":

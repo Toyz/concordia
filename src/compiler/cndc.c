@@ -37,7 +37,8 @@ static void optimize_strings(Parser* p) {
             op == OP_CONST_CHECK ||
             op == OP_SWITCH ||
             op == OP_LOAD_CTX ||
-            op == OP_CTX_QUERY) {
+            op == OP_CTX_QUERY ||
+            op == OP_STORE_CTX) {
             
             if (offset + 2 > len) break;
             uint16_t id = *(uint16_t*)(bc + offset);
@@ -149,7 +150,8 @@ static void optimize_strings(Parser* p) {
             op == OP_CONST_CHECK ||
             op == OP_SWITCH ||
             op == OP_LOAD_CTX ||
-            op == OP_CTX_QUERY) {
+            op == OP_CTX_QUERY ||
+            op == OP_STORE_CTX) {
             
             if (offset + 2 > len) break;
             uint16_t* id_ptr = (uint16_t*)(bc + offset);

@@ -87,8 +87,18 @@ static const char* get_opcode_name(uint8_t op) {
         case OP_SWITCH: return "SWITCH";
         case OP_JUMP: return "JUMP";
         case OP_LOAD_CTX: return "LOAD_CTX";
+        case OP_STORE_CTX: return "STORE_CTX";
         case OP_PUSH_IMM: return "PUSH_IMM";
         case OP_POP: return "POP";
+        case OP_ADD: return "ADD";
+        case OP_SUB: return "SUB";
+        case OP_MUL: return "MUL";
+        case OP_DIV: return "DIV";
+        case OP_MOD: return "MOD";
+        case OP_NEG: return "NEG";
+        case OP_LOG_AND: return "LOG_AND";
+        case OP_LOG_OR: return "LOG_OR";
+        case OP_LOG_NOT: return "LOG_NOT";
         case OP_BIT_AND: return "BIT_AND";
         case OP_BIT_OR: return "BIT_OR";
         case OP_BIT_XOR: return "BIT_XOR";
@@ -101,9 +111,6 @@ static const char* get_opcode_name(uint8_t op) {
         case OP_LT: return "LT";
         case OP_GTE: return "GTE";
         case OP_LTE: return "LTE";
-        case OP_LOG_AND: return "LOG_AND";
-        case OP_LOG_OR: return "LOG_OR";
-        case OP_LOG_NOT: return "LOG_NOT";
         default: return "UNKNOWN";
     }
 }
@@ -380,6 +387,12 @@ int cmd_inspect(int argc, char** argv) {
                 }
 
                 case OP_LOAD_CTX: {
+                    uint16_t k = read_u16(&ptr, end);
+                    printf(" KeyID=%d", k);
+                    break;
+                }
+
+                case OP_STORE_CTX: {
                     uint16_t k = read_u16(&ptr, end);
                     printf(" KeyID=%d", k);
                     break;

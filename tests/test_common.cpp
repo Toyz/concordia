@@ -43,6 +43,21 @@ extern "C" cnd_error_t test_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_
         return CND_ERR_OK;
     }
 
+    if (type == OP_STORE_CTX) {
+        if (idx == -1) {
+             for(int i=0; i<MAX_TEST_ENTRIES; i++) {
+                if (g_test_data[i].key == 0xFFFF) { 
+                     g_test_data[i].key = key_id;
+                     idx = i;
+                     break;
+                }
+             }
+        }
+        if (idx == -1) return CND_ERR_OOB;
+        g_test_data[idx].u64_val = *(uint64_t*)ptr;
+        return CND_ERR_OK;
+    }
+
     if (ctx->mode == CND_MODE_ENCODE) {
         if (type == OP_ENTER_STRUCT || type == OP_EXIT_STRUCT) return CND_ERR_OK;
         if (idx == -1) return CND_ERR_CALLBACK;

@@ -78,16 +78,48 @@ extern "C" {
 
 // Category G: Expression Stack & ALU
 #define OP_LOAD_CTX         0x60
+#define OP_STORE_CTX        0x78
 #define OP_PUSH_IMM         0x61
 #define OP_POP              0x62
+#define OP_SWAP             0x63
+#define OP_DUP              0x64
+#define OP_EMIT             0x65
+
+// Arithmetic (Integer)
+#define OP_ADD              0x72
+#define OP_SUB              0x73
+#define OP_MUL              0x74
+#define OP_DIV              0x75
+#define OP_MOD              0x76
+#define OP_NEG              0x77
+
+// Arithmetic (Float)
+#define OP_FADD             0x80
+#define OP_FSUB             0x81
+#define OP_FMUL             0x82
+#define OP_FDIV             0x83
+#define OP_FNEG             0x84
+
+// Math Functions
+#define OP_SIN              0x85
+#define OP_COS              0x86
+#define OP_TAN              0x87
+#define OP_SQRT             0x88
+#define OP_POW              0x89
+#define OP_LOG              0x8A
+#define OP_ABS              0x8B
+
+// Conversion
+#define OP_ITOF             0x90
+#define OP_FTOI             0x91
 
 // Bitwise
-#define OP_BIT_AND          0x63
-#define OP_BIT_OR           0x64
-#define OP_BIT_XOR          0x65
-#define OP_BIT_NOT          0x66
-#define OP_SHL              0x67
-#define OP_SHR              0x68
+#define OP_BIT_AND          0xA0
+#define OP_BIT_OR           0xA1
+#define OP_BIT_XOR          0xA2
+#define OP_BIT_NOT          0xA3
+#define OP_SHL              0xA4
+#define OP_SHR              0xA5
 
 // Comparison
 #define OP_EQ               0x69

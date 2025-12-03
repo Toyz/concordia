@@ -1,5 +1,136 @@
 #include "cnd_internal.h"
 
+// Precedence levels
+typedef enum {
+    PREC_NONE,
+    PREC_OR,       // ||
+    PREC_AND,      // &&
+    PREC_BIT_OR,   // |
+    PREC_BIT_XOR,  // ^
+    PREC_BIT_AND,  // &
+    PREC_EQUALITY, // == !=
+    PREC_COMPARISON, // < > <= >=
+    PREC_SHIFT,    // << >>
+    PREC_TERM,     // + -
+    PREC_FACTOR,   // * / %
+    PREC_UNARY,    // ! - ~
+    PREC_PRIMARY
+} Precedence;
+
+typedef enum {
+    TYPE_INT,
+    TYPE_FLOAT,
+    TYPE_UNKNOWN
+} ExprType;
+
+static ExprType parse_precedence(Parser* p, Precedence prec);
+ExprType parse_primary(Parser* p);
+
+static int is_float_literal(Token t) {
+    for (int i = 0; i < t.length; i++) {
+        if (t.start[i] == '.' || t.start[i] == 'e' || t.start[i] == 'E') return 1;
+    }
+    return 0;
+}
+
+ExprType parse_expression(Parser* p) {
+    return parse_precedence(p, PREC_OR);
+}
+
+static ExprType parse_precedence(Parser* p, Precedence prec) {
+    // Handle unary operators
+    if (p->current.type == TOK_BANG || p->current.type == TOK_MINUS || p->current.type == TOK_TILDE) {
+        TokenType op = p->current.type;
+        advance(p);
+        ExprType t = parse_precedence(p, PREC_UNARY);
+        switch (op) {
+            case TOK_BANG: buf_push(p->target, OP_LOG_NOT); return TYPE_INT;
+            case TOK_TILDE: buf_push(p->target, OP_BIT_NOT); return TYPE_INT;
+            case TOK_MINUS: 
+                if (t == TYPE_FLOAT) { buf_push(p->target, OP_FNEG); return TYPE_FLOAT; }
+                else { buf_push(p->target, OP_NEG); return TYPE_INT; }
+            default: break;
+        }
+        return t;
+    }
+
+    ExprType left_type = parse_primary(p);
+
+    while (1) {
+        Precedence new_prec = PREC_NONE;
+        TokenType op = p->current.type;
+        
+        // Map token to precedence
+        if (op == TOK_PIPE_PIPE) new_prec = PREC_OR;
+        else if (op == TOK_AMP_AMP) new_prec = PREC_AND;
+        else if (op == TOK_PIPE) new_prec = PREC_BIT_OR;
+        else if (op == TOK_CARET) new_prec = PREC_BIT_XOR;
+        else if (op == TOK_AMP) new_prec = PREC_BIT_AND;
+        else if (op == TOK_EQ_EQ || op == TOK_BANG_EQ) new_prec = PREC_EQUALITY;
+        else if (op == TOK_LT || op == TOK_LT_EQ || op == TOK_GT || op == TOK_GT_EQ) new_prec = PREC_COMPARISON;
+        else if (op == TOK_LSHIFT || op == TOK_RSHIFT) new_prec = PREC_SHIFT;
+        else if (op == TOK_PLUS || op == TOK_MINUS) new_prec = PREC_TERM;
+        else if (op == TOK_STAR || op == TOK_SLASH || op == TOK_PERCENT) new_prec = PREC_FACTOR;
+
+        if (new_prec <= prec) break;
+
+        advance(p);
+        ExprType right_type = parse_precedence(p, new_prec);
+
+        // Type resolution for binary ops
+        int is_float_op = 0;
+        if (left_type == TYPE_FLOAT || right_type == TYPE_FLOAT) {
+            is_float_op = 1;
+            // Inject conversions
+            if (left_type == TYPE_INT) {
+                // Stack: INT, FLOAT (top)
+                buf_push(p->target, OP_SWAP); // FLOAT, INT
+                buf_push(p->target, OP_ITOF); // FLOAT, FLOAT
+                buf_push(p->target, OP_SWAP); // FLOAT, FLOAT
+            } else if (right_type == TYPE_INT) {
+                // Stack: FLOAT, INT (top)
+                buf_push(p->target, OP_ITOF); // FLOAT, FLOAT
+            }
+        }
+
+        switch (op) {
+            case TOK_PIPE_PIPE: buf_push(p->target, OP_LOG_OR); left_type = TYPE_INT; break;
+            case TOK_AMP_AMP: buf_push(p->target, OP_LOG_AND); left_type = TYPE_INT; break;
+            case TOK_PIPE: buf_push(p->target, OP_BIT_OR); left_type = TYPE_INT; break;
+            case TOK_CARET: buf_push(p->target, OP_BIT_XOR); left_type = TYPE_INT; break;
+            case TOK_AMP: buf_push(p->target, OP_BIT_AND); left_type = TYPE_INT; break;
+            case TOK_EQ_EQ: buf_push(p->target, OP_EQ); left_type = TYPE_INT; break;
+            case TOK_BANG_EQ: buf_push(p->target, OP_NEQ); left_type = TYPE_INT; break;
+            case TOK_LT: buf_push(p->target, OP_LT); left_type = TYPE_INT; break;
+            case TOK_LT_EQ: buf_push(p->target, OP_LTE); left_type = TYPE_INT; break;
+            case TOK_GT: buf_push(p->target, OP_GT); left_type = TYPE_INT; break;
+            case TOK_GT_EQ: buf_push(p->target, OP_GTE); left_type = TYPE_INT; break;
+            case TOK_LSHIFT: buf_push(p->target, OP_SHL); left_type = TYPE_INT; break;
+            case TOK_RSHIFT: buf_push(p->target, OP_SHR); left_type = TYPE_INT; break;
+            
+            case TOK_PLUS: 
+                if (is_float_op) { buf_push(p->target, OP_FADD); left_type = TYPE_FLOAT; }
+                else { buf_push(p->target, OP_ADD); left_type = TYPE_INT; }
+                break;
+            case TOK_MINUS: 
+                if (is_float_op) { buf_push(p->target, OP_FSUB); left_type = TYPE_FLOAT; }
+                else { buf_push(p->target, OP_SUB); left_type = TYPE_INT; }
+                break;
+            case TOK_STAR: 
+                if (is_float_op) { buf_push(p->target, OP_FMUL); left_type = TYPE_FLOAT; }
+                else { buf_push(p->target, OP_MUL); left_type = TYPE_INT; }
+                break;
+            case TOK_SLASH: 
+                if (is_float_op) { buf_push(p->target, OP_FDIV); left_type = TYPE_FLOAT; }
+                else { buf_push(p->target, OP_DIV); left_type = TYPE_INT; }
+                break;
+            case TOK_PERCENT: buf_push(p->target, OP_MOD); left_type = TYPE_INT; break;
+            default: break;
+        }
+    }
+    return left_type;
+}
+
 static char* append_doc(char* current, Token t);
 
 void parser_error(Parser* p, const char* msg) {
@@ -229,134 +360,107 @@ void parse_field(Parser* p, const char* doc); // Forward declaration
 void parse_block(Parser* p); // Forward declaration
 
 // Expression Parsing
-void parse_expression(Parser* p);
-
-void parse_primary(Parser* p) {
+ExprType parse_primary(Parser* p) {
     if (p->current.type == TOK_NUMBER) {
-        uint64_t val = (uint64_t)parse_int64(p->current);
-        advance(p);
-        buf_push(p->target, OP_PUSH_IMM);
-        buf_push_u64(p->target, val);
+        if (is_float_literal(p->current)) {
+            double val = parse_double(p->current);
+            advance(p);
+            buf_push(p->target, OP_PUSH_IMM);
+            uint64_t bits; memcpy(&bits, &val, 8);
+            buf_push_u64(p->target, bits);
+            return TYPE_FLOAT;
+        } else {
+            uint64_t val = (uint64_t)parse_int64(p->current);
+            advance(p);
+            buf_push(p->target, OP_PUSH_IMM);
+            buf_push_u64(p->target, val);
+            return TYPE_INT;
+        }
     } else if (p->current.type == TOK_TRUE) {
         advance(p);
         buf_push(p->target, OP_PUSH_IMM);
         buf_push_u64(p->target, 1);
+        return TYPE_INT;
     } else if (p->current.type == TOK_FALSE) {
         advance(p);
         buf_push(p->target, OP_PUSH_IMM);
         buf_push_u64(p->target, 0);
+        return TYPE_INT;
     } else if (p->current.type == TOK_IDENTIFIER) {
         Token name = p->current;
-        advance(p);
-        uint16_t key_id = strtab_add(&p->strtab, name.start, name.length);
-        buf_push(p->target, OP_LOAD_CTX);
-        buf_push_u16(p->target, key_id);
+        
+        if (match_keyword(name, "sin")) {
+            advance(p); consume(p, TOK_LPAREN, "Expect ("); 
+            if (parse_expression(p) == TYPE_INT) buf_push(p->target, OP_ITOF);
+            consume(p, TOK_RPAREN, "Expect )");
+            buf_push(p->target, OP_SIN);
+            return TYPE_FLOAT;
+        } else if (match_keyword(name, "cos")) {
+            advance(p); consume(p, TOK_LPAREN, "Expect ("); 
+            if (parse_expression(p) == TYPE_INT) buf_push(p->target, OP_ITOF);
+            consume(p, TOK_RPAREN, "Expect )");
+            buf_push(p->target, OP_COS);
+            return TYPE_FLOAT;
+        } else if (match_keyword(name, "tan")) {
+            advance(p); consume(p, TOK_LPAREN, "Expect ("); 
+            if (parse_expression(p) == TYPE_INT) buf_push(p->target, OP_ITOF);
+            consume(p, TOK_RPAREN, "Expect )");
+            buf_push(p->target, OP_TAN);
+            return TYPE_FLOAT;
+        } else if (match_keyword(name, "sqrt")) {
+            advance(p); consume(p, TOK_LPAREN, "Expect ("); 
+            if (parse_expression(p) == TYPE_INT) buf_push(p->target, OP_ITOF);
+            consume(p, TOK_RPAREN, "Expect )");
+            buf_push(p->target, OP_SQRT);
+            return TYPE_FLOAT;
+        } else if (match_keyword(name, "log")) {
+            advance(p); consume(p, TOK_LPAREN, "Expect ("); 
+            if (parse_expression(p) == TYPE_INT) buf_push(p->target, OP_ITOF);
+            consume(p, TOK_RPAREN, "Expect )");
+            buf_push(p->target, OP_LOG);
+            return TYPE_FLOAT;
+        } else if (match_keyword(name, "abs")) {
+            advance(p); consume(p, TOK_LPAREN, "Expect ("); 
+            if (parse_expression(p) == TYPE_INT) buf_push(p->target, OP_ITOF);
+            consume(p, TOK_RPAREN, "Expect )");
+            buf_push(p->target, OP_ABS);
+            return TYPE_FLOAT;
+        } else if (match_keyword(name, "pow")) {
+            advance(p); consume(p, TOK_LPAREN, "Expect ("); 
+            if (parse_expression(p) == TYPE_INT) buf_push(p->target, OP_ITOF);
+            consume(p, TOK_COMMA, "Expect ,");
+            if (parse_expression(p) == TYPE_INT) buf_push(p->target, OP_ITOF);
+            consume(p, TOK_RPAREN, "Expect )");
+            buf_push(p->target, OP_POW);
+            return TYPE_FLOAT;
+        } else if (match_keyword(name, "float")) {
+            advance(p); consume(p, TOK_LPAREN, "Expect ("); 
+            parse_expression(p); // Ignore type, force ITOF
+            consume(p, TOK_RPAREN, "Expect )");
+            buf_push(p->target, OP_ITOF);
+            return TYPE_FLOAT;
+        } else if (match_keyword(name, "int")) {
+            advance(p); consume(p, TOK_LPAREN, "Expect ("); 
+            parse_expression(p); // Ignore type, force FTOI
+            consume(p, TOK_RPAREN, "Expect )");
+            buf_push(p->target, OP_FTOI);
+            return TYPE_INT;
+        } else {
+            advance(p);
+            uint16_t key_id = strtab_add(&p->strtab, name.start, name.length);
+            buf_push(p->target, OP_LOAD_CTX);
+            buf_push_u16(p->target, key_id);
+            return TYPE_UNKNOWN;
+        }
     } else if (p->current.type == TOK_LPAREN) {
         advance(p);
-        parse_expression(p);
+        ExprType t = parse_expression(p);
         consume(p, TOK_RPAREN, "Expect ) after expression");
+        return t;
     } else {
         parser_error(p, "Expect expression");
+        return TYPE_UNKNOWN;
     }
-}
-
-void parse_unary(Parser* p) {
-    if (p->current.type == TOK_BANG) {
-        advance(p);
-        parse_unary(p);
-        buf_push(p->target, OP_LOG_NOT);
-    } else if (p->current.type == TOK_TILDE) {
-        advance(p);
-        parse_unary(p);
-        buf_push(p->target, OP_BIT_NOT);
-    } else {
-        parse_primary(p);
-    }
-}
-
-void parse_shift(Parser* p) {
-    parse_unary(p);
-    while (p->current.type == TOK_LSHIFT || p->current.type == TOK_RSHIFT) {
-        TokenType op = p->current.type;
-        advance(p);
-        parse_unary(p);
-        if (op == TOK_LSHIFT) buf_push(p->target, OP_SHL);
-        else buf_push(p->target, OP_SHR);
-    }
-}
-
-void parse_comparison(Parser* p) {
-    parse_shift(p);
-    while (p->current.type == TOK_GT || p->current.type == TOK_GT_EQ ||
-           p->current.type == TOK_LT || p->current.type == TOK_LT_EQ) {
-        TokenType op = p->current.type;
-        advance(p);
-        parse_shift(p);
-        if (op == TOK_GT) buf_push(p->target, OP_GT);
-        else if (op == TOK_GT_EQ) buf_push(p->target, OP_GTE);
-        else if (op == TOK_LT) buf_push(p->target, OP_LT);
-        else if (op == TOK_LT_EQ) buf_push(p->target, OP_LTE);
-    }
-}
-
-void parse_equality(Parser* p) {
-    parse_comparison(p);
-    while (p->current.type == TOK_EQ_EQ || p->current.type == TOK_BANG_EQ) {
-        TokenType op = p->current.type;
-        advance(p);
-        parse_comparison(p);
-        if (op == TOK_EQ_EQ) buf_push(p->target, OP_EQ);
-        else buf_push(p->target, OP_NEQ);
-    }
-}
-
-void parse_bit_and(Parser* p) {
-    parse_equality(p);
-    while (p->current.type == TOK_AMP) {
-        advance(p);
-        parse_equality(p);
-        buf_push(p->target, OP_BIT_AND);
-    }
-}
-
-void parse_bit_xor(Parser* p) {
-    parse_bit_and(p);
-    while (p->current.type == TOK_CARET) {
-        advance(p);
-        parse_bit_and(p);
-        buf_push(p->target, OP_BIT_XOR);
-    }
-}
-
-void parse_bit_or(Parser* p) {
-    parse_bit_xor(p);
-    while (p->current.type == TOK_PIPE) {
-        advance(p);
-        parse_bit_xor(p);
-        buf_push(p->target, OP_BIT_OR);
-    }
-}
-
-void parse_logic_and(Parser* p) {
-    parse_bit_or(p);
-    while (p->current.type == TOK_AMP_AMP) {
-        advance(p);
-        parse_bit_or(p);
-        buf_push(p->target, OP_LOG_AND);
-    }
-}
-
-void parse_logic_or(Parser* p) {
-    parse_logic_and(p);
-    while (p->current.type == TOK_PIPE_PIPE) {
-        advance(p);
-        parse_logic_and(p);
-        buf_push(p->target, OP_LOG_OR);
-    }
-}
-
-void parse_expression(Parser* p) {
-    parse_logic_or(p);
 }
 
 void parse_if(Parser* p) {
@@ -613,6 +717,8 @@ void parse_field(Parser* p, const char* doc) {
     uint32_t crc_xor = 0;
     uint8_t crc_flags = 0;
 
+    int has_expr = 0;
+
     // Jump Patching State for @depends_on
     // size_t jump_patches[8]; // Max 8 pending jumps
     // int jump_count = 0;
@@ -747,6 +853,9 @@ void parse_field(Parser* p, const char* doc) {
                         break;
                     }
                 }
+            } else if (match_keyword(dec_name_token, "expr")) {
+                parse_expression(p);
+                has_expr = 1;
             } else { 
                 parser_error(p, "Unknown decorator");
                 while (p->current.type != TOK_RPAREN && p->current.type != TOK_EOF) advance(p);
@@ -1052,6 +1161,10 @@ void parse_field(Parser* p, const char* doc) {
                          buf_push_u32(p->target, crc_xor);
                          buf_push(p->target, crc_flags);
                      }
+                } else if (has_expr) {
+                    buf_push(p->target, OP_DUP);
+                    buf_push(p->target, OP_STORE_CTX); buf_push_u16(p->target, key_id);
+                    buf_push(p->target, OP_EMIT); buf_push(p->target, op);
                 } else {
                     buf_push(p->target, op); buf_push_u16(p->target, key_id);
                     if (has_range) { emit_range_check(p, op, range_min_tok, range_max_tok); }
@@ -1380,4 +1493,8 @@ void parse_top_level(Parser* p) {
         }
     }
     if(pending_doc) free(pending_doc);
+
+    if (p->packet_count == 0) {
+        parser_error(p, "No packet definition found. A .cnd file must contain exactly one 'packet Name { ... }' block.");
+    }
 }

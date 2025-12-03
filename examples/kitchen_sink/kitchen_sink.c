@@ -41,6 +41,7 @@ typedef struct {
     
     double poly_val;
     double spline_val;
+    uint8_t expr_val;
 
     struct {
         uint8_t a_3bits;
@@ -166,6 +167,10 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
         if (ENCODE) *(double*)ptr = obj->spline_val;
         else obj->spline_val = *(double*)ptr;
     }
+    else if (strcmp(key_name, "expr_val") == 0) {
+        if (ENCODE) *(uint8_t*)ptr = obj->expr_val;
+        else obj->expr_val = *(uint8_t*)ptr;
+    }
     else if (strcmp(key_name, "a_3bits") == 0) {
         if (ENCODE) *(uint8_t*)ptr = obj->bit_packed.a_3bits; else obj->bit_packed.a_3bits = *(uint8_t*)ptr;
     }
@@ -276,6 +281,7 @@ int main() {
     printf("  Percentage: %d%%, Temp: %.2f\n", out.percentage, out.temperature);
     printf("  Poly Val: %.2f\n", out.poly_val);
     printf("  Spline Val: %.2f\n", out.spline_val);
+    printf("  Expr Val: %d\n", out.expr_val);
     printf("  BitPacked: A=%d, B=%d, C=%d, D=%d\n", out.bit_packed.a_3bits, out.bit_packed.b_5bits, out.bit_packed.c_4bits, out.bit_packed.d_aligned);
     printf("  Has Extra: %s\n", out.has_extra ? "true" : "false");
     if (out.has_extra) printf("    Extra Data: %s\n", out.extra_data);

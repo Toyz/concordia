@@ -8,6 +8,7 @@ set(TEST_SOURCES
     compiler_integration_test.cpp
     coverage_test.cpp
     language_features_test.cpp
+    math_expr_test.cpp
     unaligned_test.cpp
 )
 

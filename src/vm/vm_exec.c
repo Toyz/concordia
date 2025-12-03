@@ -583,6 +583,25 @@ static inline cnd_error_t stack_pop(cnd_vm_ctx* ctx, uint64_t* val) {
     uint64_t a; if (stack_pop(ctx, &a) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW; \
     if (stack_push(ctx, OP a) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
 
+#include <math.h>
+
+// Helper for float binary operations
+#define BINARY_OP_F(OP) \
+    uint64_t b_bits; if (stack_pop(ctx, &b_bits) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW; \
+    uint64_t a_bits; if (stack_pop(ctx, &a_bits) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW; \
+    double a, b; memcpy(&a, &a_bits, 8); memcpy(&b, &b_bits, 8); \
+    double res = a OP b; \
+    uint64_t res_bits; memcpy(&res_bits, &res, 8); \
+    if (stack_push(ctx, res_bits) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
+
+// Helper for float unary operations
+#define UNARY_OP_F(FUNC) \
+    uint64_t a_bits; if (stack_pop(ctx, &a_bits) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW; \
+    double a; memcpy(&a, &a_bits, 8); \
+    double res = FUNC(a); \
+    uint64_t res_bits; memcpy(&res_bits, &res, 8); \
+    if (stack_push(ctx, res_bits) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
+
 cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
     if (!ctx || !ctx->program || !ctx->program->bytecode || !ctx->data_buffer) return CND_ERR_OOB;
 
@@ -1160,6 +1179,15 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 break;
             }
 
+            case OP_STORE_CTX: {
+                uint16_t key = FETCH_IL_U16(ctx);
+                uint64_t val;
+                if (stack_pop(ctx, &val) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
+                SYNC_IP();
+                if (ctx->io_callback(ctx, key, OP_STORE_CTX, &val) != CND_ERR_OK) return CND_ERR_CALLBACK;
+                break;
+            }
+
             case OP_PUSH_IMM: {
                 uint64_t val = FETCH_IL_U64(ctx);
                 if (stack_push(ctx, val) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
@@ -1169,6 +1197,166 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             case OP_POP: {
                 uint64_t val;
                 if (stack_pop(ctx, &val) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
+                break;
+            }
+
+            case OP_DUP: {
+                if (ctx->expr_sp == 0) return CND_ERR_STACK_UNDERFLOW;
+                uint64_t val = ctx->expr_stack[ctx->expr_sp - 1];
+                if (stack_push(ctx, val) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
+                break;
+            }
+
+            case OP_EMIT: {
+                uint8_t type = FETCH_IL_U8(ctx);
+                uint64_t val;
+                if (stack_pop(ctx, &val) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
+                
+                if (ctx->mode == CND_MODE_ENCODE) {
+                    int size = 0;
+                    if (type == OP_IO_U8 || type == OP_IO_I8) size = 1;
+                    else if (type == OP_IO_U16 || type == OP_IO_I16) size = 2;
+                    else if (type == OP_IO_U32 || type == OP_IO_I32 || type == OP_IO_F32) size = 4;
+                    else if (type == OP_IO_U64 || type == OP_IO_I64 || type == OP_IO_F64) size = 8;
+                    else return CND_ERR_INVALID_OP;
+                    
+                    if (ctx->cursor + size > ctx->data_len) return CND_ERR_OOB;
+                    
+                    if (type == OP_IO_F32) {
+                        double d; memcpy(&d, &val, 8);
+                        float f = (float)d;
+                        uint32_t f_bits; memcpy(&f_bits, &f, 4);
+                        write_u32(ctx->data_buffer + ctx->cursor, f_bits, ctx->endianness);
+                    } else if (size == 1) write_u8(ctx->data_buffer + ctx->cursor, (uint8_t)val);
+                    else if (size == 2) write_u16(ctx->data_buffer + ctx->cursor, (uint16_t)val, ctx->endianness);
+                    else if (size == 4) write_u32(ctx->data_buffer + ctx->cursor, (uint32_t)val, ctx->endianness);
+                    else if (size == 8) write_u64(ctx->data_buffer + ctx->cursor, val, ctx->endianness);
+                    
+                    ctx->cursor += size;
+                } else {
+                    // In Decode mode, OP_EMIT might be used to push a calculated value to the JSON output?
+                    // If so, we need to call the callback.
+                    // But we don't have a key here. OP_EMIT is just "write to stream".
+                    // Wait, if we are decoding, we read from stream.
+                    // But @expr fields are calculated, not read.
+                    // So in Decode mode, we shouldn't be reading from stream for @expr fields?
+                    // If @expr is used, it means "Calculate this".
+                    // If the field exists in the binary, we should read it and compare? Or just read it?
+                    // Usually @expr(x) means "The value of this field is x".
+                    // If it's in the packet definition, it usually implies it's present in the binary.
+                    // If it's present in binary, we should read it.
+                    // But if we calculate it, do we verify it matches the binary?
+                    // Or do we ignore the binary and use the calculated value?
+                    
+                    // If the user writes:
+                    // @expr(len(x)) uint16 length;
+                    // In Encode: Calculate len(x), write to binary.
+                    // In Decode: Read from binary. (And maybe verify it matches len(x)?)
+                    
+                    // If I use OP_EMIT for Encode, what do I use for Decode?
+                    // For Decode, I should use OP_IO_... to read it.
+                    
+                    // So the parser needs to emit different code for Encode vs Decode?
+                    // The VM bytecode is the same for both.
+                    // So the bytecode must handle both.
+                    
+                    // If I use OP_EMIT, it only works for Encode (writing).
+                    // In Decode, we want to READ.
+                    
+                    // So OP_EMIT should be:
+                    // Encode: Pop val, Write val.
+                    // Decode: Read val, Push val? Or just Read val and discard?
+                    // If we want to verify, we need to compare popped val with read val.
+                    
+                    // Let's assume for now OP_EMIT is "Write Stack to Binary" (Encode) and "Read Binary to Stack" (Decode)?
+                    // If Decode:
+                    //   Read val from binary.
+                    //   Pop expected val from stack (calculated).
+                    //   Compare?
+                    
+                    // If I implement it as:
+                    // Encode: Write(pop())
+                    // Decode: Read() -> push() ? No, that's OP_IO.
+                    
+                    // If the field is @expr(calc), then:
+                    // Encode: val = calc(); write(val);
+                    // Decode: val_bin = read(); val_calc = calc(); if (val_bin != val_calc) error;
+                    
+                    // So:
+                    // 1. Calculate value (pushes to stack).
+                    // 2. OP_EMIT (type)
+                    //    Encode: val = pop(); write(val);
+                    //    Decode: val_calc = pop(); val_bin = read(); if (val_bin != val_calc) error;
+                    
+                    int size = 0;
+                    if (type == OP_IO_U8 || type == OP_IO_I8) size = 1;
+                    else if (type == OP_IO_U16 || type == OP_IO_I16) size = 2;
+                    else if (type == OP_IO_U32 || type == OP_IO_I32 || type == OP_IO_F32) size = 4;
+                    else if (type == OP_IO_U64 || type == OP_IO_I64 || type == OP_IO_F64) size = 8;
+                    else return CND_ERR_INVALID_OP;
+                    
+                    if (ctx->cursor + size > ctx->data_len) return CND_ERR_OOB;
+                    
+                    uint64_t bin_val = 0;
+                    if (size == 1) bin_val = read_u8(ctx->data_buffer + ctx->cursor);
+                    else if (size == 2) bin_val = read_u16(ctx->data_buffer + ctx->cursor, ctx->endianness);
+                    else if (size == 4) bin_val = read_u32(ctx->data_buffer + ctx->cursor, ctx->endianness);
+                    else if (size == 8) bin_val = read_u64(ctx->data_buffer + ctx->cursor, ctx->endianness);
+                    
+                    // Compare
+                    // Note: Floating point comparison might be tricky with exact bits, but let's stick to bits.
+                    if (bin_val != val) return CND_ERR_VALIDATION;
+                    
+                    ctx->cursor += size;
+                }
+                break;
+            }
+
+            // Arithmetic (Integer)
+            case OP_ADD: { BINARY_OP(+); break; }
+            case OP_SUB: { BINARY_OP(-); break; }
+            case OP_MUL: { BINARY_OP(*); break; }
+            case OP_DIV: { BINARY_OP(/); break; }
+            case OP_MOD: { BINARY_OP(%); break; }
+            case OP_NEG: { UNARY_OP(-); break; }
+
+            // Arithmetic (Float)
+            case OP_FADD: { BINARY_OP_F(+); break; }
+            case OP_FSUB: { BINARY_OP_F(-); break; }
+            case OP_FMUL: { BINARY_OP_F(*); break; }
+            case OP_FDIV: { BINARY_OP_F(/); break; }
+            case OP_FNEG: { UNARY_OP_F(-); break; }
+
+            // Math Functions
+            case OP_SIN:  { UNARY_OP_F(sin); break; }
+            case OP_COS:  { UNARY_OP_F(cos); break; }
+            case OP_TAN:  { UNARY_OP_F(tan); break; }
+            case OP_SQRT: { UNARY_OP_F(sqrt); break; }
+            case OP_LOG:  { UNARY_OP_F(log); break; }
+            case OP_ABS:  { UNARY_OP_F(fabs); break; }
+            case OP_POW: {
+                uint64_t b_bits; if (stack_pop(ctx, &b_bits) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
+                uint64_t a_bits; if (stack_pop(ctx, &a_bits) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
+                double a, b; memcpy(&a, &a_bits, 8); memcpy(&b, &b_bits, 8);
+                double res = pow(a, b);
+                uint64_t res_bits; memcpy(&res_bits, &res, 8);
+                if (stack_push(ctx, res_bits) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
+                break;
+            }
+
+            // Conversion
+            case OP_ITOF: {
+                uint64_t a; if (stack_pop(ctx, &a) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
+                double f = (double)(int64_t)a;
+                uint64_t res; memcpy(&res, &f, 8);
+                if (stack_push(ctx, res) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
+                break;
+            }
+            case OP_FTOI: {
+                uint64_t a_bits; if (stack_pop(ctx, &a_bits) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
+                double f; memcpy(&f, &a_bits, 8);
+                int64_t i = (int64_t)f;
+                if (stack_push(ctx, (uint64_t)i) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
                 break;
             }
 
