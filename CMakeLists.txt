@@ -43,6 +43,17 @@ endif()
 add_compile_definitions(CND_VERSION="${GIT_VERSION}")
 add_compile_definitions(CND_GIT_HASH="${GIT_HASH}")
 
+# --- Compiler Warnings ---
+option(ENABLE_PEDANTIC "Enable pedantic warnings" ON)
+
+if(ENABLE_PEDANTIC)
+    if(MSVC)
+        add_compile_options(/W4 /permissive-)
+    else()
+        add_compile_options(-Wall -Wextra -pedantic)
+    endif()
+endif()
+
 # --- Dependencies ---
 
 include(FetchContent)

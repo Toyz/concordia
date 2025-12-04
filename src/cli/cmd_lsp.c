@@ -671,12 +671,12 @@ static void handle_completion(cJSON* id, cJSON* params) {
         if (active_struct) {
             StructDef* sdef = reg_find(&p.registry, active_struct, (int)strlen(active_struct));
             if (sdef && sdef->bytecode.data) {
-                const uint8_t* ptr = sdef->bytecode.data;
-                const uint8_t* end = ptr + sdef->bytecode.size;
-                while (ptr < end) {
-                    uint8_t op = read_u8(&ptr, end);
+                const uint8_t* bc_ptr = sdef->bytecode.data;
+                const uint8_t* end = bc_ptr + sdef->bytecode.size;
+                while (bc_ptr < end) {
+                    uint8_t op = read_u8(&bc_ptr, end);
                     if (op == OP_LOAD_CTX) {
-                        uint16_t key = read_u16(&ptr, end);
+                        uint16_t key = read_u16(&bc_ptr, end);
                         if (key < p.strtab.count) {
                             cJSON* item = cJSON_CreateObject();
                             cJSON_AddStringToObject(item, "label", p.strtab.strings[key]);
@@ -685,7 +685,7 @@ static void handle_completion(cJSON* id, cJSON* params) {
                             cJSON_AddItemToArray(items, item);
                         }
                     } else {
-                        skip_instruction(&ptr, end, op);
+                        skip_instruction(&bc_ptr, end, op);
                     }
                 }
             }

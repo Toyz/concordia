@@ -50,9 +50,9 @@ void to_pascal_case(const char *input, char *output, const char *strip_prefix, c
                 }
                 if (!kept) {
                     // PascalCase the buffer
-                    output[j++] = toupper(buffer[0]);
+                    output[j++] = (char)toupper(buffer[0]);
                     for (int k = 1; k < buf_idx; k++) {
-                        output[j++] = tolower(buffer[k]);
+                        output[j++] = (char)tolower(buffer[k]);
                     }
                 }
             }
@@ -76,9 +76,9 @@ void to_pascal_case(const char *input, char *output, const char *strip_prefix, c
             }
         }
         if (!kept) {
-            output[j++] = toupper(buffer[0]);
+            output[j++] = (char)toupper(buffer[0]);
             for (int k = 1; k < buf_idx; k++) {
-                output[j++] = tolower(buffer[k]);
+                output[j++] = (char)tolower(buffer[k]);
             }
         }
     }
@@ -134,7 +134,6 @@ void process_line(char *line) {
     
     if (strncmp(ptr, "CND_", 4) == 0) {
         char *eq = strchr(ptr, '=');
-        char *comma = strchr(ptr, ',');
         
         // Determine name end
         char *name_end = ptr;

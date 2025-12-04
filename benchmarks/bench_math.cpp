@@ -9,6 +9,7 @@ struct ExprData {
 };
 
 static cnd_error_t bench_io_callback_expr(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
+    (void)type;
     ExprData* d = (ExprData*)ctx->user_ptr;
     switch (key_id) {
         case 0: // x
@@ -71,6 +72,7 @@ struct PolyData {
 };
 
 static cnd_error_t bench_io_callback_poly(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
+    (void)type;
     PolyData* d = (PolyData*)ctx->user_ptr;
     if (key_id == 0) {
         if (ctx->mode == CND_MODE_ENCODE) *(double*)ptr = d->val;

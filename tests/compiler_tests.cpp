@@ -7,21 +7,34 @@ class CompilerTest : public ::testing::Test {
 protected:
     const char* kSourceFile = "test_temp.cnd";
     const char* kOutFile = "test_temp.il";
+    
+    // For imports
+    const char* kFileA = "import_a.cnd";
+    const char* kFileB = "import_b.cnd";
+    const char* kImportOutFile = "import_out.il";
 
     void TearDown() override {
         remove(kSourceFile);
         remove(kOutFile);
+        remove(kFileA);
+        remove(kFileB);
+        remove(kImportOutFile);
     }
 
     void WriteSource(const std::string& content) {
-        std::ofstream out(kSourceFile);
+        WriteFile(kSourceFile, content);
+    }
+
+    void WriteFile(const char* path, const std::string& content) {
+        std::ofstream out(path);
         out << content;
         out.close();
     }
 
     // Returns true if file exists and size > 0
-    bool CheckOutputExists() {
-        std::ifstream f(kOutFile, std::ios::binary | std::ios::ate);
+    bool CheckOutputExists(const char* path = nullptr) {
+        const char* target = path ? path : kOutFile;
+        std::ifstream f(target, std::ios::binary | std::ios::ate);
         return f.good() && f.tellg() > 0;
     }
 };
@@ -76,25 +89,10 @@ TEST_F(CompilerTest, Decorators) {
     EXPECT_TRUE(CheckOutputExists());
 }
 
-/*
-TEST_F(CompilerTest, InvalidSyntax) {
-    // Missing closing brace
-    WriteSource("struct Broken { uint8 x;"); 
-    
-    // testing::internal::CaptureStdout();
-    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
-    // testing::internal::GetCapturedStdout();
-    
-    EXPECT_NE(res, 0);
-}
-*/
-
 TEST_F(CompilerTest, UnknownType) {
     WriteSource("struct BadType { mystery_type x; }; packet P { BadType b; }");
     
-    // testing::internal::CaptureStdout();
     int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
-    // testing::internal::GetCapturedStdout();
     
     EXPECT_NE(res, 0);
 }
@@ -186,9 +184,7 @@ TEST_F(CompilerTest, EmptyStruct) {
 TEST_F(CompilerTest, InvalidDecorator) {
     WriteSource("struct BadDec { @nonexistent(1) uint8 x; } packet P { BadDec b; }");
     
-    // testing::internal::CaptureStdout();
     int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
-    // testing::internal::GetCapturedStdout();
     
     EXPECT_NE(res, 0);
 }
@@ -230,9 +226,7 @@ TEST_F(CompilerTest, ParameterizedFill) {
 TEST_F(CompilerTest, InvalidFillParam) {
     WriteSource("struct BadFill { @fill(2) u8 x; } packet P { BadFill b; }");
     
-    // testing::internal::CaptureStdout();
     int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
-    // testing::internal::GetCapturedStdout();
     
     EXPECT_NE(res, 0);
 }
@@ -243,9 +237,7 @@ TEST_F(CompilerTest, MultiplePacketsFail) {
         "packet B { uint8 y; }"
     );
     
-    // testing::internal::CaptureStdout();
     int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
-    // testing::internal::GetCapturedStdout();
     
     EXPECT_NE(res, 0);
 }
@@ -266,4 +258,128 @@ TEST_F(CompilerTest, PacketAliasMissingStruct) {
     );
     int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
     EXPECT_NE(res, 0);
+}
+
+// --- Import Tests ---
+
+TEST_F(CompilerTest, BasicImport) {
+    // File A defines a struct
+    WriteFile(kFileA, "struct Point { float x; float y; }");
+    
+    // File B imports A and uses Point
+    WriteFile(kFileB, 
+        "@import(\"import_a.cnd\")"
+        "packet Path { Point p1; Point p2; }"
+    );
+    
+    int res = cnd_compile_file(kFileB, kImportOutFile, 0, 0);
+    EXPECT_EQ(res, 0);
+    EXPECT_TRUE(CheckOutputExists(kImportOutFile));
+}
+
+TEST_F(CompilerTest, DuplicateImport) {
+    // File A defines a struct
+    WriteFile(kFileA, "struct Point { float x; float y; }");
+    
+    // File B imports A twice (should be ignored second time)
+    WriteFile(kFileB, 
+        "@import(\"import_a.cnd\")"
+        "@import(\"import_a.cnd\")"
+        "packet Path { Point p1; Point p2; }"
+    );
+    
+    int res = cnd_compile_file(kFileB, kImportOutFile, 0, 0);
+    EXPECT_EQ(res, 0);
+    EXPECT_TRUE(CheckOutputExists(kImportOutFile));
+}
+
+TEST_F(CompilerTest, CircularImport) {
+    // File A imports B
+    WriteFile(kFileA, "@import(\"import_b.cnd\") struct A { uint8 x; }");
+    
+    // File B imports A
+    WriteFile(kFileB, "@import(\"import_a.cnd\") struct B { uint8 y; }");
+    
+    // This should fail or handle gracefully depending on implementation
+    // Current implementation detects recursion depth or just fails to find types if not loaded
+    // Assuming it should fail for now as circular deps are hard
+    int res = cnd_compile_file(kFileA, kImportOutFile, 0, 0);
+    EXPECT_NE(res, 0);
+}
+
+TEST_F(CompilerTest, MissingImport) {
+    WriteFile(kFileB, 
+        "@import(\"non_existent.cnd\")"
+        "packet P { uint8 x; }"
+    );
+    
+    int res = cnd_compile_file(kFileB, kImportOutFile, 0, 0);
+    EXPECT_NE(res, 0);
+}
+
+// --- Name Collision Tests ---
+
+TEST_F(CompilerTest, DuplicateStruct) {
+    WriteSource(
+        "struct Point { float x; float y; }"
+        "struct Point { float z; }" // Duplicate
+        "packet P { Point p; }"
+    );
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
+    EXPECT_NE(res, 0);
+}
+
+TEST_F(CompilerTest, DuplicateEnum) {
+    WriteSource(
+        "enum Color { RED, GREEN, BLUE }"
+        "enum Color { CYAN, MAGENTA, YELLOW }" // Duplicate
+        "packet P { Color c; }"
+    );
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
+    EXPECT_NE(res, 0);
+}
+
+TEST_F(CompilerTest, DuplicatePacket) {
+    // Note: Multiple packets are already disallowed, but this checks name collision specifically
+    // if we were to allow multiple packets or if it conflicts with struct
+    WriteSource(
+        "struct Data { uint8 x; }"
+        "packet Data { uint8 y; }" // Collision with struct
+    );
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
+    EXPECT_NE(res, 0);
+}
+
+TEST_F(CompilerTest, EnumValueCollision) {
+    WriteSource(
+        "enum Status { OK = 0, ERROR = 1, OK = 2 }" // Duplicate key
+        "packet P { Status s; }"
+    );
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
+    EXPECT_NE(res, 0);
+}
+
+TEST_F(CompilerTest, FieldNameCollision) {
+    WriteSource(
+        "struct Point {"
+        "  float x;"
+        "  float y;"
+        "  float x;" // Duplicate field
+        "}"
+        "packet P { Point p; }"
+    );
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
+    EXPECT_NE(res, 0);
+}
+
+// --- Self Keyword Tests ---
+
+TEST_F(CompilerTest, SelfKeywordCompilation) {
+    WriteSource(
+        "packet SelfTest {"
+        "  @expr(self > 10) uint8 val;"
+        "}"
+    );
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
+    EXPECT_EQ(res, 0);
 }

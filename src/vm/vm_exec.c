@@ -773,6 +773,10 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                         } \
                     }
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4127)
+#endif
                 switch (type) {
                     case OP_IO_U8:  { CHECK_ENUM(1, uint8_t, read_u8(ctx->data_buffer + ctx->cursor - 1)); break; }
                     case OP_IO_I8:  { CHECK_ENUM(1, int8_t,  (int8_t)read_u8(ctx->data_buffer + ctx->cursor - 1)); break; }
@@ -784,6 +788,9 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                     case OP_IO_I64: { CHECK_ENUM(8, int64_t,  (int64_t)read_u64(ctx->data_buffer + ctx->cursor - 8, ctx->endianness)); break; }
                     default: return CND_ERR_INVALID_OP;
                 }
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
                 #undef CHECK_ENUM
                 
                 if (!found) return CND_ERR_VALIDATION;

@@ -990,6 +990,14 @@ void parse_field(Parser* p, const char* doc) {
         return;
     }
     consume(p, TOK_IDENTIFIER, "Expect field name");
+    
+    // Check for field name collision
+    size_t old_field_count = p->current_struct_fields.count;
+    strtab_add(&p->current_struct_fields, name_tok.start, name_tok.length);
+    if (p->current_struct_fields.count == old_field_count) {
+        parser_error(p, "Field name collision");
+    }
+
     uint16_t key_id = strtab_add(&p->strtab, name_tok.start, name_tok.length);
 
     uint8_t bit_width = 0;
@@ -1177,6 +1185,9 @@ void parse_field(Parser* p, const char* doc) {
             if (bit_width > 0) { parser_error(p, "Bitfields only supported for integer types"); }
 
             if (str_prefix_op == OP_NOOP) { 
+                if (is_array_field && !has_until) {
+                    parser_error(p, "String array must specify 'prefix' or 'until'");
+                }
                 buf_push(p->target, OP_STR_NULL); buf_push_u16(p->target, key_id); buf_push_u16(p->target, max_len);
             }
         } else {
@@ -1301,6 +1312,10 @@ void parse_enum(Parser* p, const char* doc) {
     if (p->verbose) printf("[VERBOSE] Parsing enum '%.*s'\n", name.length, name.start);
     EnumDef* def = enum_reg_add(&p->enums, name.start, name.length, name.line, p->current_path, doc);
     
+    // Init value name tracking
+    StringTable value_names;
+    strtab_init(&value_names);
+
     // Optional underlying type: enum MyEnum : uint8 { ... }
     if (p->current.type == TOK_COLON) {
         advance(p);
@@ -1333,6 +1348,13 @@ void parse_enum(Parser* p, const char* doc) {
         Token val_name = p->current;
         consume(p, TOK_IDENTIFIER, "Expect enum value name");
         
+        // Check for duplicate name
+        size_t old_count = value_names.count;
+        strtab_add(&value_names, val_name.start, val_name.length);
+        if (value_names.count == old_count) {
+            parser_error(p, "Duplicate enum value name");
+        }
+
         int64_t val = next_val;
         if (p->current.type == TOK_EQUALS) {
             advance(p);
@@ -1341,6 +1363,13 @@ void parse_enum(Parser* p, const char* doc) {
             val = parse_int64(num);
         }
         
+        // Check for duplicate value
+        for (size_t i = 0; i < def->count; i++) {
+            if (def->values[i].value == val) {
+                parser_error(p, "Duplicate enum value");
+            }
+        }
+
         // Store value
         if (def->count >= def->capacity) {
             def->capacity = (def->capacity == 0) ? 8 : def->capacity * 2;
@@ -1361,6 +1390,8 @@ void parse_enum(Parser* p, const char* doc) {
     }
     consume(p, TOK_RBRACE, "Expect }");
     if(val_doc) free(val_doc);
+    
+    strtab_free(&value_names);
 }
 
 void parse_struct(Parser* p, const char* doc) {
@@ -1377,6 +1408,9 @@ void parse_struct(Parser* p, const char* doc) {
     if (p->verbose) printf("[VERBOSE] Parsing struct '%.*s'\n", name.length, name.start);
     StructDef* def = reg_add(&p->registry, name.start, name.length, name.line, p->current_path, doc);
     
+    // Init field tracking for collision detection
+    strtab_init(&p->current_struct_fields);
+
     const char* prev_name = p->current_struct_name;
     int prev_len = p->current_struct_name_len;
     p->current_struct_name = name.start;
@@ -1423,6 +1457,9 @@ void parse_struct(Parser* p, const char* doc) {
 
     p->current_struct_name = prev_name;
     p->current_struct_name_len = prev_len;
+    
+    // Free field tracking
+    strtab_free(&p->current_struct_fields);
 }
 
 void parse_packet(Parser* p, const char* doc) {
@@ -1459,7 +1496,9 @@ void parse_packet(Parser* p, const char* doc) {
             buf_append(p->target, sdef->bytecode.data, sdef->bytecode.size);
         }
     } else {
+        strtab_init(&p->current_struct_fields);
         parse_block(p);
+        strtab_free(&p->current_struct_fields);
     }
     
     // Add name to string table AFTER fields, so fields get lower IDs (preserving compatibility/tests)

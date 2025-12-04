@@ -4,13 +4,13 @@ TEST_F(ConcordiaTest, AluEncodingBE) {
     g_test_data[0].key = 1; g_test_data[0].u64_val = 0x1234;
     uint8_t il[] = { OP_SET_ENDIAN_BE, OP_IO_U16, 0x01, 0x00 };
     
-    memset(buffer, 0, sizeof(buffer));
+    memset(m_buffer, 0, sizeof(m_buffer));
     cnd_program_load(&program, il, sizeof(il));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
     
-    EXPECT_EQ(buffer[0], 0x12);
-    EXPECT_EQ(buffer[1], 0x34);
+    EXPECT_EQ(m_buffer[0], 0x12);
+    EXPECT_EQ(m_buffer[1], 0x34);
 }
 
 TEST_F(ConcordiaTest, Primitives) {
@@ -28,25 +28,25 @@ TEST_F(ConcordiaTest, Primitives) {
         OP_IO_F32, 0x03, 0x00
     };
     
-    memset(buffer, 0, sizeof(buffer));
+    memset(m_buffer, 0, sizeof(m_buffer));
     cnd_program_load(&program, il, sizeof(il));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
     
     // Check U32 LE
-    EXPECT_EQ(buffer[0], 0x78);
-    EXPECT_EQ(buffer[1], 0x56);
-    EXPECT_EQ(buffer[2], 0x34);
-    EXPECT_EQ(buffer[3], 0x12);
+    EXPECT_EQ(m_buffer[0], 0x78);
+    EXPECT_EQ(m_buffer[1], 0x56);
+    EXPECT_EQ(m_buffer[2], 0x34);
+    EXPECT_EQ(m_buffer[3], 0x12);
     
     // Check I32 (-1)
-    EXPECT_EQ(buffer[4], 0xFF);
-    EXPECT_EQ(buffer[7], 0xFF);
+    EXPECT_EQ(m_buffer[4], 0xFF);
+    EXPECT_EQ(m_buffer[7], 0xFF);
     
     // Check Float (3.14 approx 0x4048F5C3)
     // 0xC3 0xF5 0x48 0x40 (LE)
-    EXPECT_EQ(buffer[8], 0xC3);
-    EXPECT_EQ(buffer[11], 0x40);
+    EXPECT_EQ(m_buffer[8], 0xC3);
+    EXPECT_EQ(m_buffer[11], 0x40);
 }
 
 TEST_F(ConcordiaTest, Strings) {
@@ -60,14 +60,14 @@ TEST_F(ConcordiaTest, Strings) {
     // Test Prefixed U8 String
     uint8_t il[] = { OP_STR_PRE_U8, 0x01, 0x00 };
     
-    memset(buffer, 0, sizeof(buffer));
+    memset(m_buffer, 0, sizeof(m_buffer));
     cnd_program_load(&program, il, sizeof(il));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
     
-    EXPECT_EQ(buffer[0], 5); // Length
-    EXPECT_EQ(buffer[1], 'H');
-    EXPECT_EQ(buffer[5], 'o');
+    EXPECT_EQ(m_buffer[0], 5); // Length
+    EXPECT_EQ(m_buffer[1], 'H');
+    EXPECT_EQ(m_buffer[5], 'o');
 }
 
 TEST_F(ConcordiaTest, Arrays) {
@@ -76,15 +76,15 @@ TEST_F(ConcordiaTest, Arrays) {
     // Added 0x03, 0x00, 0x00, 0x00 for Count=3 argument to OP_ARR_FIXED (u32)
     uint8_t il[] = { OP_ARR_FIXED, 0x03, 0x00, 0x03, 0x00, 0x00, 0x00, OP_IO_U8, 0x01, 0x00, OP_ARR_END };
     
-    memset(buffer, 0, sizeof(buffer));
+    memset(m_buffer, 0, sizeof(m_buffer));
     cnd_program_load(&program, il, sizeof(il));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_error_t err = cnd_execute(&ctx);
     
     EXPECT_EQ(err, CND_ERR_OK);
     EXPECT_EQ(ctx.cursor, 3);
-    EXPECT_EQ(buffer[0], 0xAA);
-    EXPECT_EQ(buffer[2], 0xAA);
+    EXPECT_EQ(m_buffer[0], 0xAA);
+    EXPECT_EQ(m_buffer[2], 0xAA);
 }
 
 TEST_F(ConcordiaTest, VariableArrays) {
@@ -102,15 +102,15 @@ TEST_F(ConcordiaTest, VariableArrays) {
         OP_ARR_END 
     };
     
-    memset(buffer, 0, sizeof(buffer));
+    memset(m_buffer, 0, sizeof(m_buffer));
     cnd_program_load(&program, il, sizeof(il));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
     
     EXPECT_EQ(ctx.cursor, 3);
-    EXPECT_EQ(buffer[0], 2); // Count
-    EXPECT_EQ(buffer[1], 0x55);
-    EXPECT_EQ(buffer[2], 0x55);
+    EXPECT_EQ(m_buffer[0], 2); // Count
+    EXPECT_EQ(m_buffer[1], 0x55);
+    EXPECT_EQ(m_buffer[2], 0x55);
 }
 
 TEST_F(ConcordiaTest, NestedStructs) {
@@ -124,14 +124,14 @@ TEST_F(ConcordiaTest, NestedStructs) {
         OP_EXIT_STRUCT
     };
     
-    memset(buffer, 0, sizeof(buffer));
+    memset(m_buffer, 0, sizeof(m_buffer));
     cnd_program_load(&program, il, sizeof(il));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_error_t err = cnd_execute(&ctx);
     
     EXPECT_EQ(err, CND_ERR_OK);
     EXPECT_EQ(ctx.cursor, 1);
-    EXPECT_EQ(buffer[0], 0x77);
+    EXPECT_EQ(m_buffer[0], 0x77);
 }
 
 TEST_F(ConcordiaTest, F64AndI64) {
@@ -147,20 +147,20 @@ TEST_F(ConcordiaTest, F64AndI64) {
         OP_IO_F64, 0x02, 0x00
     };
 
-    memset(buffer, 0, sizeof(buffer));
+    memset(m_buffer, 0, sizeof(m_buffer));
     cnd_program_load(&program, il, sizeof(il));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
 
     // Check U64 BE
-    EXPECT_EQ(buffer[0], 0x11);
-    EXPECT_EQ(buffer[7], 0x88);
+    EXPECT_EQ(m_buffer[0], 0x11);
+    EXPECT_EQ(m_buffer[7], 0x88);
 
     // Check F64 BE (123.456)
     // Sign(0) Exp(10000000101) Mant(...)
     // 0x405E...
-    EXPECT_EQ(buffer[8], 0x40);
-    EXPECT_EQ(buffer[9], 0x5E);
+    EXPECT_EQ(m_buffer[8], 0x40);
+    EXPECT_EQ(m_buffer[9], 0x5E);
 }
 
 TEST_F(ConcordiaTest, NestedArrays) {
@@ -197,16 +197,16 @@ TEST_F(ConcordiaTest, NestedArrays) {
     g_test_data[0].key = 0; g_test_data[0].u64_val = 0x55; // cols data
     g_test_data[1].key = 1; g_test_data[1].u64_val = 2; // rows count (ignored for fixed, but good practice)
     
-    memset(buffer, 0, sizeof(buffer));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    memset(m_buffer, 0, sizeof(m_buffer));
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_error_t err = cnd_execute(&ctx);
     EXPECT_EQ(err, CND_ERR_OK);
     
     EXPECT_EQ(ctx.cursor, 4);
-    EXPECT_EQ(buffer[0], 0x55);
-    EXPECT_EQ(buffer[1], 0x55);
-    EXPECT_EQ(buffer[2], 0x55);
-    EXPECT_EQ(buffer[3], 0x55);
+    EXPECT_EQ(m_buffer[0], 0x55);
+    EXPECT_EQ(m_buffer[1], 0x55);
+    EXPECT_EQ(m_buffer[2], 0x55);
+    EXPECT_EQ(m_buffer[3], 0x55);
 }
 #include "test_common.h"
 
@@ -215,12 +215,12 @@ TEST_F(ConcordiaTest, Bitfields) {
     g_test_data[1].key = 2; g_test_data[1].u64_val = 1;
     uint8_t il[] = { OP_IO_BIT_U, 0x01, 0x00, 0x01, OP_IO_BIT_U, 0x02, 0x00, 0x01, OP_ALIGN_PAD, 0x06 };
     
-    memset(buffer, 0, sizeof(buffer));
+    memset(m_buffer, 0, sizeof(m_buffer));
     cnd_program_load(&program, il, sizeof(il));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
     
-    EXPECT_EQ(buffer[0], 0x03);
+    EXPECT_EQ(m_buffer[0], 0x03);
 }
 
 TEST_F(ConcordiaTest, BitfieldBoundary) {
@@ -257,9 +257,9 @@ TEST_F(ConcordiaTest, BitfieldBoundary) {
         OP_IO_BIT_U, 0x03, 0x00, 0x06  // 6 bits
     };
 
-    memset(buffer, 0, sizeof(buffer));
+    memset(m_buffer, 0, sizeof(m_buffer));
     cnd_program_load(&program, il, sizeof(il));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
     
     EXPECT_EQ(ctx.cursor, 2); // Should have advanced to start of 3rd byte? 
@@ -277,7 +277,7 @@ TEST_F(ConcordiaTest, BitfieldBoundary) {
     // Pos:  4 5 6 7
     // So Byte 0 high nibble is 1010 (0xA).
     // Byte 0 = 0xAF.
-    EXPECT_EQ(buffer[0], 0xAF);
+    EXPECT_EQ(m_buffer[0], 0xAF);
     
     // Byte 1 analysis:
     // Remaining bits of B (0x2A): last 2 bits (0, 1) -> 01?
@@ -292,7 +292,7 @@ TEST_F(ConcordiaTest, BitfieldBoundary) {
     // Pos 6: 1
     // Pos 7: 0
     // Result binary: 010101 10 -> 0x56
-    EXPECT_EQ(buffer[1], 0x56);
+    EXPECT_EQ(m_buffer[1], 0x56);
 }
 
 TEST_F(ConcordiaTest, SignedBitfields) {
@@ -311,9 +311,9 @@ TEST_F(ConcordiaTest, SignedBitfields) {
         OP_IO_BIT_I, 0x03, 0x00, 0x03  // 3 bits
     };
     
-    memset(buffer, 0, sizeof(buffer));
+    memset(m_buffer, 0, sizeof(m_buffer));
     cnd_program_load(&program, il, sizeof(il));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
     
     // Memory Check:
@@ -339,8 +339,8 @@ TEST_F(ConcordiaTest, SignedBitfields) {
     // Pos 8: 1 (-4 MSB)
     // Byte 0: 0011 1011 -> 0x3B.
     // Byte 1: 0000 0001 -> 0x01.
-    EXPECT_EQ(buffer[0], 0x3B);
-    EXPECT_EQ(buffer[1], 0x01);
+    EXPECT_EQ(m_buffer[0], 0x3B);
+    EXPECT_EQ(m_buffer[1], 0x01);
     
     // DECODE Check
     // Reset test data to 0 to ensure we actually read values back
@@ -348,7 +348,7 @@ TEST_F(ConcordiaTest, SignedBitfields) {
     g_test_data[1].u64_val = 0;
     g_test_data[2].u64_val = 0;
     
-    cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_DECODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
     
     EXPECT_EQ((int64_t)g_test_data[0].u64_val, 3);
@@ -383,14 +383,14 @@ TEST_F(ConcordiaTest, AlignPad) {
     g_test_data[0].key = 0; g_test_data[0].u64_val = 0xF; // a
     g_test_data[1].key = 1; g_test_data[1].u64_val = 0xAA; // b
     
-    memset(buffer, 0, sizeof(buffer));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    memset(m_buffer, 0, sizeof(m_buffer));
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
     
     // Byte 0: 0x0F (Bits 0-3 set). Bits 4-7 are padding (0).
-    EXPECT_EQ(buffer[0], 0x0F);
+    EXPECT_EQ(m_buffer[0], 0x0F);
     // Byte 1: 0xAA
-    EXPECT_EQ(buffer[1], 0xAA);
+    EXPECT_EQ(m_buffer[1], 0xAA);
 }
 
 TEST_F(ConcordiaTest, AlignFill) {
@@ -411,14 +411,14 @@ TEST_F(ConcordiaTest, AlignFill) {
     g_test_data[0].key = 0; g_test_data[0].u64_val = 0x7; // a (111)
     g_test_data[1].key = 1; g_test_data[1].u64_val = 0xFF; // b
     
-    memset(buffer, 0, sizeof(buffer));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    memset(m_buffer, 0, sizeof(m_buffer));
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
     
     // Byte 0: 0x07.
-    EXPECT_EQ(buffer[0], 0x07);
+    EXPECT_EQ(m_buffer[0], 0x07);
     // Byte 1: 0xFF.
-    EXPECT_EQ(buffer[1], 0xFF);
+    EXPECT_EQ(m_buffer[1], 0xFF);
 }
 #include "test_common.h"
 
@@ -432,25 +432,25 @@ TEST_F(ConcordiaTest, MemorySafety) {
 
     uint8_t il[] = { OP_STR_NULL, 0x01, 0x00, 0x05, 0x00 };
     
-    memset(buffer, 0, sizeof(buffer));
+    memset(m_buffer, 0, sizeof(m_buffer));
     cnd_program_load(&program, il, sizeof(il));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
     
     EXPECT_EQ(ctx.cursor, 6);
-    EXPECT_STREQ((char*)buffer, "12345");
+    EXPECT_STREQ((char*)m_buffer, "12345");
 }
 
 TEST_F(ConcordiaTest, BufferBounds) {
-    // Try to write U16 (2 bytes) into 1-byte buffer
+    // Try to write U16 (2 bytes) into 1-byte m_buffer
     g_test_data[0].key = 1; g_test_data[0].u64_val = 0xFFFF;
     
     uint8_t il[] = { OP_IO_U16, 0x01, 0x00 };
     
-    memset(buffer, 0, sizeof(buffer));
+    memset(m_buffer, 0, sizeof(m_buffer));
     cnd_program_load(&program, il, sizeof(il));
     // Init with size 1
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, 1, test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, 1, test_io_callback, NULL);
     
     cnd_error_t err = cnd_execute(&ctx);
     EXPECT_EQ(err, CND_ERR_OOB);
@@ -478,22 +478,22 @@ TEST_F(ConcordiaTest, RangeCheck) {
     };
     
     // Test OK
-    memset(buffer, 0, sizeof(buffer));
+    memset(m_buffer, 0, sizeof(m_buffer));
     cnd_program_load(&program, il, sizeof(il));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_error_t err = cnd_execute(&ctx);
     EXPECT_EQ(err, CND_ERR_OK);
     
     // Test Fail U8 (Value 21)
     g_test_data[0].u64_val = 21;
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     err = cnd_execute(&ctx);
     EXPECT_EQ(err, CND_ERR_VALIDATION);
     
     // Test Fail F32 (Value 1.5)
     g_test_data[0].u64_val = 15; // Fix U8
     g_test_data[1].f64_val = 1.5;
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     err = cnd_execute(&ctx);
     EXPECT_EQ(err, CND_ERR_VALIDATION);
 }
@@ -510,8 +510,8 @@ TEST_F(ConcordiaTest, CallbackError) {
     
     clear_test_data(); // No data
     
-    memset(buffer, 0, sizeof(buffer));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    memset(m_buffer, 0, sizeof(m_buffer));
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_error_t err = cnd_execute(&ctx);
     
     EXPECT_EQ(err, CND_ERR_CALLBACK);
@@ -601,23 +601,23 @@ TEST_F(ConcordiaTest, Constants) {
     };
     
     // ENCODE: Should write 0xAA and 0xBB
-    memset(buffer, 0, sizeof(buffer));
+    memset(m_buffer, 0, sizeof(m_buffer));
     cnd_program_load(&program, il, sizeof(il));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
     
-    EXPECT_EQ(buffer[0], 0xAA);
-    EXPECT_EQ(buffer[1], 0xBB);
+    EXPECT_EQ(m_buffer[0], 0xAA);
+    EXPECT_EQ(m_buffer[1], 0xBB);
     
     // DECODE: Should verify 0xBB. Let's give it 0xBC to fail.
-    buffer[1] = 0xBC;
-    cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    m_buffer[1] = 0xBC;
+    cnd_init(&ctx, CND_MODE_DECODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_error_t err = cnd_execute(&ctx);
     EXPECT_EQ(err, CND_ERR_VALIDATION);
     
     // DECODE: Give correct value
-    buffer[1] = 0xBB;
-    cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    m_buffer[1] = 0xBB;
+    cnd_init(&ctx, CND_MODE_DECODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     err = cnd_execute(&ctx);
     EXPECT_EQ(err, CND_ERR_OK);
 }
@@ -636,14 +636,14 @@ TEST_F(ConcordiaTest, DecoratorStacking) {
         "}"
     );
     
-    memset(buffer, 0, sizeof(buffer));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    memset(m_buffer, 0, sizeof(m_buffer));
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
     
-    EXPECT_EQ(buffer[0], 0x12);
-    EXPECT_EQ(buffer[1], 0x34);
-    EXPECT_EQ(buffer[2], 0x78);
-    EXPECT_EQ(buffer[3], 0x56);
+    EXPECT_EQ(m_buffer[0], 0x12);
+    EXPECT_EQ(m_buffer[1], 0x34);
+    EXPECT_EQ(m_buffer[2], 0x78);
+    EXPECT_EQ(m_buffer[3], 0x56);
     
     // Test 2: Range + Const (Valid)
     CompileAndLoad(
@@ -651,7 +651,7 @@ TEST_F(ConcordiaTest, DecoratorStacking) {
         "  @range(10, 20) @const(15) uint8 valid;"
         "}"
     );
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_error_t err = cnd_execute(&ctx);
     EXPECT_EQ(err, CND_ERR_OK);
     
@@ -661,7 +661,7 @@ TEST_F(ConcordiaTest, DecoratorStacking) {
         "  @range(10, 20) @const(25) uint8 invalid;"
         "}"
     );
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     err = cnd_execute(&ctx);
     EXPECT_EQ(err, CND_ERR_VALIDATION);
 }
@@ -733,8 +733,8 @@ TEST_F(ConcordiaTest, MultiRTT) {
     #endif
     
     // ENCODE
-    memset(buffer, 0, sizeof(buffer));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    memset(m_buffer, 0, sizeof(m_buffer));
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_error_t err = cnd_execute(&ctx);
     EXPECT_EQ(err, CND_ERR_OK);
     
@@ -747,7 +747,7 @@ TEST_F(ConcordiaTest, MultiRTT) {
     g_test_data[2].key = 3; // list
     g_test_data[3].key = 4; // name
     
-    cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_DECODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     err = cnd_execute(&ctx);
     EXPECT_EQ(err, CND_ERR_OK);
     
@@ -784,24 +784,24 @@ TEST_F(ConcordiaTest, Scaling) {
     // 2.0 = 0x4000000000000000 (LE: 00 00 00 00 00 00 00 40)
     // 0.0 = 0
     
-    memset(buffer, 0, sizeof(buffer));
+    memset(m_buffer, 0, sizeof(m_buffer));
     cnd_program_load(&program, il, sizeof(il));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
     
     // Verify Raw Values in Buffer
     // U8: (15 - 5) / 0.1 = 100 -> 0x64
-    EXPECT_EQ(buffer[0], 100);
+    EXPECT_EQ(m_buffer[0], 100);
     
     // F32: (6 - 0) / 2 = 3.0 -> 0x40400000 (LE: 00 00 40 40)
     // Buffer index: 1
-    EXPECT_EQ(buffer[4], 0x40); // MSB of F32
+    EXPECT_EQ(m_buffer[4], 0x40); // MSB of F32
     
     // DECODE Test
     g_test_data[0].f64_val = 0;
     g_test_data[1].f64_val = 0;
     
-    cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_DECODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
     
     // Allow small epsilon for float math
@@ -834,18 +834,18 @@ TEST_F(ConcordiaTest, IntegerTransform) {
         OP_IO_U8, 0x04, 0x00
     };
     
-    memset(buffer, 0, sizeof(buffer));
+    memset(m_buffer, 0, sizeof(m_buffer));
     cnd_program_load(&program, il, sizeof(il));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
     
-    EXPECT_EQ(buffer[0], 10);
+    EXPECT_EQ(m_buffer[0], 10);
     // I16=50 -> 0x32 0x00 (LE)
-    EXPECT_EQ(buffer[1], 0x32); EXPECT_EQ(buffer[2], 0x00);
+    EXPECT_EQ(m_buffer[1], 0x32); EXPECT_EQ(m_buffer[2], 0x00);
     // I16=50
-    EXPECT_EQ(buffer[3], 0x32); EXPECT_EQ(buffer[4], 0x00);
+    EXPECT_EQ(m_buffer[3], 0x32); EXPECT_EQ(m_buffer[4], 0x00);
     // U8=20
-    EXPECT_EQ(buffer[5], 20);
+    EXPECT_EQ(m_buffer[5], 20);
     
     // DECODE
     g_test_data[0].u64_val = 0;
@@ -853,7 +853,7 @@ TEST_F(ConcordiaTest, IntegerTransform) {
     g_test_data[2].u64_val = 0;
     g_test_data[3].u64_val = 0;
     
-    cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_DECODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
     
     EXPECT_EQ(g_test_data[0].u64_val, 20);
@@ -874,28 +874,28 @@ TEST_F(ConcordiaTest, OptionalTrailing) {
     g_test_data[0].key = 0; g_test_data[0].u64_val = 1;
     g_test_data[1].key = 1; g_test_data[1].u64_val = 5;
     
-    memset(buffer, 0, sizeof(buffer));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    memset(m_buffer, 0, sizeof(m_buffer));
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
     
     EXPECT_EQ(ctx.cursor, 2);
-    EXPECT_EQ(buffer[0], 1);
-    EXPECT_EQ(buffer[1], 5);
+    EXPECT_EQ(m_buffer[0], 1);
+    EXPECT_EQ(m_buffer[1], 5);
     
     // Test 2: Decode Full
     g_test_data[0].u64_val = 0;
     g_test_data[1].u64_val = 0;
-    cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_DECODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_execute(&ctx);
     EXPECT_EQ(g_test_data[0].u64_val, 1);
     EXPECT_EQ(g_test_data[1].u64_val, 5);
     
-    // Test 3: Decode Partial (Truncated buffer)
+    // Test 3: Decode Partial (Truncated m_buffer)
     // Buffer only has 1 byte.
     g_test_data[0].u64_val = 0;
     g_test_data[1].u64_val = 0xFF; // Sentinel
     
-    cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, 1, test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_DECODE, &program, m_buffer, 1, test_io_callback, NULL);
     cnd_error_t err = cnd_execute(&ctx);
     EXPECT_EQ(err, CND_ERR_OK); // Should not error on optional
     
@@ -924,25 +924,25 @@ TEST_F(ConcordiaTest, CRC32) {
     g_test_data[3].key = 3; g_test_data[3].u64_val = 0x34;
     
     // ENCODE
-    memset(buffer, 0, sizeof(buffer));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    memset(m_buffer, 0, sizeof(m_buffer));
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     cnd_error_t err = cnd_execute(&ctx);
     EXPECT_EQ(err, CND_ERR_OK);
     
     EXPECT_EQ(ctx.cursor, 8);
     // Check Data
-    EXPECT_EQ(buffer[0], 0x31);
-    EXPECT_EQ(buffer[3], 0x34);
+    EXPECT_EQ(m_buffer[0], 0x31);
+    EXPECT_EQ(m_buffer[3], 0x34);
     
     // Check CRC (Little Endian)
     // Expected: 0x9BE3E0A3 -> A3 E0 E3 9B
-    EXPECT_EQ(buffer[4], 0xA3);
-    EXPECT_EQ(buffer[5], 0xE0);
-    EXPECT_EQ(buffer[6], 0xE3);
-    EXPECT_EQ(buffer[7], 0x9B);
+    EXPECT_EQ(m_buffer[4], 0xA3);
+    EXPECT_EQ(m_buffer[5], 0xE0);
+    EXPECT_EQ(m_buffer[6], 0xE3);
+    EXPECT_EQ(m_buffer[7], 0x9B);
     
     // DECODE
-    cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, sizeof(buffer), test_io_callback, NULL);
+    cnd_init(&ctx, CND_MODE_DECODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
     err = cnd_execute(&ctx);
     EXPECT_EQ(err, CND_ERR_OK);
 }
@@ -1062,8 +1062,8 @@ TEST_F(ConcordiaTest, ComplexIntegration) {
 
     TestContext tctx = { true, 0 }; // Enable Tape Mode
 
-    memset(buffer, 0, sizeof(buffer));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, &tctx);
+    memset(m_buffer, 0, sizeof(m_buffer));
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, &tctx);
     cnd_error_t err = cnd_execute(&ctx);
     ASSERT_EQ(err, CND_ERR_OK);
 
@@ -1071,51 +1071,51 @@ TEST_F(ConcordiaTest, ComplexIntegration) {
     int pos = 0;
     
     // Magic (Big Endian u32 0x12345678) -> 12 34 56 78
-    EXPECT_EQ(buffer[pos++], 0x12);
-    EXPECT_EQ(buffer[pos++], 0x34);
-    EXPECT_EQ(buffer[pos++], 0x56);
-    EXPECT_EQ(buffer[pos++], 0x78);
+    EXPECT_EQ(m_buffer[pos++], 0x12);
+    EXPECT_EQ(m_buffer[pos++], 0x34);
+    EXPECT_EQ(m_buffer[pos++], 0x56);
+    EXPECT_EQ(m_buffer[pos++], 0x78);
     
     // Version (Little Endian u16 0x0100) -> 00 01
-    EXPECT_EQ(buffer[pos++], 0x00);
-    EXPECT_EQ(buffer[pos++], 0x01);
+    EXPECT_EQ(m_buffer[pos++], 0x00);
+    EXPECT_EQ(m_buffer[pos++], 0x01);
     
     // Signature (Const u32 0xDEADBEEF, default LE) -> EF BE AD DE
-    EXPECT_EQ(buffer[pos++], 0xEF);
-    EXPECT_EQ(buffer[pos++], 0xBE);
-    EXPECT_EQ(buffer[pos++], 0xAD);
-    EXPECT_EQ(buffer[pos++], 0xDE);
+    EXPECT_EQ(m_buffer[pos++], 0xEF);
+    EXPECT_EQ(m_buffer[pos++], 0xBE);
+    EXPECT_EQ(m_buffer[pos++], 0xAD);
+    EXPECT_EQ(m_buffer[pos++], 0xDE);
     
     // Flags (4 bits 0xA = 1010) + Fill (4 bits 0) -> 0x0A
-    EXPECT_EQ(buffer[pos++], 0x0A);
+    EXPECT_EQ(m_buffer[pos++], 0x0A);
     
     // Aligned Byte (0xFF)
-    EXPECT_EQ(buffer[pos++], 0xFF);
+    EXPECT_EQ(m_buffer[pos++], 0xFF);
     
     // Count (2)
-    EXPECT_EQ(buffer[pos++], 0x02);
+    EXPECT_EQ(m_buffer[pos++], 0x02);
     
     // Point 1 (x=10, y=20) -> LE i16
-    EXPECT_EQ(buffer[pos++], 10); EXPECT_EQ(buffer[pos++], 0);
-    EXPECT_EQ(buffer[pos++], 20); EXPECT_EQ(buffer[pos++], 0);
+    EXPECT_EQ(m_buffer[pos++], 10); EXPECT_EQ(m_buffer[pos++], 0);
+    EXPECT_EQ(m_buffer[pos++], 20); EXPECT_EQ(m_buffer[pos++], 0);
     
     // Point 2 (x=30, y=40)
-    EXPECT_EQ(buffer[pos++], 30); EXPECT_EQ(buffer[pos++], 0);
-    EXPECT_EQ(buffer[pos++], 40); EXPECT_EQ(buffer[pos++], 0);
+    EXPECT_EQ(m_buffer[pos++], 30); EXPECT_EQ(m_buffer[pos++], 0);
+    EXPECT_EQ(m_buffer[pos++], 40); EXPECT_EQ(m_buffer[pos++], 0);
     
     // Name (Prefix u8=4, "Test")
-    EXPECT_EQ(buffer[pos++], 4);
-    EXPECT_EQ(buffer[pos++], 'T');
-    EXPECT_EQ(buffer[pos++], 'e');
-    EXPECT_EQ(buffer[pos++], 's');
-    EXPECT_EQ(buffer[pos++], 't');
+    EXPECT_EQ(m_buffer[pos++], 4);
+    EXPECT_EQ(m_buffer[pos++], 'T');
+    EXPECT_EQ(m_buffer[pos++], 'e');
+    EXPECT_EQ(m_buffer[pos++], 's');
+    EXPECT_EQ(m_buffer[pos++], 't');
     
     // Sensor (Raw 100 -> u8)
-    EXPECT_EQ(buffer[pos++], 100);
+    EXPECT_EQ(m_buffer[pos++], 100);
     
     // Imported imp_val (u16 0x9999 -> LE 99 99)
-    EXPECT_EQ(buffer[pos++], 0x99);
-    EXPECT_EQ(buffer[pos++], 0x99);
+    EXPECT_EQ(m_buffer[pos++], 0x99);
+    EXPECT_EQ(m_buffer[pos++], 0x99);
 
     // Checksum (CRC32)
     pos += 4;
@@ -1126,7 +1126,7 @@ TEST_F(ConcordiaTest, ComplexIntegration) {
     clear_test_data();
     tctx.tape_index = 0; // Reset tape
     
-    cnd_init(&ctx, CND_MODE_DECODE, &program, buffer, sizeof(buffer), test_io_callback, &tctx);
+    cnd_init(&ctx, CND_MODE_DECODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, &tctx);
     err = cnd_execute(&ctx);
     ASSERT_EQ(err, CND_ERR_OK);
     
@@ -1192,6 +1192,7 @@ static cnd_error_t verify_cb(cnd_vm_ctx* ctx, uint16_t key, uint8_t type, void* 
 
 // Callback that provides values during encoding
 static cnd_error_t encode_cb(cnd_vm_ctx* ctx, uint16_t key, uint8_t type, void* ptr) {
+    (void)type;
     ThreadData* data = (ThreadData*)ctx->user_ptr;
     const char* key_name = cnd_get_key_name(ctx->program, key);
     if (!key_name) return CND_ERR_INVALID_OP;
@@ -1231,20 +1232,20 @@ TEST_F(ConcurrencyTest, ParallelExecution) {
                 tdata.j = j;
                 
                 cnd_vm_ctx ctx;
-                uint8_t buffer[8] = {0}; // 2 * uint32
+                uint8_t m_buffer[8] = {0}; // 2 * uint32
                 
-                // Initialize buffer with data for decoding
+                // Initialize m_buffer with data for decoding
                 // x = i, y = j
                 // Little endian
-                buffer[0] = i & 0xFF;
-                buffer[1] = (i >> 8) & 0xFF;
-                buffer[2] = (i >> 16) & 0xFF; buffer[3] = (i >> 24) & 0xFF;
+                m_buffer[0] = i & 0xFF;
+                m_buffer[1] = (i >> 8) & 0xFF;
+                m_buffer[2] = (i >> 16) & 0xFF; m_buffer[3] = (i >> 24) & 0xFF;
                 
-                buffer[4] = j & 0xFF;
-                buffer[5] = (j >> 8) & 0xFF;
-                buffer[6] = (j >> 16) & 0xFF; buffer[7] = (j >> 24) & 0xFF;
+                m_buffer[4] = j & 0xFF;
+                m_buffer[5] = (j >> 8) & 0xFF;
+                m_buffer[6] = (j >> 16) & 0xFF; m_buffer[7] = (j >> 24) & 0xFF;
 
-                cnd_init(&ctx, CND_MODE_DECODE, &this->program, buffer, sizeof(buffer), verify_cb, &tdata);
+                cnd_init(&ctx, CND_MODE_DECODE, &this->program, m_buffer, sizeof(m_buffer), verify_cb, &tdata);
                 
                 cnd_error_t err = cnd_execute(&ctx);
                 if (err == CND_ERR_OK) {
@@ -1275,15 +1276,15 @@ TEST_F(ConcurrencyTest, ParallelEncoding) {
                 tdata.j = j;
 
                 cnd_vm_ctx ctx;
-                uint8_t buffer[8] = {0};
+                uint8_t m_buffer[8] = {0};
                 
-                cnd_init(&ctx, CND_MODE_ENCODE, &this->program, buffer, sizeof(buffer), encode_cb, &tdata);
+                cnd_init(&ctx, CND_MODE_ENCODE, &this->program, m_buffer, sizeof(m_buffer), encode_cb, &tdata);
                 
                 cnd_error_t err = cnd_execute(&ctx);
                 if (err == CND_ERR_OK) {
-                    // Verify buffer content
-                    uint32_t x = buffer[0] | (buffer[1] << 8) | (buffer[2] << 16) | (buffer[3] << 24);
-                    uint32_t y = buffer[4] | (buffer[5] << 8) | (buffer[6] << 16) | (buffer[7] << 24);
+                    // Verify m_buffer content
+                    uint32_t x = m_buffer[0] | (m_buffer[1] << 8) | (m_buffer[2] << 16) | (m_buffer[3] << 24);
+                    uint32_t y = m_buffer[4] | (m_buffer[5] << 8) | (m_buffer[6] << 16) | (m_buffer[7] << 24);
                     
                     if (x == (uint32_t)i && y == (uint32_t)j) {
                         success_count++;
@@ -1315,16 +1316,16 @@ TEST_F(ConcurrencyTest, ParallelRoundTrip) {
                 tdata.j = j;
                 
                 // Buffer for the round trip
-                uint8_t buffer[8] = {0};
+                uint8_t m_buffer[8] = {0};
                 
-                // 1. Encode: Write i, j into the buffer
+                // 1. Encode: Write i, j into the m_buffer
                 cnd_vm_ctx ctx_enc;
-                cnd_init(&ctx_enc, CND_MODE_ENCODE, &this->program, buffer, sizeof(buffer), encode_cb, &tdata);
+                cnd_init(&ctx_enc, CND_MODE_ENCODE, &this->program, m_buffer, sizeof(m_buffer), encode_cb, &tdata);
                 if (cnd_execute(&ctx_enc) != CND_ERR_OK) continue;
 
-                // 2. Decode & Verify: Read from buffer and compare against i, j in tdata
+                // 2. Decode & Verify: Read from m_buffer and compare against i, j in tdata
                 cnd_vm_ctx ctx_dec;
-                cnd_init(&ctx_dec, CND_MODE_DECODE, &this->program, buffer, sizeof(buffer), verify_cb, &tdata);
+                cnd_init(&ctx_dec, CND_MODE_DECODE, &this->program, m_buffer, sizeof(m_buffer), verify_cb, &tdata);
                 
                 if (cnd_execute(&ctx_dec) == CND_ERR_OK) {
                     success_count++;
@@ -1485,8 +1486,8 @@ TEST_F(ConcordiaTest, PolyCrashRepro) {
     g_test_data[0].key = 0; 
     g_test_data[0].f64_val = 100.0; 
     
-    memset(buffer, 0, sizeof(buffer));
-    cnd_init(&ctx, CND_MODE_ENCODE, &program, buffer, sizeof(buffer), test_io_callback, &tctx);
+    memset(m_buffer, 0, sizeof(m_buffer));
+    cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, &m_tctx);
     
     cnd_error_t err = cnd_execute(&ctx);
     EXPECT_EQ(err, CND_ERR_OK);

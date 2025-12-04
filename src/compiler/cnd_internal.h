@@ -199,6 +199,10 @@ typedef struct {
     const char* current_path; // Current file path for relative imports
     const char* current_struct_name; // Name of the struct currently being parsed (for recursion check)
     int current_struct_name_len;
+    
+    // Field tracking for collision detection
+    StringTable current_struct_fields;
+
     int had_error;
     int error_count; // Total number of errors encountered
     int json_output; // Flag for JSON error output

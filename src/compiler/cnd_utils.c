@@ -84,7 +84,7 @@ uint16_t strtab_add(StringTable* t, const char* start, int len) {
         }
     }
     if (t->count >= t->capacity) {
-        t->capacity *= 2;
+        t->capacity = (t->capacity == 0) ? 8 : t->capacity * 2;
         t->strings = realloc(t->strings, t->capacity * sizeof(char*));
     }
     char* copy = malloc(len + 1);

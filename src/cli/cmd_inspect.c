@@ -297,10 +297,10 @@ int cmd_inspect(int argc, char** argv) {
                 case OP_SCALE_LIN: {
                     uint64_t fac = read_u64(&ptr, end);
                     uint64_t off = read_u64(&ptr, end);
-                    double f, o;
-                    memcpy(&f, &fac, 8);
+                    double fac_val, o;
+                    memcpy(&fac_val, &fac, 8);
                     memcpy(&o, &off, 8);
-                    printf(" Factor=%f Offset=%f", f, o);
+                    printf(" Factor=%f Offset=%f", fac_val, o);
                     break;
                 }
 

@@ -5,6 +5,7 @@
 
 // Mock callback
 static cnd_error_t bench_io_callback(cnd_vm_ctx* ctx, uint16_t key, uint8_t op, void* val) {
+    (void)ctx; (void)key; (void)op; (void)val;
     return CND_ERR_OK;
 }
 

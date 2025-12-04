@@ -17,6 +17,7 @@ struct TelemetryData {
 // We can use a static method or a lambda-friendly wrapper.
 // Since the VM is C, we must pass a C-compatible function pointer.
 extern "C" cnd_error_t cpp_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
+    (void)type;
     auto* data = static_cast<TelemetryData*>(ctx->user_ptr);
 
     switch (key_id) {

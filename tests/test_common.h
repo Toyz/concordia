@@ -37,11 +37,11 @@ protected:
         clear_test_data();
     }
     
-    uint8_t buffer[64];
+    uint8_t m_buffer[64];
     cnd_vm_ctx ctx;
     cnd_program program;
     std::vector<uint8_t> il_buffer; // To hold IL data during tests
-    TestContext tctx;
+    TestContext m_tctx;
 
     bool Compile(const char* source) {
         const char* tmp_src = "temp_test.cnd";
@@ -60,8 +60,8 @@ protected:
     }
 
     void CompileAndLoad(const char* source) {
-        tctx.use_tape = false;
-        tctx.tape_index = 0;
+        m_tctx.use_tape = false;
+        m_tctx.tape_index = 0;
         
         const char* tmp_src = "temp_test.cnd";
         const char* tmp_il = "temp_test.il";

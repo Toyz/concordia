@@ -103,6 +103,7 @@ struct BenchArrayStructContext {
 };
 
 static cnd_error_t bench_io_callback_large_array(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
+    (void)key_id;
     BenchContext* bc = (BenchContext*)ctx->user_ptr;
     
     if (type == OP_ARR_FIXED) {

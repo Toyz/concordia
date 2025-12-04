@@ -10,6 +10,7 @@ struct Flags {
 };
 
 static cnd_error_t bench_io_callback_bitfield(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
+    (void)type;
     Flags* f = (Flags*)ctx->user_ptr;
     switch (key_id) {
         case 0: if (ctx->mode == CND_MODE_ENCODE) *(uint64_t*)ptr = f->a; else f->a = (uint32_t)*(uint64_t*)ptr; break;
@@ -77,6 +78,7 @@ struct OptionalData {
 };
 
 static cnd_error_t bench_io_callback_optional(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
+    (void)type;
     OptionalData* d = (OptionalData*)ctx->user_ptr;
     switch (key_id) {
         case 0: // always
@@ -146,6 +148,7 @@ struct TransformData {
 };
 
 static cnd_error_t bench_io_callback_transform(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
+    (void)key_id;
     TransformData* d = (TransformData*)ctx->user_ptr;
     // key 0: val
     if (type == OP_IO_F64) { // VM asks for double for scaling
@@ -212,6 +215,7 @@ struct CRCData {
 };
 
 static cnd_error_t bench_io_callback_crc(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
+    (void)type;
     CRCData* d = (CRCData*)ctx->user_ptr;
     
     switch (key_id) {
@@ -422,6 +426,7 @@ struct StringArrayBenchContext {
 };
 
 static cnd_error_t bench_string_array_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
+    (void)key_id;
     StringArrayBenchContext* bc = (StringArrayBenchContext*)ctx->user_ptr;
     
     if (type == OP_ARR_FIXED) {

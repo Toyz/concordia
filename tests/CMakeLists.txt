@@ -2,18 +2,10 @@ cmake_minimum_required(VERSION 3.14)
 
 set(TEST_SOURCES
     test_common.cpp
-    vm_tests.cpp
-    compiler_test.cpp 
-    lexer_test.cpp
-    compiler_integration_test.cpp
-    coverage_test.cpp
-    language_features_test.cpp
-    math_expr_test.cpp
-    unaligned_test.cpp
-    self_keyword_test.cpp
-    import_execution_test.cpp
-    eof_dynamic_test.cpp
-    name_collision_test.cpp
+    vm_opcode_tests.cpp
+    compiler_tests.cpp 
+    lexer_tests.cpp
+    feature_tests.cpp
 )
 
 add_executable(test_runner ${TEST_SOURCES})
