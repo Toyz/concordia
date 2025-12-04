@@ -1,6 +1,7 @@
 #include "vm_internal.h"
 #include <string.h>
 #include <stdio.h>
+#include <inttypes.h>
 
 #ifndef CND_NO_MATH
 #include <math.h>
@@ -515,10 +516,6 @@ static const bool ALIGN_TABLE[256] = {
     // 0x50 - 0xFF (Control Flow & Others) - No alignment
     0 // ... rest 0
 };
-
-static inline bool should_align(uint8_t opcode) {
-    return ALIGN_TABLE[opcode];
-}
 
 // --- Public API ---
 
@@ -1138,7 +1135,7 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 uint64_t count_val = 0;
                 SYNC_IP();
                 if (ctx->io_callback(ctx, ref_key, OP_CTX_QUERY, &count_val) != CND_ERR_OK) return CND_ERR_CALLBACK;
-                printf("VM_DEBUG: OpCtxQuery Key=%d returned %llu\n", ref_key, count_val);
+                printf("VM_DEBUG: OpCtxQuery Key=%d returned %" PRIu64 "\n", ref_key, count_val);
                 
                 uint32_t count = (uint32_t)count_val;
                 

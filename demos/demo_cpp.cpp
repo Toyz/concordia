@@ -88,7 +88,7 @@ int main(int argc, char** argv) {
 
     // --- DECODE ---
     std::cout << "\n--- C++ Decoding ---" << std::endl;
-    TelemetryData decoded = {0};
+    TelemetryData decoded = {};
     cnd_init(&ctx, CND_MODE_DECODE, &program, buffer.data(), ctx.cursor, cpp_io_callback, &decoded);
     
     if (cnd_execute(&ctx) != CND_ERR_OK) {

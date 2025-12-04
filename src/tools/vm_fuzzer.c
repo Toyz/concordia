@@ -7,7 +7,7 @@
 
 // Simple pseudo-random generator for reproducibility if needed
 static uint32_t rand_state = 123456789;
-static uint32_t xorshift32() {
+static uint32_t xorshift32(void) {
     uint32_t x = rand_state;
     x ^= x << 13;
     x ^= x >> 17;

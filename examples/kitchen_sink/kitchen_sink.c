@@ -213,7 +213,7 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
     }
     else if (strcmp(key_name, "rest_of_stream") == 0 && type == OP_IO_U8) {
         if (ENCODE) {
-            if (obj->rest_of_stream_idx < obj->rest_of_stream_len) {
+            if ((size_t)obj->rest_of_stream_idx < obj->rest_of_stream_len) {
                 *(uint8_t*)ptr = obj->rest_of_stream[obj->rest_of_stream_idx];
                 obj->rest_of_stream_idx++;
             }
@@ -306,7 +306,7 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
     return CND_ERR_OK;
 }
 
-int main() {
+int main(void) {
     printf("=== Concordia Kitchen Sink (Manual Binding) ===\n");
     
     // 1. Compile
@@ -396,7 +396,7 @@ int main() {
     for(int i=0; i<out.str_count; i++) printf("\"%s\"%s", out.dynamic_strings[i], i==out.str_count-1 ? "" : ", ");
     printf("]\n");
     printf("  Rest of Stream (%zu): [", out.rest_of_stream_len);
-    for(int i=0; i<out.rest_of_stream_len; i++) printf("0x%02X%s", out.rest_of_stream[i], i==out.rest_of_stream_len-1 ? "" : ", ");
+    for(size_t i=0; i<out.rest_of_stream_len; i++) printf("0x%02X%s", out.rest_of_stream[i], i==out.rest_of_stream_len-1 ? "" : ", ");
     printf("]\n");
     
     free(il);

@@ -1225,7 +1225,7 @@ TEST_F(ConcurrencyTest, ParallelExecution) {
     std::atomic<int> success_count(0);
 
     for (int i = 0; i < NUM_THREADS; ++i) {
-        threads.emplace_back([this, &success_count, i, ITERATIONS_PER_THREAD]() {
+        threads.emplace_back([this, &success_count, i]() {
             ThreadData tdata;
             tdata.i = i;
             for (int j = 0; j < ITERATIONS_PER_THREAD; ++j) {
@@ -1269,7 +1269,7 @@ TEST_F(ConcurrencyTest, ParallelEncoding) {
     std::atomic<int> success_count(0);
 
     for (int i = 0; i < NUM_THREADS; ++i) {
-        threads.emplace_back([this, &success_count, i, ITERATIONS_PER_THREAD]() {
+        threads.emplace_back([this, &success_count, i]() {
             ThreadData tdata;
             tdata.i = i;
             for (int j = 0; j < ITERATIONS_PER_THREAD; ++j) {
@@ -1308,7 +1308,7 @@ TEST_F(ConcurrencyTest, ParallelRoundTrip) {
     std::atomic<int> success_count(0);
 
     for (int i = 0; i < NUM_THREADS; ++i) {
-        threads.emplace_back([this, &success_count, i, ITERATIONS_PER_THREAD]() {
+        threads.emplace_back([this, &success_count, i]() {
             ThreadData tdata;
             tdata.i = i;
             

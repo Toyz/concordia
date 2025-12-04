@@ -67,7 +67,7 @@ static void send_json(cJSON* json) {
     free(str);
 }
 
-static cJSON* read_json() {
+static cJSON* read_json(void) {
     // Read header: "Content-Length: <N>\r\n\r\n"
     size_t content_len = 0;
     while (1) {

@@ -292,7 +292,7 @@ struct StringData {
     char str[64];
 };
 
-static cnd_error_t bench_io_callback_string(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
+static cnd_error_t bench_io_callback_string(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t /*type*/, void* ptr) {
     StringData* d = (StringData*)ctx->user_ptr;
     if (key_id == 0) {
         if (ctx->mode == CND_MODE_ENCODE) *(const char**)ptr = d->str;
@@ -367,7 +367,7 @@ static void BM_EnumEncode(benchmark::State& state) {
     cnd_vm_ctx ctx;
     
     // Simple callback that just writes 1 (Error)
-    auto cb = [](cnd_vm_ctx* ctx, uint16_t key, uint8_t type, void* ptr) -> cnd_error_t {
+    auto cb = [](cnd_vm_ctx* /*ctx*/, uint16_t /*key*/, uint8_t /*type*/, void* ptr) -> cnd_error_t {
         *(uint8_t*)ptr = 1;
         return CND_ERR_OK;
     };
@@ -394,7 +394,7 @@ static void BM_EnumDecode(benchmark::State& state) {
     cnd_vm_ctx ctx;
     
     // Simple callback that just writes 1 (Error)
-    auto cb = [](cnd_vm_ctx* ctx, uint16_t key, uint8_t type, void* ptr) -> cnd_error_t {
+    auto cb = [](cnd_vm_ctx* ctx, uint16_t /*key*/, uint8_t /*type*/, void* ptr) -> cnd_error_t {
         if (ctx->mode == CND_MODE_ENCODE) {
             *(uint8_t*)ptr = 1;
         } else {

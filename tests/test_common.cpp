@@ -5,8 +5,10 @@
 test_data_entry g_test_data[MAX_TEST_ENTRIES];
 
 void clear_test_data() {
-    memset(g_test_data, 0, sizeof(g_test_data));
-    for(int i=0; i<MAX_TEST_ENTRIES; i++) g_test_data[i].key = 0xFFFF;
+    for(int i=0; i<MAX_TEST_ENTRIES; i++) {
+        g_test_data[i] = test_data_entry();
+        g_test_data[i].key = 0xFFFF;
+    }
 }
 
 // C-compatible callback for the VM
@@ -49,7 +51,6 @@ extern "C" cnd_error_t test_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_
         // Bulk copy from tape
         // We assume the tape contains a sequence of bytes for this key
         uint8_t* dst = (uint8_t*)ptr;
-        int count = 0;
         
         if (tctx && tctx->use_tape) {
             while (tctx->tape_index < MAX_TEST_ENTRIES) {
@@ -68,7 +69,6 @@ extern "C" cnd_error_t test_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_
                         g_test_data[tctx->tape_index].u64_val = *dst++;
                     }
                     tctx->tape_index++;
-                    count++;
                 } else {
                     break;
                 }

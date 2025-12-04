@@ -493,9 +493,10 @@ TEST_F(StringArrayTest, RoundTrip) {
     // --- Decode ---
     m_tctx.tape_index = 0; // Reset tape for verification
     // Clear mock data to ensure we are reading from m_buffer
-    memset(g_test_data, 0, sizeof(g_test_data));
-    // Reset keys to 0xFFFF so the callback knows they are free slots
-    for(int i=0; i<MAX_TEST_ENTRIES; i++) g_test_data[i].key = 0xFFFF;
+    for(int i=0; i<MAX_TEST_ENTRIES; i++) {
+        g_test_data[i] = test_data_entry();
+        g_test_data[i].key = 0xFFFF;
+    }
 
     cnd_vm_ctx decode_ctx;
     cnd_init(&decode_ctx, CND_MODE_DECODE, &program, local_buffer, encoded_size, test_io_callback, &m_tctx);

@@ -5,17 +5,24 @@
 #include <fstream>
 #include <vector>
 #include <cstdio>
+#include <cstring>
 #include "concordia.h"
 #include "compiler.h"
 
 // --- Test Mock Data ---
 
-typedef struct {
+struct test_data_entry {
     uint16_t key;
     uint64_t u64_val;
     double f64_val;
     char string_val[64]; 
-} test_data_entry;
+
+    test_data_entry(uint16_t k = 0, uint64_t u = 0, double f = 0.0, const char* s = "") 
+        : key(k), u64_val(u), f64_val(f) {
+        strncpy(string_val, s, 63);
+        string_val[63] = '\0';
+    }
+};
 
 #define MAX_TEST_ENTRIES 64
 
