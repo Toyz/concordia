@@ -1,4 +1,8 @@
 #include "test_common.h"
+#include <thread>
+#include <vector>
+#include <atomic>
+#include "../src/vm/vm_internal.h"
 
 TEST_F(ConcordiaTest, AluEncodingBE) {
     g_test_data[0].key = 1; g_test_data[0].u64_val = 0x1234;
@@ -208,7 +212,6 @@ TEST_F(ConcordiaTest, NestedArrays) {
     EXPECT_EQ(m_buffer[2], 0x55);
     EXPECT_EQ(m_buffer[3], 0x55);
 }
-#include "test_common.h"
 
 TEST_F(ConcordiaTest, Bitfields) {
     g_test_data[0].key = 1; g_test_data[0].u64_val = 1;
@@ -420,7 +423,6 @@ TEST_F(ConcordiaTest, AlignFill) {
     // Byte 1: 0xFF.
     EXPECT_EQ(m_buffer[1], 0xFF);
 }
-#include "test_common.h"
 
 TEST_F(ConcordiaTest, MemorySafety) {
     g_test_data[0].key = 1; 
@@ -516,7 +518,6 @@ TEST_F(ConcordiaTest, CallbackError) {
     
     EXPECT_EQ(err, CND_ERR_CALLBACK);
 }
-#include "test_common.h"
 
 TEST_F(ConcordiaTest, IntegrationPipeline) {
     // 1. Create temporary source file
@@ -1155,12 +1156,6 @@ TEST_F(ConcordiaTest, ComplexIntegration) {
     // So next entry is imp_val (Key 0).
     EXPECT_EQ(g_test_data[12].key, 0); EXPECT_EQ(g_test_data[12].u64_val, 0x9999); // imp_val
 }
-#include <gtest/gtest.h>
-#include <thread>
-#include <vector>
-#include <atomic>
-#include "concordia.h"
-#include "test_common.h"
 
 struct ThreadData {
     int i;
@@ -1340,9 +1335,6 @@ TEST_F(ConcurrencyTest, ParallelRoundTrip) {
 
     EXPECT_EQ(success_count, NUM_THREADS * ITERATIONS_PER_THREAD);
 }
-#include <gtest/gtest.h>
-#include "test_common.h"
-#include "../src/vm/vm_internal.h"
 
 class VmAluTest : public ::testing::Test {
 protected:
