@@ -37,6 +37,11 @@ var (
 	GoErrUnknown        = errors.New("unknown error")
 )
 
+// String returns the human-readable error message from the C library
+func (e Error) String() string {
+	return C.GoString(C.cnd_error_string(C.cnd_error_t(e)))
+}
+
 func parseError(err Error) error {
 	switch err {
 	case ErrOk:
@@ -54,7 +59,7 @@ func parseError(err Error) error {
 	case ErrCallback:
 		return GoErrCallback
 	default:
-		return GoErrUnknown
+		return errors.New(err.String())
 	}
 }
 

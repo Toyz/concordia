@@ -127,6 +127,7 @@ typedef struct {
 } StringTable;
 
 void strtab_init(StringTable* t);
+void strtab_free(StringTable* t);
 uint16_t strtab_add(StringTable* t, const char* start, int len);
 
 // --- Utils: Registry ---
@@ -145,6 +146,7 @@ typedef struct {
 } StructRegistry;
 
 void reg_init(StructRegistry* r);
+void reg_free(StructRegistry* r);
 StructDef* reg_add(StructRegistry* r, const char* name, int len, int line, const char* file, const char* doc);
 StructDef* reg_find(StructRegistry* r, const char* name, int len);
 
@@ -173,6 +175,7 @@ typedef struct {
 } EnumRegistry;
 
 void enum_reg_init(EnumRegistry* r);
+void enum_reg_free(EnumRegistry* r);
 EnumDef* enum_reg_add(EnumRegistry* r, const char* name, int len, int line, const char* file, const char* doc);
 EnumDef* enum_reg_find(EnumRegistry* r, const char* name, int len);
 

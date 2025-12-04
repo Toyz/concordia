@@ -98,6 +98,10 @@ packet Telemetry {
 
     @count(3)
     uint8 sensors[3];
+
+    uint8 num_logs;
+    @count(num_logs)
+    string logs[];
     
     Status status;
     

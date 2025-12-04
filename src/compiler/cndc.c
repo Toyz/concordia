@@ -34,6 +34,8 @@ static void optimize_strings(Parser* p) {
             (op >= OP_IO_BIT_U && op <= OP_IO_BIT_BOOL) ||
             (op >= OP_STR_NULL && op <= OP_STR_PRE_U32) ||
             (op >= OP_ARR_FIXED && op <= OP_ARR_PRE_U32) ||
+            op == OP_ARR_EOF ||
+            op == OP_ARR_DYNAMIC ||
             op == OP_CONST_CHECK ||
             op == OP_SWITCH ||
             op == OP_LOAD_CTX ||
@@ -53,6 +55,14 @@ static void optimize_strings(Parser* p) {
             case OP_ALIGN_PAD: case OP_ALIGN_FILL: offset += 1; break;
             case OP_ARR_FIXED: offset += 4; break; // u32 count
             case OP_ARR_PRE_U8: case OP_ARR_PRE_U16: case OP_ARR_PRE_U32: break; // No extra args
+            case OP_ARR_EOF: break; // No extra args
+            case OP_ARR_DYNAMIC: {
+                if (offset + 2 > len) break;
+                uint16_t id = *(uint16_t*)(bc + offset);
+                if (id < p->strtab.count) used[id] = 1;
+                offset += 2; 
+                break;
+            }
             
             case OP_RAW_BYTES: {
                 if (offset + 4 > len) break;
@@ -147,6 +157,8 @@ static void optimize_strings(Parser* p) {
             (op >= OP_IO_BIT_U && op <= OP_IO_BIT_BOOL) ||
             (op >= OP_STR_NULL && op <= OP_STR_PRE_U32) ||
             (op >= OP_ARR_FIXED && op <= OP_ARR_PRE_U32) ||
+            op == OP_ARR_EOF ||
+            op == OP_ARR_DYNAMIC ||
             op == OP_CONST_CHECK ||
             op == OP_SWITCH ||
             op == OP_LOAD_CTX ||
@@ -169,6 +181,16 @@ static void optimize_strings(Parser* p) {
             case OP_ALIGN_PAD: case OP_ALIGN_FILL: offset += 1; break;
             case OP_ARR_FIXED: offset += 4; break; // u32 count
             case OP_ARR_PRE_U8: case OP_ARR_PRE_U16: case OP_ARR_PRE_U32: break; // No extra args
+            case OP_ARR_DYNAMIC: {
+                if (offset + 2 > len) break;
+                uint16_t* id_ptr = (uint16_t*)(bc + offset);
+                uint16_t old_id = *id_ptr;
+                if (old_id < p->strtab.count) {
+                    *id_ptr = map[old_id];
+                }
+                offset += 2;
+                break;
+            }
             case OP_RAW_BYTES: {
                 if (offset + 4 > len) break;
                 uint32_t count = *(uint32_t*)(bc + offset);

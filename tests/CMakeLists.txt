@@ -12,6 +12,8 @@ set(TEST_SOURCES
     unaligned_test.cpp
     self_keyword_test.cpp
     import_execution_test.cpp
+    eof_dynamic_test.cpp
+    name_collision_test.cpp
 )
 
 add_executable(test_runner ${TEST_SOURCES})

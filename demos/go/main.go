@@ -72,6 +72,13 @@ type KitchenSink struct {
 	AdvHasDetails   bool
 	AdvDetails      string
 	AdvFallbackCode uint8
+
+	// New Features
+	DynamicLen     uint16
+	DynamicBytes   []uint8
+	StrCount       uint8
+	DynamicStrings []string
+	RestOfStream   []uint8
 }
 
 func main() {
@@ -134,25 +141,40 @@ func main() {
 			C4bits:   15,
 			DAligned: 255,
 		},
-		HasExtra:      true,
-		ExtraData:     "Some extra payload",
-		Checksum:      0,
-		AdvMode:       1,
-		AdvHasDetails: true,
-		AdvDetails:    "Advanced Details",
+		HasExtra:       true,
+		ExtraData:      "Some extra payload",
+		Checksum:       0,
+		AdvMode:        1,
+		AdvHasDetails:  true,
+		AdvDetails:     "Advanced Details",
+		DynamicLen:     5,
+		DynamicBytes:   []uint8{0xAA, 0xBB, 0xCC, 0xDD, 0xEE},
+		StrCount:       2,
+		DynamicStrings: []string{"Hello", "World"},
+		RestOfStream:   []uint8{0xDE, 0xAD, 0xBE, 0xEF},
 	}
 
 	buffer := make([]byte, 1024) // Output buffer
 
 	matrixIdx := 0
 	pointsIdx := 0
+	dynBytesIdx := 0
+	dynStrIdx := 0
+	restIdx := 0
 
 	err = prog.Execute(buffer, concordia.ModeEncode, func(ctx *concordia.Context, keyID uint16, typeOp concordia.OpCode, val concordia.Value) error {
 		if val.UnsafeAddr() == nil {
 			return nil
 		}
 
+		if typeOp == concordia.OpRawBytes {
+			return concordia.GoErrInvalidOp
+		}
+
 		name := prog.GetKeyName(keyID)
+		if name == "dynamic_len" || name == "dynamic_bytes" || name == "str_count" || name == "dynamic_strings" {
+			fmt.Printf("[ENC] Key=%s (%d), Op=0x%X\n", name, keyID, uint8(typeOp))
+		}
 		switch name {
 		case "magic":
 			val.SetUint32(data.Magic)
@@ -245,6 +267,40 @@ func main() {
 			val.SetString(data.AdvDetails)
 		case "adv_fallback_code":
 			val.SetUint8(data.AdvFallbackCode)
+		case "dynamic_len":
+			val.SetUint16(data.DynamicLen)
+		case "dynamic_bytes":
+			if typeOp == concordia.OpArrDynamic {
+				// VM passes us the count it read from dynamic_len
+				// We can verify it matches our slice
+				// count := val.Uint32()
+				dynBytesIdx = 0
+			} else {
+				if dynBytesIdx < len(data.DynamicBytes) {
+					val.SetUint8(data.DynamicBytes[dynBytesIdx])
+					dynBytesIdx++
+				}
+			}
+		case "str_count":
+			val.SetUint8(data.StrCount)
+		case "dynamic_strings":
+			if typeOp == concordia.OpArrDynamic {
+				dynStrIdx = 0
+			} else {
+				if dynStrIdx < len(data.DynamicStrings) {
+					val.SetString(data.DynamicStrings[dynStrIdx])
+					dynStrIdx++
+				}
+			}
+		case "rest_of_stream":
+			// OpArrEof is not passed to callback as a start event
+			if restIdx < len(data.RestOfStream) {
+				val.SetUint8(data.RestOfStream[restIdx])
+				restIdx++
+			} else {
+				// Pad with 0 if buffer is larger than data
+				val.SetUint8(0)
+			}
 		default:
 			// If we are in an array loop, the key might be the array key?
 			// Or if the element has no name?
@@ -268,15 +324,25 @@ func main() {
 
 	matrixIdx = 0
 	pointsIdx = 0
+	dynBytesIdx = 0
+	dynStrIdx = 0
+	// restIdx not needed for decode append
 
 	err = prog.Execute(buffer, concordia.ModeDecode, func(ctx *concordia.Context, keyID uint16, typeOp concordia.OpCode, val concordia.Value) error {
 		if val.UnsafeAddr() == nil {
 			return nil
 		}
 
+		if typeOp == concordia.OpRawBytes {
+			return concordia.GoErrInvalidOp
+		}
+
 		isQuery := typeOp == concordia.OpCtxQuery || typeOp == concordia.OpLoadCtx
 
 		name := prog.GetKeyName(keyID)
+		if name == "dynamic_len" || name == "dynamic_bytes" || name == "str_count" || name == "dynamic_strings" {
+			fmt.Printf("[DEC] Key=%s (%d), Op=0x%X\n", name, keyID, uint8(typeOp))
+		}
 		switch name {
 		case "magic":
 			decoded.Magic = val.Uint32()
@@ -392,6 +458,43 @@ func main() {
 			decoded.AdvDetails = val.String()
 		case "adv_fallback_code":
 			decoded.AdvFallbackCode = val.Uint8()
+		case "dynamic_len":
+			if isQuery {
+				val.SetUint16(decoded.DynamicLen)
+			} else {
+				decoded.DynamicLen = val.Uint16()
+			}
+		case "dynamic_bytes":
+			if typeOp == concordia.OpArrDynamic {
+				count := val.Uint32()
+				decoded.DynamicBytes = make([]uint8, count)
+				dynBytesIdx = 0
+			} else {
+				if dynBytesIdx < len(decoded.DynamicBytes) {
+					decoded.DynamicBytes[dynBytesIdx] = val.Uint8()
+					dynBytesIdx++
+				}
+			}
+		case "str_count":
+			if isQuery {
+				val.SetUint8(decoded.StrCount)
+			} else {
+				decoded.StrCount = val.Uint8()
+			}
+		case "dynamic_strings":
+			if typeOp == concordia.OpArrDynamic {
+				count := val.Uint32()
+				decoded.DynamicStrings = make([]string, count)
+				dynStrIdx = 0
+			} else {
+				if dynStrIdx < len(decoded.DynamicStrings) {
+					decoded.DynamicStrings[dynStrIdx] = val.String()
+					dynStrIdx++
+				}
+			}
+		case "rest_of_stream":
+			// Just append
+			decoded.RestOfStream = append(decoded.RestOfStream, val.Uint8())
 		}
 		return nil
 	})

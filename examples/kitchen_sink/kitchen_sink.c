@@ -63,6 +63,19 @@ typedef struct {
     bool adv_has_details;
     char adv_details[64];
     uint8_t adv_fallback_code;
+
+    // New Features
+    uint16_t dynamic_len;
+    uint8_t dynamic_bytes[256];
+    int dynamic_bytes_idx;
+
+    uint8_t str_count;
+    char dynamic_strings[10][64]; // Max 10 strings, 64 chars each
+    int dynamic_strings_idx;
+
+    uint8_t rest_of_stream[1024];
+    size_t rest_of_stream_len;
+    int rest_of_stream_idx;
 } KitchenSink;
 
 // --- IO Callback ---
@@ -77,6 +90,27 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
     const char* key_name = cnd_get_key_name(ctx->program, key_id); // Optional: Use name lookup for debug/robustness
     // printf("Key Name: %s\n", key_name ? key_name : "NULL");
     
+    if (key_name && (strcmp(key_name, "str_count") == 0 || strcmp(key_name, "dynamic_len") == 0)) {
+        printf("CB: Key=%s (%d), Type=%d, Mode=%s\n", key_name, key_id, type, ctx->mode == CND_MODE_ENCODE ? "ENC" : "DEC");
+        if (type == OP_IO_U8 || type == OP_IO_U16) {
+             if (ctx->mode == CND_MODE_DECODE) {
+                 // We are about to read into obj->field. The value in *ptr is what was read from stream.
+                 // Wait, IO_VAL does: obj->field = *(ctype*)ptr;
+                 // So we can print *ptr
+                 if (type == OP_IO_U8) printf("  Reading Value: %d\n", *(uint8_t*)ptr);
+                 if (type == OP_IO_U16) printf("  Reading Value: %d\n", *(uint16_t*)ptr);
+             } else {
+                 // Encode
+                 if (type == OP_IO_U8) printf("  Writing Value: %d\n", obj->str_count); // Assuming str_count for now
+             }
+        }
+        if (type == OP_CTX_QUERY) {
+             // We are about to return the value in *ptr
+             // But we haven't set it yet.
+             // The code below sets it.
+        }
+    }
+
     // Helper macros
     #define ENCODE (ctx->mode == CND_MODE_ENCODE)
     #define DECODE (ctx->mode == CND_MODE_DECODE)
@@ -96,6 +130,8 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
         else if (strcmp(key_name, "adv_has_details") == 0) *(uint64_t*)ptr = obj->adv_has_details;
         else if (strcmp(key_name, "val_add") == 0) *(uint64_t*)ptr = obj->val_add;
         else if (strcmp(key_name, "val_sub") == 0) *(uint64_t*)ptr = obj->val_sub;
+        else if (strcmp(key_name, "dynamic_len") == 0) *(uint64_t*)ptr = obj->dynamic_len;
+        else if (strcmp(key_name, "str_count") == 0) *(uint64_t*)ptr = obj->str_count;
         return CND_ERR_OK;
     }
 
@@ -108,6 +144,18 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
         if (strcmp(key_name, "points") == 0) {
             obj->points_idx = 0;
             IO_VAL(uint8_t, points_len);
+        }
+        return CND_ERR_OK;
+    }
+    if (type == OP_ARR_DYNAMIC) {
+        if (strcmp(key_name, "dynamic_bytes") == 0) obj->dynamic_bytes_idx = 0;
+        else if (strcmp(key_name, "dynamic_strings") == 0) obj->dynamic_strings_idx = 0;
+        return CND_ERR_OK;
+    }
+    if (type == OP_ARR_EOF) {
+        if (strcmp(key_name, "rest_of_stream") == 0) {
+            obj->rest_of_stream_idx = 0;
+            if (DECODE) obj->rest_of_stream_len = 0;
         }
         return CND_ERR_OK;
     }
@@ -141,6 +189,39 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
         if (obj->points_idx < obj->points_len) {
             IO_VAL(uint16_t, points[obj->points_idx]);
             obj->points_idx++;
+        }
+    }
+    else if (strcmp(key_name, "dynamic_len") == 0) IO_VAL(uint16_t, dynamic_len)
+    else if (strcmp(key_name, "dynamic_bytes") == 0 && type == OP_IO_U8) {
+        if (obj->dynamic_bytes_idx < obj->dynamic_len) {
+            IO_VAL(uint8_t, dynamic_bytes[obj->dynamic_bytes_idx]);
+            obj->dynamic_bytes_idx++;
+        }
+    }
+    else if (strcmp(key_name, "str_count") == 0) IO_VAL(uint8_t, str_count)
+    else if (strcmp(key_name, "dynamic_strings") == 0) {
+        if (obj->dynamic_strings_idx < obj->str_count) {
+            if (ENCODE) *(const char**)ptr = obj->dynamic_strings[obj->dynamic_strings_idx];
+            else {
+                uint8_t len = ((uint8_t*)ptr)[-1]; // Get length from prefix
+                if (len >= 64) len = 63;
+                strncpy(obj->dynamic_strings[obj->dynamic_strings_idx], (const char*)ptr, len);
+                obj->dynamic_strings[obj->dynamic_strings_idx][len] = 0;
+            }
+            obj->dynamic_strings_idx++;
+        }
+    }
+    else if (strcmp(key_name, "rest_of_stream") == 0 && type == OP_IO_U8) {
+        if (ENCODE) {
+            if (obj->rest_of_stream_idx < obj->rest_of_stream_len) {
+                *(uint8_t*)ptr = obj->rest_of_stream[obj->rest_of_stream_idx];
+                obj->rest_of_stream_idx++;
+            }
+        } else {
+            if (obj->rest_of_stream_len < 1024) {
+                obj->rest_of_stream[obj->rest_of_stream_len] = *(uint8_t*)ptr;
+                obj->rest_of_stream_len++;
+            }
         }
     }
     else if (strcmp(key_name, "name") == 0) {
@@ -258,10 +339,15 @@ int main() {
         .spline_val = 50.0, // Raw 5 -> 50.0 (Segment 1)
         .bit_packed = { .a_3bits = 7, .b_5bits = 31, .c_4bits = 15, .d_aligned = 255 },
         .has_extra = true,
-        .adv_mode = 0, .adv_simple_val = 777
+        .adv_mode = 0, .adv_simple_val = 777,
+        .dynamic_len = 5, .dynamic_bytes = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE},
+        .str_count = 2,
+        .rest_of_stream = {0xDE, 0xAD, 0xBE, 0xEF}, .rest_of_stream_len = 4
     };
     strcpy(data.name, "Manual Demo");
     strcpy(data.extra_data, "Manual Extra");
+    strcpy(data.dynamic_strings[0], "Hello");
+    strcpy(data.dynamic_strings[1], "World");
     
     // 4. Encode
     printf("Starting Encode...\n");
@@ -303,6 +389,15 @@ int main() {
     printf("  Adv Has Details: %s\n", out.adv_has_details ? "true" : "false");
     if (out.adv_has_details) printf("    Adv Details: %s\n", out.adv_details);
     printf("  Adv Fallback: %d\n", out.adv_fallback_code);
+    printf("  Dynamic Bytes (%d): [", out.dynamic_len);
+    for(int i=0; i<out.dynamic_len; i++) printf("0x%02X%s", out.dynamic_bytes[i], i==out.dynamic_len-1 ? "" : ", ");
+    printf("]\n");
+    printf("  Dynamic Strings (%d): [", out.str_count);
+    for(int i=0; i<out.str_count; i++) printf("\"%s\"%s", out.dynamic_strings[i], i==out.str_count-1 ? "" : ", ");
+    printf("]\n");
+    printf("  Rest of Stream (%zu): [", out.rest_of_stream_len);
+    for(int i=0; i<out.rest_of_stream_len; i++) printf("0x%02X%s", out.rest_of_stream[i], i==out.rest_of_stream_len-1 ? "" : ", ");
+    printf("]\n");
     
     free(il);
     return 0;

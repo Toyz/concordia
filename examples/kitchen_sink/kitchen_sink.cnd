@@ -107,7 +107,7 @@ packet KitchenSink {
             uint16 adv_simple_val; // Key 22
         }
         case 1: {
-            bool adv_has_details; // Key 23
+        bool adv_has_details; // Key 23?
             if (adv_has_details) {
                 string adv_details prefix uint8; // Key 24
             } else {
@@ -115,4 +115,16 @@ packet KitchenSink {
             }
         }
     }
+
+    // Dynamic Array & EOF
+    uint16 dynamic_len;
+    @count(dynamic_len)
+    uint8 dynamic_bytes[];
+
+    uint8 str_count;
+    @count(str_count)
+    string dynamic_strings[] prefix uint8;
+
+    @eof
+    uint8 rest_of_stream[];
 }

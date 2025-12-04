@@ -575,6 +575,13 @@ void parse_switch(Parser* p) {
             consume(p, TOK_COLON, "Expect : after case value");
             
             // Register Case
+            // Check for duplicates
+            for(size_t i=0; i<case_count; i++) {
+                if (cases[i].val == val) {
+                    parser_error(p, "Duplicate case value");
+                }
+            }
+
             if (case_count >= case_cap) {
                 case_cap = (case_cap == 0) ? 8 : case_cap * 2;
                 cases = realloc(cases, case_cap * sizeof(SwitchCase));
@@ -772,6 +779,9 @@ void parse_field(Parser* p, const char* doc) {
     uint8_t crc_flags = 0;
 
     int has_expr = 0;
+    int has_eof = 0;
+    int has_count_ref = 0;
+    uint16_t count_ref_id = 0;
 
     // Jump Patching State for @depends_on
     // size_t jump_patches[8]; // Max 8 pending jumps
@@ -813,11 +823,27 @@ void parse_field(Parser* p, const char* doc) {
             crc_flags |= 2;
         } else if (match_keyword(dec_name_token, "optional")) {
             buf_push(p->target, OP_MARK_OPTIONAL);
+        } else if (match_keyword(dec_name_token, "eof")) {
+            has_eof = 1;
         } else { 
             consume(p, TOK_LPAREN, "Expect ("); 
             if (match_keyword(dec_name_token, "count") || match_keyword(dec_name_token, "len")) {
-                Token num = p->current; consume(p, TOK_NUMBER, "Expect count number");
-                array_fixed_count = parse_number(num); has_fixed_array_count = 1;
+                if (p->current.type == TOK_IDENTIFIER) {
+                    Token ref_tok = p->current;
+                    advance(p);
+                    // Verify that the referenced field exists (simple check: must be in string table already?)
+                    // Actually, we can't easily check existence here because fields might be defined later?
+                    // But for array counts, the length field usually comes BEFORE the array.
+                    // Let's just ensure it's a valid identifier for now.
+                    count_ref_id = strtab_add(&p->strtab, ref_tok.start, ref_tok.length);
+                    has_count_ref = 1;
+                } else if (p->current.type == TOK_NUMBER) {
+                    Token num = p->current; 
+                    advance(p);
+                    array_fixed_count = parse_number(num); has_fixed_array_count = 1;
+                } else {
+                    parser_error(p, "Expect number or variable name for count");
+                }
             } else if (match_keyword(dec_name_token, "const") || match_keyword(dec_name_token, "match")) {
                 Token num = p->current; consume(p, TOK_NUMBER, "Expect const/match value");
                 const_val = (uint64_t)parse_int64(num); has_const = 1;
@@ -987,6 +1013,8 @@ void parse_field(Parser* p, const char* doc) {
             array_fixed_count = parse_number(num); has_fixed_array_count = 1;
             consume(p, TOK_RBRACKET, "Expect ]");
         }
+    } else {
+        // printf("PARSER: Field '%.*s' is NOT array\n", name_tok.length, name_tok.start);
     }
     
     if (p->verbose) {
@@ -1001,7 +1029,7 @@ void parse_field(Parser* p, const char* doc) {
     
     if (match_keyword(p->current, "prefix")) {
         advance(p); Token ptype = p->current; consume(p, TOK_IDENTIFIER, "Expect prefix type");
-        if (is_variable_array && !has_fixed_array_count) {
+        if (is_variable_array && !has_fixed_array_count && !has_count_ref) {
             if (match_keyword(ptype, "uint8") || match_keyword(ptype, "u8")) arr_prefix_op = OP_ARR_PRE_U8;
             else if (match_keyword(ptype, "uint16") || match_keyword(ptype, "u16")) arr_prefix_op = OP_ARR_PRE_U16;
             else if (match_keyword(ptype, "uint32") || match_keyword(ptype, "u32")) arr_prefix_op = OP_ARR_PRE_U32;
@@ -1018,8 +1046,8 @@ void parse_field(Parser* p, const char* doc) {
     }
 
     if (is_array_field && match_keyword(type_tok, "string")) {
-        if (str_prefix_op == OP_NOOP && !has_until) {
-            parser_error(p, "String arrays must specify 'prefix' or 'until'");
+        if (str_prefix_op == OP_NOOP && !has_until && !has_fixed_array_count && !has_count_ref) {
+            parser_error(p, "String arrays must specify 'prefix' or 'until' or be fixed/dynamic count");
         }
     }
 
@@ -1027,6 +1055,11 @@ void parse_field(Parser* p, const char* doc) {
 
     if (arr_prefix_op != OP_NOOP) {
         buf_push(p->target, arr_prefix_op); buf_push_u16(p->target, key_id);
+    } else if (has_eof && is_array_field) {
+        buf_push(p->target, OP_ARR_EOF); buf_push_u16(p->target, key_id);
+    } else if (has_count_ref && is_array_field) {
+        buf_push(p->target, OP_ARR_DYNAMIC); buf_push_u16(p->target, key_id);
+        buf_push_u16(p->target, count_ref_id);
     } else if (has_fixed_array_count && is_array_field) {
         buf_push(p->target, OP_ARR_FIXED); buf_push_u16(p->target, key_id);
         buf_push_u32(p->target, array_fixed_count);
@@ -1256,6 +1289,15 @@ void parse_block(Parser* p) {
 
 void parse_enum(Parser* p, const char* doc) {
     Token name = p->current; consume(p, TOK_IDENTIFIER, "Expect enum name");
+    
+    // Check for name collisions
+    if (enum_reg_find(&p->enums, name.start, name.length)) {
+        parser_error(p, "Enum name already defined");
+    }
+    if (reg_find(&p->registry, name.start, name.length)) {
+        parser_error(p, "Name collision with Struct");
+    }
+
     if (p->verbose) printf("[VERBOSE] Parsing enum '%.*s'\n", name.length, name.start);
     EnumDef* def = enum_reg_add(&p->enums, name.start, name.length, name.line, p->current_path, doc);
     
@@ -1323,6 +1365,15 @@ void parse_enum(Parser* p, const char* doc) {
 
 void parse_struct(Parser* p, const char* doc) {
     Token name = p->current; consume(p, TOK_IDENTIFIER, "Expect struct name");
+    
+    // Check for name collisions
+    if (reg_find(&p->registry, name.start, name.length)) {
+        parser_error(p, "Struct name already defined");
+    }
+    if (enum_reg_find(&p->enums, name.start, name.length)) {
+        parser_error(p, "Name collision with Enum");
+    }
+
     if (p->verbose) printf("[VERBOSE] Parsing struct '%.*s'\n", name.length, name.start);
     StructDef* def = reg_add(&p->registry, name.start, name.length, name.line, p->current_path, doc);
     
@@ -1378,6 +1429,15 @@ void parse_packet(Parser* p, const char* doc) {
     (void)doc;
     // TODO: Store doc comment for packet?
     Token name = p->current; consume(p, TOK_IDENTIFIER, "Expect packet name");
+    
+    // Check for name collisions
+    if (reg_find(&p->registry, name.start, name.length)) {
+        parser_error(p, "Packet name collides with Struct");
+    }
+    if (enum_reg_find(&p->enums, name.start, name.length)) {
+        parser_error(p, "Packet name collides with Enum");
+    }
+
     if (p->verbose) printf("[VERBOSE] Parsing packet '%.*s'\n", name.length, name.start);
     
     // Emit META_NAME with placeholder key
@@ -1385,7 +1445,22 @@ void parse_packet(Parser* p, const char* doc) {
     buf_push(p->target, OP_META_NAME);
     buf_push_u16(p->target, 0xFFFF); // Placeholder
     
-    parse_block(p);
+    if (p->current.type == TOK_EQUALS) {
+        advance(p); // Consume '='
+        Token struct_name = p->current;
+        consume(p, TOK_IDENTIFIER, "Expect struct name");
+        consume(p, TOK_SEMICOLON, "Expect ;");
+        
+        StructDef* sdef = reg_find(&p->registry, struct_name.start, struct_name.length);
+        if (!sdef) {
+            parser_error(p, "Struct not found");
+        } else {
+            // Inline the struct's bytecode
+            buf_append(p->target, sdef->bytecode.data, sdef->bytecode.size);
+        }
+    } else {
+        parse_block(p);
+    }
     
     // Add name to string table AFTER fields, so fields get lower IDs (preserving compatibility/tests)
     uint16_t key_id = strtab_add(&p->strtab, name.start, name.length);

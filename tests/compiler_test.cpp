@@ -249,3 +249,21 @@ TEST_F(CompilerTest, MultiplePacketsFail) {
     
     EXPECT_NE(res, 0);
 }
+
+TEST_F(CompilerTest, PacketAlias) {
+    WriteSource(
+        "struct MyStruct { uint8 a; uint16 b; }"
+        "packet MyPacket = MyStruct;"
+    );
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
+    EXPECT_EQ(res, 0);
+    EXPECT_TRUE(CheckOutputExists());
+}
+
+TEST_F(CompilerTest, PacketAliasMissingStruct) {
+    WriteSource(
+        "packet MyPacket = NonExistentStruct;"
+    );
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
+    EXPECT_NE(res, 0);
+}

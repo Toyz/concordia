@@ -54,6 +54,8 @@ extern "C" {
 #define OP_ARR_PRE_U32      0x37
 #define OP_ARR_END          0x38
 #define OP_RAW_BYTES        0x39
+#define OP_ARR_EOF          0x3A
+#define OP_ARR_DYNAMIC      0x3B
 
 // Category E: Validation
 #define OP_CONST_CHECK      0x40
@@ -272,6 +274,11 @@ void cnd_init(cnd_vm_ctx* ctx,
  * Execute the VM until completion or error.
  */
 cnd_error_t cnd_execute(cnd_vm_ctx* ctx);
+
+/**
+ * Get a human-readable error message for a given error code.
+ */
+const char* cnd_error_string(cnd_error_t err);
 
 #ifdef __cplusplus
 }

@@ -12,7 +12,7 @@ void clear_test_data() {
 // C-compatible callback for the VM
 extern "C" cnd_error_t test_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
     // printf("Callback: Key %d, Type %d, Mode %d\n", key_id, type, ctx->mode);
-    if (type == OP_ARR_END || type == OP_EXIT_STRUCT || type == OP_ENTER_STRUCT || type == OP_ARR_FIXED) return CND_ERR_OK;
+    if (type == OP_ARR_END || type == OP_EXIT_STRUCT || type == OP_ENTER_STRUCT || type == OP_ARR_FIXED || type == OP_ARR_DYNAMIC || type == OP_ARR_EOF) return CND_ERR_OK;
 
     int idx = -1;
     

@@ -62,7 +62,7 @@ static cnd_error_t handle_array_start(IOCtx* io, cnd_vm_ctx* ctx, uint8_t type, 
         io->array_depth++;
 
         // Write length
-        if (type != OP_RAW_BYTES && type != OP_ARR_FIXED) {
+        if (type != OP_RAW_BYTES && type != OP_ARR_FIXED && type != OP_ARR_DYNAMIC) {
             int len = cJSON_GetArraySize(item);
             if (type == OP_ARR_PRE_U8) *(uint8_t*)ptr = (uint8_t)len;
             else if (type == OP_ARR_PRE_U16) *(uint16_t*)ptr = (uint16_t)len;
@@ -253,7 +253,7 @@ cnd_error_t json_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, voi
     }
 
     // Handle Arrays
-    if (type == OP_ARR_PRE_U8 || type == OP_ARR_PRE_U16 || type == OP_ARR_PRE_U32 || type == OP_ARR_FIXED || type == OP_RAW_BYTES) {
+    if (type == OP_ARR_PRE_U8 || type == OP_ARR_PRE_U16 || type == OP_ARR_PRE_U32 || type == OP_ARR_FIXED || type == OP_RAW_BYTES || type == OP_ARR_DYNAMIC) {
         return handle_array_start(io, ctx, type, key_name, current, ptr);
     }
     
@@ -276,7 +276,10 @@ cnd_error_t json_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, voi
     // Handle Control Flow
     if (type == OP_CTX_QUERY || type == OP_LOAD_CTX) {
         cJSON* item = cJSON_GetObjectItem(current, key_name);
-        if (!item) return CND_ERR_CALLBACK;
+        if (!item) {
+            printf("JSON_BINDING: Query failed for key '%s'\n", key_name);
+            return CND_ERR_CALLBACK;
+        }
         if (cJSON_IsBool(item)) *(uint64_t*)ptr = cJSON_IsTrue(item) ? 1 : 0;
         else *(uint64_t*)ptr = (uint64_t)item->valuedouble;
         return CND_ERR_OK;

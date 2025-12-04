@@ -32,8 +32,8 @@ static const BuiltinDecorator BUILTIN_DECORATORS[] = {
     {"crc_refin", "Sets CRC input reflection.", "crc_refin"},
     {"crc_refout", "Sets CRC output reflection.", "crc_refout"},
     {"optional", "Marks a field as optional (implementation specific).", "optional"},
-    {"count", "Sets the fixed count for an array.", "count(N)"},
-    {"len", "Alias for @count.", "len(N)"},
+    {"count", "Sets the count for an array (fixed number or variable reference).", "count(N) or count(field_name)"},
+    {"len", "Alias for @count.", "len(N) or len(field_name)"},
     {"const", "Enforces a constant value for a field.", "const(VALUE)"},
     {"match", "Alias for @const.", "match(VALUE)"},
     {"pad", "Inserts padding bits.", "pad(BITS)"},
@@ -51,6 +51,7 @@ static const BuiltinDecorator BUILTIN_DECORATORS[] = {
     {"poly", "Applies polynomial transformation.", "poly(c0, c1, ...)"},
     {"spline", "Applies spline transformation.", "spline(x0, y0, x1, y1, ...)"},
     {"expr", "Calculates a value based on an expression.", "expr(expression)"},
+    {"eof", "Marks a byte array to consume all remaining bytes in the stream.", "eof"},
     {NULL, NULL, NULL}
 };
 
@@ -345,8 +346,14 @@ static void analyze_source(const char* source, const char* file_path, int line, 
 cleanup:
     buf_free(&bc);
     buf_free(&p.global_bc);
-    // free registries... (leak for now in demo, but in loop should clean)
-    // TODO: proper cleanup
+    strtab_free(&p.strtab);
+    strtab_free(&p.imports);
+    reg_free(&p.registry);
+    enum_reg_free(&p.enums);
+    if (p.errors) {
+        for (int i = 0; i < p.error_count; i++) free(p.errors[i].message);
+        free(p.errors);
+    }
 }
 
 // --- Handlers ---
@@ -538,6 +545,7 @@ static void handle_completion(cJSON* id, cJSON* params) {
     int paren_depth = 0;
     int decorator_start_depth = -1;
     int in_expr = 0;
+    int in_count = 0;
 
     // Struct Context
     char* active_struct = NULL;
@@ -581,6 +589,12 @@ static void handle_completion(cJSON* id, cJSON* params) {
                  active_struct[prev_token.length] = '\0';
                  struct_depth = brace_depth;
             }
+        } else if (t.type == TOK_EQUALS) {
+             // Handle packet alias: packet P = S;
+             if (prev_token.type == TOK_IDENTIFIER && prev_prev_token.type == TOK_PACKET) {
+                 // We are in a packet alias definition, but we don't enter a block.
+                 // We might want to track this for hover/definition, but for now just ensure we don't break context.
+             }
         } else if (t.type == TOK_RBRACE) {
             if (active_struct && brace_depth == struct_depth) {
                 free(active_struct);
@@ -608,8 +622,9 @@ static void handle_completion(cJSON* id, cJSON* params) {
         }
     }
 
-    if (active_decorator && strcmp(active_decorator, "expr") == 0) {
-        in_expr = 1;
+    if (active_decorator) {
+        if (strcmp(active_decorator, "expr") == 0) in_expr = 1;
+        else if (strcmp(active_decorator, "count") == 0 || strcmp(active_decorator, "len") == 0) in_count = 1;
     }
     
     // Build Completion List
@@ -629,25 +644,27 @@ static void handle_completion(cJSON* id, cJSON* params) {
             }
         }
         free(enum_name);
-    } else if (in_expr) {
-        // Math Functions
-        const char* math_funcs[] = { "sin", "cos", "tan", "sqrt", "log", "abs", "pow" };
-        for (size_t i = 0; i < sizeof(math_funcs)/sizeof(char*); i++) {
-            cJSON* item = cJSON_CreateObject();
-            cJSON_AddStringToObject(item, "label", math_funcs[i]);
-            cJSON_AddNumberToObject(item, "kind", 3); // Function
-            cJSON_AddStringToObject(item, "detail", "Math Function");
-            cJSON_AddItemToArray(items, item);
-        }
-        
-        // Type Conversions
-        const char* type_convs[] = { "int", "float" };
-        for (size_t i = 0; i < sizeof(type_convs)/sizeof(char*); i++) {
-            cJSON* item = cJSON_CreateObject();
-            cJSON_AddStringToObject(item, "label", type_convs[i]);
-            cJSON_AddNumberToObject(item, "kind", 3); // Function
-            cJSON_AddStringToObject(item, "detail", "Type Conversion");
-            cJSON_AddItemToArray(items, item);
+    } else if (in_expr || in_count) {
+        if (in_expr) {
+            // Math Functions
+            const char* math_funcs[] = { "sin", "cos", "tan", "sqrt", "log", "abs", "pow" };
+            for (size_t i = 0; i < sizeof(math_funcs)/sizeof(char*); i++) {
+                cJSON* item = cJSON_CreateObject();
+                cJSON_AddStringToObject(item, "label", math_funcs[i]);
+                cJSON_AddNumberToObject(item, "kind", 3); // Function
+                cJSON_AddStringToObject(item, "detail", "Math Function");
+                cJSON_AddItemToArray(items, item);
+            }
+            
+            // Type Conversions
+            const char* type_convs[] = { "int", "float" };
+            for (size_t i = 0; i < sizeof(type_convs)/sizeof(char*); i++) {
+                cJSON* item = cJSON_CreateObject();
+                cJSON_AddStringToObject(item, "label", type_convs[i]);
+                cJSON_AddNumberToObject(item, "kind", 3); // Function
+                cJSON_AddStringToObject(item, "detail", "Type Conversion");
+                cJSON_AddItemToArray(items, item);
+            }
         }
 
         // Struct Fields
@@ -726,7 +743,12 @@ static void handle_completion(cJSON* id, cJSON* params) {
     if (active_decorator) free(active_decorator);
     if (active_struct) free(active_struct);
     buf_free(&bc); buf_free(&p.global_bc);
-    // free registries...
+    strtab_free(&p.strtab); strtab_free(&p.imports);
+    reg_free(&p.registry); enum_reg_free(&p.enums);
+    if (p.errors) {
+        for (int i = 0; i < p.error_count; i++) free(p.errors[i].message);
+        free(p.errors);
+    }
     free(source); free(path);
 }
 
@@ -831,6 +853,12 @@ static void handle_document_symbol(cJSON* id, cJSON* params) {
     send_response(id, symbols);
     
     buf_free(&bc); buf_free(&p.global_bc);
+    strtab_free(&p.strtab); strtab_free(&p.imports);
+    reg_free(&p.registry); enum_reg_free(&p.enums);
+    if (p.errors) {
+        for (int i = 0; i < p.error_count; i++) free(p.errors[i].message);
+        free(p.errors);
+    }
     free(source); free(path);
 }
 
@@ -887,6 +915,9 @@ static void publish_diagnostics(const char* uri, const char* source) {
     cJSON_Delete(notification);
     
     buf_free(&bc); buf_free(&p.global_bc);
+    strtab_free(&p.strtab); strtab_free(&p.imports);
+    reg_free(&p.registry); enum_reg_free(&p.enums);
+    // p.errors already freed in loop above
     free(path);
 }
 

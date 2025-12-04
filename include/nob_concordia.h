@@ -42,6 +42,8 @@ bool cnd_setup(const char *deps_dir) {
     Nob_Cmd cmd = {0};
 #ifdef _MSC_VER
     nob_cmd_append(&cmd, "cl", nob_src, "/Fe:", nob_exe);
+#elif defined(_WIN32)
+    nob_cmd_append(&cmd, "gcc", nob_src, "-o", nob_exe);
 #else
     nob_cmd_append(&cmd, "cc", nob_src, "-o", nob_exe);
 #endif

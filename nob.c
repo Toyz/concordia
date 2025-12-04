@@ -4,6 +4,12 @@
 #define BUILD_DIR "./build_nob"
 #define DEPS_DIR "./nob_deps"
 
+#ifdef _WIN32
+#define CC "gcc"
+#else
+#define CC "cc"
+#endif
+
 const char *filename_from_path(const char *path) {
     const char *last_slash = strrchr(path, '/');
     if (last_slash) return last_slash + 1;
@@ -41,7 +47,7 @@ int main(int argc, char **argv) {
     const char *cjson_src = DEPS_DIR "/cJSON/cJSON.c";
     const char *cjson_obj = BUILD_DIR "/cJSON.o";
     cmd.count = 0;
-    nob_cmd_append(&cmd, "cc");
+    nob_cmd_append(&cmd, CC);
     cflags(&cmd);
     nob_cmd_append(&cmd, "-c", cjson_src, "-o", cjson_obj);
     if (!nob_cmd_run_sync(cmd)) return 1;
@@ -57,7 +63,7 @@ int main(int argc, char **argv) {
         const char *src = concordia_srcs[i];
         const char *obj = nob_temp_sprintf(BUILD_DIR "/%s.o", filename_from_path(src));
         cmd.count = 0;
-        nob_cmd_append(&cmd, "cc");
+        nob_cmd_append(&cmd, CC);
         cflags(&cmd);
         nob_cmd_append(&cmd, "-c", src, "-o", obj);
         if (!nob_cmd_run_sync(cmd)) return 1;
@@ -84,7 +90,7 @@ int main(int argc, char **argv) {
         const char *src = compiler_srcs[i];
         const char *obj = nob_temp_sprintf(BUILD_DIR "/%s.o", filename_from_path(src));
         cmd.count = 0;
-        nob_cmd_append(&cmd, "cc");
+        nob_cmd_append(&cmd, CC);
         cflags(&cmd);
         nob_cmd_append(&cmd, "-c", src, "-o", obj);
         if (!nob_cmd_run_sync(cmd)) return 1;
@@ -114,7 +120,7 @@ int main(int argc, char **argv) {
         const char *src = cli_srcs[i];
         const char *obj = nob_temp_sprintf(BUILD_DIR "/%s.o", filename_from_path(src));
         cmd.count = 0;
-        nob_cmd_append(&cmd, "cc");
+        nob_cmd_append(&cmd, CC);
         cflags(&cmd);
         nob_cmd_append(&cmd, "-c", src, "-o", obj);
         if (!nob_cmd_run_sync(cmd)) return 1;
@@ -123,7 +129,7 @@ int main(int argc, char **argv) {
 
     // --- Link cnd ---
     cmd.count = 0;
-    nob_cmd_append(&cmd, "cc");
+    nob_cmd_append(&cmd, CC);
     nob_cmd_append(&cmd, "-o", BUILD_DIR "/cnd");
     for (size_t i = 0; i < obj_files.count; ++i) {
         nob_cmd_append(&cmd, obj_files.items[i]);
@@ -132,7 +138,7 @@ int main(int argc, char **argv) {
 
     // --- Compile Hexview ---
     cmd.count = 0;
-    nob_cmd_append(&cmd, "cc");
+    nob_cmd_append(&cmd, CC);
     cflags(&cmd);
     nob_cmd_append(&cmd, "src/tools/hexview.c", "-o", BUILD_DIR "/hexview");
     if (!nob_cmd_run_sync(cmd)) return 1;

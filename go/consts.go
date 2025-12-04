@@ -70,6 +70,8 @@ const (
 	OpArrPreU32 OpCode = 0x37
 	OpArrEnd OpCode = 0x38
 	OpRawBytes OpCode = 0x39
+	OpArrEof OpCode = 0x3A
+	OpArrDynamic OpCode = 0x3B
 	OpConstCheck OpCode = 0x40
 	OpConstWrite OpCode = 0x41
 	OpRangeCheck OpCode = 0x42

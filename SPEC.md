@@ -148,6 +148,20 @@ packet SwitchPacket {
 }
 ```
 
+### Example: Packet Alias
+
+A packet can be defined as an alias to an existing struct. This is useful for reusing struct definitions as top-level packets.
+
+```concordia
+struct MyStruct {
+    uint8 a;
+    uint16 b;
+}
+
+// MyPacket will have the same layout as MyStruct
+packet MyPacket = MyStruct;
+```
+
 ### Example: Computed Fields (Expressions)
 
 Concordia supports a stack-based expression engine for computed fields using the `@expr` decorator. This allows fields to be derived from other fields or constants at runtime.
@@ -201,7 +215,7 @@ Supported operators include:
 | `@crc_xor(val)` | Sets custom CRC XOR value. |
 | `@crc_refin` | Sets CRC input reflection. |
 | `@crc_refout` | Sets CRC output reflection. |
-| `@count(n)` / `@len(n)` | Sets fixed array size. |
+| `@count(n)` / `@len(n)` | Sets array size. Can be a fixed number or a variable name (e.g. `@count(my_len)`). |
 | `@pad(n)` | Inserts explicit padding bits. |
 
 ---

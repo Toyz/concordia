@@ -1,5 +1,6 @@
 #include "vm_internal.h"
 #include <string.h>
+#include <stdio.h>
 
 #ifndef CND_NO_MATH
 #include <math.h>
@@ -288,7 +289,7 @@ static void skip_loop_body(cnd_vm_ctx* ctx) {
     while (ctx->ip < ctx->program->bytecode_len && depth > 0) {
         uint8_t op = ctx->program->bytecode[ctx->ip];
         if (op == OP_ARR_FIXED || op == OP_ARR_PRE_U8 || 
-            op == OP_ARR_PRE_U16 || op == OP_ARR_PRE_U32) depth++;
+            op == OP_ARR_PRE_U16 || op == OP_ARR_PRE_U32 || op == OP_ARR_EOF || op == OP_ARR_DYNAMIC) depth++;
         if (op == OP_ARR_END) depth--;
         ctx->ip++; 
     }
@@ -1103,14 +1104,67 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 break;
             }
 
+            case OP_ARR_EOF: {
+                uint16_t key = FETCH_IL_U16(ctx);
+                (void)key; // Unused for now
+                
+                SYNC_IP();
+
+                if (ctx->loop_depth >= CND_MAX_LOOP_DEPTH) return CND_ERR_STACK_OVERFLOW;
+                cnd_loop_frame* frame = &ctx->loop_stack[ctx->loop_depth++];
+                frame->start_ip = ctx->ip;
+                frame->remaining = 0xFFFFFFFF; // Special value for EOF loop
+                
+                // Check if we are already at EOF
+                if (ctx->cursor >= ctx->data_len) {
+                    // Skip loop
+                    skip_loop_body(ctx);
+                    RELOAD_PC();
+                }
+                break;
+            }
+
+            case OP_ARR_DYNAMIC: {
+                uint16_t key = FETCH_IL_U16(ctx);
+                uint16_t ref_key = FETCH_IL_U16(ctx);
+                
+                uint64_t count_val = 0;
+                SYNC_IP();
+                if (ctx->io_callback(ctx, ref_key, OP_CTX_QUERY, &count_val) != CND_ERR_OK) return CND_ERR_CALLBACK;
+                printf("VM_DEBUG: OpCtxQuery Key=%d returned %llu\n", ref_key, count_val);
+                
+                uint32_t count = (uint32_t)count_val;
+                
+                SYNC_IP();
+                if (ctx->io_callback(ctx, key, OP_ARR_DYNAMIC, &count) != CND_ERR_OK) return CND_ERR_CALLBACK;
+                
+                if (count > 0) {
+                    if (try_optimize_byte_array(ctx, count)) { RELOAD_PC(); break; }
+                    if (!loop_push(ctx, ctx->ip, count)) return CND_ERR_OOB;
+                } else {
+                     skip_loop_body(ctx);
+                     RELOAD_PC();
+                }
+                break;
+            }
+
             case OP_ARR_END: {
                 // printf("VM_DEBUG: Calling callback for ARR_END\n");
                 if (ctx->loop_depth == 0) return CND_ERR_INVALID_OP;
                 cnd_loop_frame* frame = &ctx->loop_stack[ctx->loop_depth - 1];
                 
-                if (frame->remaining > 0) frame->remaining--;
+                bool loop_continue = false;
                 
-                if (frame->remaining > 0) {
+                if (frame->remaining == 0xFFFFFFFF) {
+                    // EOF Loop
+                    if (ctx->cursor < ctx->data_len) loop_continue = true;
+                } else {
+                    // Fixed/Prefixed Loop
+                    if (frame->remaining > 0) frame->remaining--;
+                    if (frame->remaining > 0) loop_continue = true;
+                }
+                
+                if (loop_continue) {
                     ctx->ip = frame->start_ip;
                     RELOAD_PC();
                 } else {
@@ -1433,7 +1487,13 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             case OP_MUL: { BINARY_OP(*); break; }
             case OP_DIV: { BINARY_OP(/); break; }
             case OP_MOD: { BINARY_OP(%); break; }
-            case OP_NEG: { UNARY_OP(-); break; }
+            case OP_NEG: {
+                uint64_t a;
+                if (stack_pop(ctx, &a) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
+                // Cast to signed to avoid C4146 (unary minus on unsigned)
+                if (stack_push(ctx, (uint64_t)(-(int64_t)a)) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
+                break;
+            }
 
             // Arithmetic (Float)
             case OP_FADD: { BINARY_OP_F(+); break; }
@@ -1505,5 +1565,19 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
     
     // fprintf(stderr, "VM_DEBUG: Execution finished. Cursor=%zu, DataLen=%zu. Returning OK.\n", ctx->cursor, ctx->data_len);
     return CND_ERR_OK;
+}
+
+const char* cnd_error_string(cnd_error_t err) {
+    switch (err) {
+        case CND_ERR_OK: return "OK";
+        case CND_ERR_OOB: return "Out of Bounds";
+        case CND_ERR_INVALID_OP: return "Invalid Opcode";
+        case CND_ERR_VALIDATION: return "Validation Failed";
+        case CND_ERR_CALLBACK: return "Callback Error";
+        case CND_ERR_STACK_OVERFLOW: return "Stack Overflow";
+        case CND_ERR_STACK_UNDERFLOW: return "Stack Underflow";
+        case CND_ERR_CRC_MISMATCH: return "CRC Mismatch";
+        default: return "Unknown Error";
+    }
 }
 

@@ -94,12 +94,35 @@ uint16_t strtab_add(StringTable* t, const char* start, int len) {
     return (uint16_t)t->count++;
 }
 
+void strtab_free(StringTable* t) {
+    for (size_t i = 0; i < t->count; i++) {
+        free(t->strings[i]);
+    }
+    free(t->strings);
+    t->count = 0;
+    t->capacity = 0;
+    t->strings = NULL;
+}
+
 // --- Registry Implementation ---
 
 void reg_init(StructRegistry* r) {
     r->count = 0;
     r->capacity = 8;
     r->defs = malloc(r->capacity * sizeof(StructDef));
+}
+
+void reg_free(StructRegistry* r) {
+    for (size_t i = 0; i < r->count; i++) {
+        free(r->defs[i].name);
+        if (r->defs[i].file) free(r->defs[i].file);
+        if (r->defs[i].doc_comment) free(r->defs[i].doc_comment);
+        buf_free(&r->defs[i].bytecode);
+    }
+    free(r->defs);
+    r->count = 0;
+    r->capacity = 0;
+    r->defs = NULL;
 }
 
 StructDef* reg_add(StructRegistry* r, const char* name, int len, int line, const char* file, const char* doc) {
@@ -131,6 +154,23 @@ void enum_reg_init(EnumRegistry* r) {
     r->count = 0;
     r->capacity = 8;
     r->defs = malloc(r->capacity * sizeof(EnumDef));
+}
+
+void enum_reg_free(EnumRegistry* r) {
+    for (size_t i = 0; i < r->count; i++) {
+        free(r->defs[i].name);
+        if (r->defs[i].file) free(r->defs[i].file);
+        if (r->defs[i].doc_comment) free(r->defs[i].doc_comment);
+        for (size_t j = 0; j < r->defs[i].count; j++) {
+            free(r->defs[i].values[j].name);
+            if (r->defs[i].values[j].doc_comment) free(r->defs[i].values[j].doc_comment);
+        }
+        free(r->defs[i].values);
+    }
+    free(r->defs);
+    r->count = 0;
+    r->capacity = 0;
+    r->defs = NULL;
 }
 
 EnumDef* enum_reg_add(EnumRegistry* r, const char* name, int len, int line, const char* file, const char* doc) {
