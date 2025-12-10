@@ -265,3 +265,61 @@ double parse_number_double(const char* start, int length) {
     buf[length] = '\0';
     return strtod(buf, NULL);
 }
+
+// --- StringBuilder Implementation ---
+
+void sb_init(StringBuilder* sb) {
+    sb->length = 0;
+    sb->capacity = 64;
+    sb->data = malloc(sb->capacity);
+    sb->data[0] = '\0';
+}
+
+void sb_free(StringBuilder* sb) {
+    if (sb->data) free(sb->data);
+    sb->data = NULL;
+    sb->length = 0;
+    sb->capacity = 0;
+}
+
+void sb_append(StringBuilder* sb, const char* str) {
+    if (!str) return;
+    size_t len = strlen(str);
+    sb_append_n(sb, str, len);
+}
+
+void sb_append_n(StringBuilder* sb, const char* str, size_t len) {
+    if (sb->length + len + 1 > sb->capacity) {
+        while (sb->length + len + 1 > sb->capacity) {
+            sb->capacity = (sb->capacity == 0) ? 64 : sb->capacity * 2;
+        }
+        sb->data = realloc(sb->data, sb->capacity);
+    }
+    memcpy(sb->data + sb->length, str, len);
+    sb->length += len;
+    sb->data[sb->length] = '\0';
+}
+
+void sb_append_c(StringBuilder* sb, char c) {
+    if (sb->length + 1 + 1 > sb->capacity) {
+        while (sb->length + 1 + 1 > sb->capacity) {
+            sb->capacity = (sb->capacity == 0) ? 64 : sb->capacity * 2;
+        }
+        sb->data = realloc(sb->data, sb->capacity);
+    }
+    sb->data[sb->length++] = c;
+    sb->data[sb->length] = '\0';
+}
+
+void sb_reset(StringBuilder* sb) {
+    sb->length = 0;
+    if (sb->data) sb->data[0] = '\0';
+}
+
+char* sb_build(StringBuilder* sb) {
+    char* str = malloc(sb->length + 1);
+    memcpy(str, sb->data, sb->length);
+    str[sb->length] = '\0';
+    return str;
+}
+

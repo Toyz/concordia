@@ -1246,18 +1246,24 @@ void parse_field(Parser* p, const char* doc) {
 
 void parse_block(Parser* p) {
     consume(p, TOK_LBRACE, "Expect {");
-    char* pending_doc = NULL;
+    StringBuilder doc_sb;
+    sb_init(&doc_sb);
+    
     while (p->current.type != TOK_RBRACE && p->current.type != TOK_EOF && !p->had_error) {
         if (p->current.type == TOK_DOC_COMMENT) {
-            pending_doc = append_doc(pending_doc, p->current);
+            if (doc_sb.length > 0) sb_append_c(&doc_sb, '\n');
+            sb_append_n(&doc_sb, p->current.start, p->current.length);
             advance(p);
             continue;
         }
-        parse_field(p, pending_doc);
-        if (pending_doc) { free(pending_doc); pending_doc = NULL; }
+        
+        char* doc_str = doc_sb.length > 0 ? sb_build(&doc_sb) : NULL;
+        parse_field(p, doc_str);
+        if (doc_str) free(doc_str);
+        sb_reset(&doc_sb);
     }
     consume(p, TOK_RBRACE, "Expect }");
-    if (pending_doc) free(pending_doc);
+    sb_free(&doc_sb);
 }
 
 void parse_enum(Parser* p, const char* doc) {
@@ -1298,11 +1304,13 @@ void parse_enum(Parser* p, const char* doc) {
     consume(p, TOK_LBRACE, "Expect {");
     
     int64_t next_val = 0;
-    char* val_doc = NULL;
+    StringBuilder val_doc_sb;
+    sb_init(&val_doc_sb);
     
     while (p->current.type != TOK_RBRACE && p->current.type != TOK_EOF && !p->had_error) {
         if (p->current.type == TOK_DOC_COMMENT) {
-            val_doc = append_doc(val_doc, p->current);
+            if (val_doc_sb.length > 0) sb_append_c(&val_doc_sb, '\n');
+            sb_append_n(&val_doc_sb, p->current.start, p->current.length);
             advance(p);
             continue;
         }
@@ -1341,17 +1349,16 @@ void parse_enum(Parser* p, const char* doc) {
         memcpy(def->values[def->count].name, val_name.start, val_name.length);
         def->values[def->count].name[val_name.length] = '\0';
         def->values[def->count].value = val;
-        def->values[def->count].doc_comment = val_doc; // Transfer ownership
-        val_doc = NULL; // Reset for next
+        def->values[def->count].doc_comment = val_doc_sb.length > 0 ? sb_build(&val_doc_sb) : NULL; // Transfer ownership
+        sb_reset(&val_doc_sb); // Reset for next
         def->count++;
         
         next_val = val + 1;
         
         if (p->current.type == TOK_COMMA) advance(p);
-        if (val_doc) { free(val_doc); val_doc = NULL; } // Should be NULL already, but safety
     }
+    sb_free(&val_doc_sb);
     consume(p, TOK_RBRACE, "Expect }");
-    if(val_doc) free(val_doc);
     
     strtab_free(&value_names);
 }
@@ -1555,28 +1562,14 @@ void parse_import(Parser* p) {
     free(full_path);
 }
 
-// Helper to append doc comments
-static char* append_doc(char* current, Token t) {
-    size_t len = t.length;
-    size_t current_len = current ? strlen(current) : 0;
-    char* new_doc = realloc(current, current_len + len + 2); // +1 for space/newline, +1 for null
-    if (current_len > 0) {
-        new_doc[current_len] = '\n'; // Join with newline
-        memcpy(new_doc + current_len + 1, t.start, len);
-        new_doc[current_len + 1 + len] = '\0';
-    } else {
-        memcpy(new_doc, t.start, len);
-        new_doc[len] = '\0';
-    }
-    return new_doc;
-}
-
 void parse_top_level(Parser* p) {
-    char* pending_doc = NULL;
+    StringBuilder doc_sb;
+    sb_init(&doc_sb);
 
     while (p->current.type != TOK_EOF && !p->had_error) {
         if (p->current.type == TOK_DOC_COMMENT) {
-            pending_doc = append_doc(pending_doc, p->current);
+            if (doc_sb.length > 0) sb_append_c(&doc_sb, '\n');
+            sb_append_n(&doc_sb, p->current.start, p->current.length);
             advance(p);
             continue;
         }
@@ -1607,28 +1600,32 @@ void parse_top_level(Parser* p) {
             }
         }
 
+        char* doc_str = doc_sb.length > 0 ? sb_build(&doc_sb) : NULL;
+
         if (p->current.type == TOK_STRUCT) {
-            advance(p); parse_struct(p, pending_doc);
-            if(pending_doc) { free(pending_doc); pending_doc = NULL; }
+            advance(p); parse_struct(p, doc_str);
+            sb_reset(&doc_sb);
         } else if (p->current.type == TOK_ENUM) {
-            advance(p); parse_enum(p, pending_doc);
-            if(pending_doc) { free(pending_doc); pending_doc = NULL; }
+            advance(p); parse_enum(p, doc_str);
+            sb_reset(&doc_sb);
         } else if (p->current.type == TOK_PACKET) {
             if (p->packet_count > 0) {
                 parser_error(p, "Only one packet definition allowed per file");
             }
             p->packet_count++;
-            advance(p); parse_packet(p, pending_doc);
-            if(pending_doc) { free(pending_doc); pending_doc = NULL; } // Packet doesn't store doc yet but consume it
+            advance(p); parse_packet(p, doc_str);
+            sb_reset(&doc_sb); // Packet doesn't store doc yet but consume it
         } else if (p->current.type == TOK_SEMICOLON) {
             advance(p); // Ignore top-level semicolons
-            if(pending_doc) { free(pending_doc); pending_doc = NULL; } // Orphaned comment
+            sb_reset(&doc_sb); // Orphaned comment
         } else if (p->current.type != TOK_EOF) {
             parser_error(p, "Unexpected token");
-            if(pending_doc) { free(pending_doc); pending_doc = NULL; }
+            sb_reset(&doc_sb);
         }
+        
+        if (doc_str) free(doc_str);
     }
-    if(pending_doc) free(pending_doc);
+    sb_free(&doc_sb);
 
     if (p->packet_count == 0 && p->import_depth == 0) {
         parser_error(p, "No packet definition found. A .cnd file must contain exactly one 'packet Name { ... }' block.");

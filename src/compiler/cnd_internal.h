@@ -141,6 +141,21 @@ void strtab_init(StringTable* t);
 void strtab_free(StringTable* t);
 uint16_t strtab_add(StringTable* t, const char* start, int len);
 
+// --- Utils: StringBuilder ---
+typedef struct {
+    char* data;
+    size_t length;
+    size_t capacity;
+} StringBuilder;
+
+void sb_init(StringBuilder* sb);
+void sb_free(StringBuilder* sb);
+void sb_append(StringBuilder* sb, const char* str);
+void sb_append_n(StringBuilder* sb, const char* str, size_t len);
+void sb_append_c(StringBuilder* sb, char c);
+void sb_reset(StringBuilder* sb);
+char* sb_build(StringBuilder* sb);
+
 // --- Utils: Registry ---
 typedef struct {
     char* name;

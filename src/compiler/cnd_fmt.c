@@ -43,9 +43,6 @@ static void fmt_init(FmtLexer* l, const char* source) {
     l->current = source;
 }
 
-static int is_alpha_f(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
-static int is_digit_f(char c) { return c >= '0' && c <= '9'; }
-
 static FmtToken fmt_next(FmtLexer* l) {
     FmtToken t;
     t.start = l->current;
@@ -106,18 +103,18 @@ static FmtToken fmt_next(FmtLexer* l) {
         }
     }
 
-    if (is_alpha_f(c)) {
+    if (is_alpha_c(c)) {
         t.type = FMT_IDENTIFIER;
-        while (is_alpha_f(*l->current) || is_digit_f(*l->current)) {
+        while (is_alpha_c(*l->current) || is_digit_c(*l->current)) {
             l->current++;
         }
         t.length = (int)(l->current - t.start);
         return t;
     }
 
-    if (is_digit_f(c) || (c == '-' && is_digit_f(*l->current))) {
+    if (is_digit_c(c) || (c == '-' && is_digit_c(*l->current))) {
         t.type = FMT_NUMBER;
-        while (is_digit_f(*l->current) || *l->current == 'x' || *l->current == 'X' || *l->current == '.' || (*l->current >= 'a' && *l->current <= 'f') || (*l->current >= 'A' && *l->current <= 'F')) {
+        while (is_digit_c(*l->current) || *l->current == 'x' || *l->current == 'X' || *l->current == '.' || (*l->current >= 'a' && *l->current <= 'f') || (*l->current >= 'A' && *l->current <= 'F')) {
             l->current++;
         }
         t.length = (int)(l->current - t.start);
@@ -128,47 +125,18 @@ static FmtToken fmt_next(FmtLexer* l) {
     return t;
 }
 
-// --- Dynamic Buffer ---
-
-typedef struct {
-    char* data;
-    size_t len;
-    size_t cap;
-} DynBuf;
-
-static void db_init(DynBuf* db) {
-    db->len = 0;
-    db->cap = 1024;
-    db->data = malloc(db->cap);
-    db->data[0] = '\0';
-}
-
-static void db_append(DynBuf* db, const char* str, size_t len) {
-    if (db->len + len + 1 > db->cap) {
-        while (db->len + len + 1 > db->cap) db->cap *= 2;
-        db->data = realloc(db->data, db->cap);
-    }
-    memcpy(db->data + db->len, str, len);
-    db->len += len;
-    db->data[db->len] = '\0';
-}
-
-static void db_append_str(DynBuf* db, const char* str) {
-    db_append(db, str, strlen(str));
-}
-
-static void db_indent(DynBuf* db, int level) {
-    for (int i = 0; i < level; i++) db_append_str(db, "    ");
-}
-
 // --- Formatter Logic ---
+
+static void sb_indent(StringBuilder* sb, int level) {
+    for (int i = 0; i < level; i++) sb_append(sb, "    ");
+}
 
 char* cnd_format_source(const char* source) {
     FmtLexer lexer;
     fmt_init(&lexer, source);
 
-    DynBuf out;
-    db_init(&out);
+    StringBuilder out;
+    sb_init(&out);
 
     int indent = 0;
     int newline_pending = 0;
@@ -205,8 +173,8 @@ char* cnd_format_source(const char* source) {
         // Apply newlines
         if (newline_pending > 0) {
             if (!on_new_line) {
-                db_append_str(&out, "\n");
-                if (newline_pending > 1) db_append_str(&out, "\n");
+                sb_append(&out, "\n");
+                if (newline_pending > 1) sb_append(&out, "\n");
             }
             on_new_line = 1;
             newline_pending = 0;
@@ -215,18 +183,18 @@ char* cnd_format_source(const char* source) {
 
         // Apply Indent or Space
         if (on_new_line) {
-            db_indent(&out, indent);
+            sb_indent(&out, indent);
             on_new_line = 0;
         } else if (space_pending) {
-            db_append_str(&out, " ");
+            sb_append(&out, " ");
             space_pending = 0;
         }
 
         if (t.type == FMT_LBRACE) {
-            db_append_str(&out, " "); // Space before {
+            sb_append(&out, " "); // Space before {
         }
 
-        db_append(&out, t.start, t.length);
+        sb_append_n(&out, t.start, t.length);
 
         if (t.type == FMT_LBRACE) {
             indent++;
@@ -240,8 +208,10 @@ char* cnd_format_source(const char* source) {
         prev = t;
     }
     
-    db_append_str(&out, "\n");
-    return out.data;
+    sb_append(&out, "\n");
+    char* result = sb_build(&out);
+    sb_free(&out);
+    return result;
 }
 
 int cnd_format_file(const char* in_path, const char* out_path) {
