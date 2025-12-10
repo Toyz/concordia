@@ -7,10 +7,6 @@ void lexer_init(Lexer* lexer, const char* source) {
     lexer->line = 1;
 }
 
-static inline int is_alpha_c(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
-static inline int is_digit_c(char c) { return c >= '0' && c <= '9'; }
-static inline int is_hex_c(char c) { return is_digit_c(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
-
 static TokenType check_keyword(const char* start, int length) {
     switch (length) {
         case 2:

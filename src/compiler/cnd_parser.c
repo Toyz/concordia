@@ -23,8 +23,22 @@ typedef enum {
     TYPE_UNKNOWN
 } ExprType;
 
+typedef ExprType (*ParsePrefixFn)(Parser* p);
+typedef ExprType (*ParseInfixFn)(Parser* p, ExprType left);
+
+typedef struct {
+    ParsePrefixFn prefix;
+    ParseInfixFn infix;
+    Precedence precedence;
+} ParseRule;
+
+static ParseRule* get_rule(TokenType type);
 static ExprType parse_precedence(Parser* p, Precedence prec);
 ExprType parse_primary(Parser* p);
+static ExprType parse_unary(Parser* p);
+static ExprType parse_binary(Parser* p, ExprType left);
+static ExprType parse_grouping(Parser* p);
+ExprType parse_expression(Parser* p);
 
 static int is_float_literal(Token t) {
     for (int i = 0; i < t.length; i++) {
@@ -33,102 +47,127 @@ static int is_float_literal(Token t) {
     return 0;
 }
 
+static ExprType parse_unary(Parser* p) {
+    TokenType op = p->current.type;
+    advance(p);
+    ExprType t = parse_precedence(p, PREC_UNARY);
+    switch (op) {
+        case TOK_BANG: buf_push(p->target, OP_LOG_NOT); return TYPE_INT;
+        case TOK_TILDE: buf_push(p->target, OP_BIT_NOT); return TYPE_INT;
+        case TOK_MINUS: 
+            if (t == TYPE_FLOAT) { buf_push(p->target, OP_FNEG); return TYPE_FLOAT; }
+            else { buf_push(p->target, OP_NEG); return TYPE_INT; }
+        default: return TYPE_UNKNOWN;
+    }
+}
+
+static ExprType parse_binary(Parser* p, ExprType left) {
+    TokenType op = p->previous.type;
+    ParseRule* rule = get_rule(op);
+    ExprType right = parse_precedence(p, (Precedence)(rule->precedence + 1));
+    
+    int is_float_op = 0;
+    if (left == TYPE_FLOAT || right == TYPE_FLOAT) {
+        is_float_op = 1;
+        if (left == TYPE_INT) {
+            buf_push(p->target, OP_SWAP); buf_push(p->target, OP_ITOF); buf_push(p->target, OP_SWAP);
+        } else if (right == TYPE_INT) {
+            buf_push(p->target, OP_ITOF);
+        }
+    }
+
+    switch (op) {
+        case TOK_PIPE_PIPE: buf_push(p->target, OP_LOG_OR); return TYPE_INT;
+        case TOK_AMP_AMP: buf_push(p->target, OP_LOG_AND); return TYPE_INT;
+        case TOK_PIPE: buf_push(p->target, OP_BIT_OR); return TYPE_INT;
+        case TOK_CARET: buf_push(p->target, OP_BIT_XOR); return TYPE_INT;
+        case TOK_AMP: buf_push(p->target, OP_BIT_AND); return TYPE_INT;
+        case TOK_EQ_EQ: buf_push(p->target, OP_EQ); return TYPE_INT;
+        case TOK_BANG_EQ: buf_push(p->target, OP_NEQ); return TYPE_INT;
+        case TOK_LT: buf_push(p->target, OP_LT); return TYPE_INT;
+        case TOK_LT_EQ: buf_push(p->target, OP_LTE); return TYPE_INT;
+        case TOK_GT: buf_push(p->target, OP_GT); return TYPE_INT;
+        case TOK_GT_EQ: buf_push(p->target, OP_GTE); return TYPE_INT;
+        case TOK_LSHIFT: buf_push(p->target, OP_SHL); return TYPE_INT;
+        case TOK_RSHIFT: buf_push(p->target, OP_SHR); return TYPE_INT;
+        
+        case TOK_PLUS: 
+            if (is_float_op) { buf_push(p->target, OP_FADD); return TYPE_FLOAT; }
+            else { buf_push(p->target, OP_ADD); return TYPE_INT; }
+        case TOK_MINUS: 
+            if (is_float_op) { buf_push(p->target, OP_FSUB); return TYPE_FLOAT; }
+            else { buf_push(p->target, OP_SUB); return TYPE_INT; }
+        case TOK_STAR: 
+            if (is_float_op) { buf_push(p->target, OP_FMUL); return TYPE_FLOAT; }
+            else { buf_push(p->target, OP_MUL); return TYPE_INT; }
+        case TOK_SLASH: 
+            if (is_float_op) { buf_push(p->target, OP_FDIV); return TYPE_FLOAT; }
+            else { buf_push(p->target, OP_DIV); return TYPE_INT; }
+        case TOK_PERCENT: buf_push(p->target, OP_MOD); return TYPE_INT;
+        default: return TYPE_UNKNOWN;
+    }
+}
+
+static ExprType parse_grouping(Parser* p) {
+    advance(p); // Consume (
+    ExprType t = parse_expression(p);
+    consume(p, TOK_RPAREN, "Expect ) after expression");
+    return t;
+}
+
+static ParseRule rules[] = {
+    [TOK_LPAREN]    = {parse_grouping, NULL, PREC_NONE},
+    [TOK_MINUS]     = {parse_unary, parse_binary, PREC_TERM},
+    [TOK_PLUS]      = {NULL, parse_binary, PREC_TERM},
+    [TOK_SLASH]     = {NULL, parse_binary, PREC_FACTOR},
+    [TOK_STAR]      = {NULL, parse_binary, PREC_FACTOR},
+    [TOK_PERCENT]   = {NULL, parse_binary, PREC_FACTOR},
+    [TOK_BANG]      = {parse_unary, NULL, PREC_NONE},
+    [TOK_TILDE]     = {parse_unary, NULL, PREC_NONE},
+    [TOK_PIPE_PIPE] = {NULL, parse_binary, PREC_OR},
+    [TOK_AMP_AMP]   = {NULL, parse_binary, PREC_AND},
+    [TOK_PIPE]      = {NULL, parse_binary, PREC_BIT_OR},
+    [TOK_CARET]     = {NULL, parse_binary, PREC_BIT_XOR},
+    [TOK_AMP]       = {NULL, parse_binary, PREC_BIT_AND},
+    [TOK_EQ_EQ]     = {NULL, parse_binary, PREC_EQUALITY},
+    [TOK_BANG_EQ]   = {NULL, parse_binary, PREC_EQUALITY},
+    [TOK_LT]        = {NULL, parse_binary, PREC_COMPARISON},
+    [TOK_LT_EQ]     = {NULL, parse_binary, PREC_COMPARISON},
+    [TOK_GT]        = {NULL, parse_binary, PREC_COMPARISON},
+    [TOK_GT_EQ]     = {NULL, parse_binary, PREC_COMPARISON},
+    [TOK_LSHIFT]    = {NULL, parse_binary, PREC_SHIFT},
+    [TOK_RSHIFT]    = {NULL, parse_binary, PREC_SHIFT},
+    [TOK_NUMBER]    = {parse_primary, NULL, PREC_NONE},
+    [TOK_TRUE]      = {parse_primary, NULL, PREC_NONE},
+    [TOK_FALSE]     = {parse_primary, NULL, PREC_NONE},
+    [TOK_SELF]      = {parse_primary, NULL, PREC_NONE},
+    [TOK_IDENTIFIER]= {parse_primary, NULL, PREC_NONE},
+};
+
+static ParseRule* get_rule(TokenType type) {
+    return &rules[type];
+}
+
 ExprType parse_expression(Parser* p) {
     return parse_precedence(p, PREC_OR);
 }
 
 static ExprType parse_precedence(Parser* p, Precedence prec) {
-    // Handle unary operators
-    if (p->current.type == TOK_BANG || p->current.type == TOK_MINUS || p->current.type == TOK_TILDE) {
-        TokenType op = p->current.type;
-        advance(p);
-        ExprType t = parse_precedence(p, PREC_UNARY);
-        switch (op) {
-            case TOK_BANG: buf_push(p->target, OP_LOG_NOT); return TYPE_INT;
-            case TOK_TILDE: buf_push(p->target, OP_BIT_NOT); return TYPE_INT;
-            case TOK_MINUS: 
-                if (t == TYPE_FLOAT) { buf_push(p->target, OP_FNEG); return TYPE_FLOAT; }
-                else { buf_push(p->target, OP_NEG); return TYPE_INT; }
-            default: break;
-        }
-        return t;
+    advance(p);
+    ParsePrefixFn prefix_rule = get_rule(p->previous.type)->prefix;
+    if (prefix_rule == NULL) {
+        parser_error(p, "Expect expression");
+        return TYPE_UNKNOWN;
     }
 
-    ExprType left_type = parse_primary(p);
+    ExprType left = prefix_rule(p);
 
-    while (1) {
-        Precedence new_prec = PREC_NONE;
-        TokenType op = p->current.type;
-        
-        // Map token to precedence
-        if (op == TOK_PIPE_PIPE) new_prec = PREC_OR;
-        else if (op == TOK_AMP_AMP) new_prec = PREC_AND;
-        else if (op == TOK_PIPE) new_prec = PREC_BIT_OR;
-        else if (op == TOK_CARET) new_prec = PREC_BIT_XOR;
-        else if (op == TOK_AMP) new_prec = PREC_BIT_AND;
-        else if (op == TOK_EQ_EQ || op == TOK_BANG_EQ) new_prec = PREC_EQUALITY;
-        else if (op == TOK_LT || op == TOK_LT_EQ || op == TOK_GT || op == TOK_GT_EQ) new_prec = PREC_COMPARISON;
-        else if (op == TOK_LSHIFT || op == TOK_RSHIFT) new_prec = PREC_SHIFT;
-        else if (op == TOK_PLUS || op == TOK_MINUS) new_prec = PREC_TERM;
-        else if (op == TOK_STAR || op == TOK_SLASH || op == TOK_PERCENT) new_prec = PREC_FACTOR;
-
-        if (new_prec <= prec) break;
-
+    while (prec <= get_rule(p->current.type)->precedence) {
         advance(p);
-        ExprType right_type = parse_precedence(p, new_prec);
-
-        // Type resolution for binary ops
-        int is_float_op = 0;
-        if (left_type == TYPE_FLOAT || right_type == TYPE_FLOAT) {
-            is_float_op = 1;
-            // Inject conversions
-            if (left_type == TYPE_INT) {
-                // Stack: INT, FLOAT (top)
-                buf_push(p->target, OP_SWAP); // FLOAT, INT
-                buf_push(p->target, OP_ITOF); // FLOAT, FLOAT
-                buf_push(p->target, OP_SWAP); // FLOAT, FLOAT
-            } else if (right_type == TYPE_INT) {
-                // Stack: FLOAT, INT (top)
-                buf_push(p->target, OP_ITOF); // FLOAT, FLOAT
-            }
-        }
-
-        switch (op) {
-            case TOK_PIPE_PIPE: buf_push(p->target, OP_LOG_OR); left_type = TYPE_INT; break;
-            case TOK_AMP_AMP: buf_push(p->target, OP_LOG_AND); left_type = TYPE_INT; break;
-            case TOK_PIPE: buf_push(p->target, OP_BIT_OR); left_type = TYPE_INT; break;
-            case TOK_CARET: buf_push(p->target, OP_BIT_XOR); left_type = TYPE_INT; break;
-            case TOK_AMP: buf_push(p->target, OP_BIT_AND); left_type = TYPE_INT; break;
-            case TOK_EQ_EQ: buf_push(p->target, OP_EQ); left_type = TYPE_INT; break;
-            case TOK_BANG_EQ: buf_push(p->target, OP_NEQ); left_type = TYPE_INT; break;
-            case TOK_LT: buf_push(p->target, OP_LT); left_type = TYPE_INT; break;
-            case TOK_LT_EQ: buf_push(p->target, OP_LTE); left_type = TYPE_INT; break;
-            case TOK_GT: buf_push(p->target, OP_GT); left_type = TYPE_INT; break;
-            case TOK_GT_EQ: buf_push(p->target, OP_GTE); left_type = TYPE_INT; break;
-            case TOK_LSHIFT: buf_push(p->target, OP_SHL); left_type = TYPE_INT; break;
-            case TOK_RSHIFT: buf_push(p->target, OP_SHR); left_type = TYPE_INT; break;
-            
-            case TOK_PLUS: 
-                if (is_float_op) { buf_push(p->target, OP_FADD); left_type = TYPE_FLOAT; }
-                else { buf_push(p->target, OP_ADD); left_type = TYPE_INT; }
-                break;
-            case TOK_MINUS: 
-                if (is_float_op) { buf_push(p->target, OP_FSUB); left_type = TYPE_FLOAT; }
-                else { buf_push(p->target, OP_SUB); left_type = TYPE_INT; }
-                break;
-            case TOK_STAR: 
-                if (is_float_op) { buf_push(p->target, OP_FMUL); left_type = TYPE_FLOAT; }
-                else { buf_push(p->target, OP_MUL); left_type = TYPE_INT; }
-                break;
-            case TOK_SLASH: 
-                if (is_float_op) { buf_push(p->target, OP_FDIV); left_type = TYPE_FLOAT; }
-                else { buf_push(p->target, OP_DIV); left_type = TYPE_INT; }
-                break;
-            case TOK_PERCENT: buf_push(p->target, OP_MOD); left_type = TYPE_INT; break;
-            default: break;
-        }
+        ParseInfixFn infix_rule = get_rule(p->previous.type)->infix;
+        left = infix_rule(p, left);
     }
-    return left_type;
+    return left;
 }
 
 static char* append_doc(char* current, Token t);
@@ -224,89 +263,25 @@ int match_keyword(Token t, const char* kw) {
     return memcmp(t.start, kw, len) == 0;
 }
 
-uint32_t parse_number(Token t) {
-    const char* s = t.start;
-    int len = t.length;
-    uint32_t res = 0;
-    
-    // Handle hex
-    if (len > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
-        for (int i = 2; i < len; i++) {
-            char c = s[i];
-            res <<= 4;
-            if (c >= '0' && c <= '9') res |= (c - '0');
-            else if (c >= 'a' && c <= 'f') res |= (c - 'a' + 10);
-            else if (c >= 'A' && c <= 'F') res |= (c - 'A' + 10);
-        }
-    } else {
-        for (int i = 0; i < len; i++) {
-            if (s[i] >= '0' && s[i] <= '9') {
-                res = res * 10 + (s[i] - '0');
-            }
-        }
-    }
-    return res;
-}
 
-int64_t parse_int64(Token t) {
-    const char* s = t.start;
-    const char* end = s + t.length;
-    if (s == end) return 0;
-    
-    int neg = 0;
-    if (*s == '-') {
-        neg = 1;
-        s++;
-    } else if (*s == '+') {
-        s++;
-    }
-    
-    uint64_t res = 0;
-    if (end - s > 2 && *s == '0' && (s[1] == 'x' || s[1] == 'X')) {
-        s += 2;
-        while (s < end) {
-            uint8_t c = (uint8_t)*s++;
-            // Branchless hex conversion: (c & 0xF) + 9 * (c >> 6)
-            // Works for '0'-'9', 'a'-'f', 'A'-'F'
-            res = (res << 4) | ((c & 0xF) + 9 * (c >> 6));
-        }
-    } else {
-        while (s < end) {
-            char c = *s++;
-            if (c >= '0' && c <= '9') {
-                res = res * 10 + (c - '0');
-            }
-        }
-    }
-    
-    return neg ? -(int64_t)res : (int64_t)res;
-}
-
-double parse_double(Token t) {
-    char buf[64];
-    if (t.length >= 63) return 0.0;
-    memcpy(buf, t.start, t.length);
-    buf[t.length] = '\0';
-    return strtod(buf, NULL);
-}
 
 void emit_range_check(Parser* p, uint8_t type_op, Token min_tok, Token max_tok) {
     // Validate range
     if (type_op == OP_IO_U8 || type_op == OP_IO_U16 || type_op == OP_IO_U32) {
-        uint32_t min = parse_number(min_tok);
-        uint32_t max = parse_number(max_tok);
+        uint32_t min = parse_number_u32(min_tok.start, min_tok.length);
+        uint32_t max = parse_number_u32(max_tok.start, max_tok.length);
         if (min > max) { parser_error(p, "Range min > max"); return; }
     } else if (type_op == OP_IO_I8 || type_op == OP_IO_I16 || type_op == OP_IO_I32 || type_op == OP_IO_I64) {
-        int64_t min = parse_int64(min_tok);
-        int64_t max = parse_int64(max_tok);
+        int64_t min = parse_number_i64(min_tok.start, min_tok.length);
+        int64_t max = parse_number_i64(max_tok.start, max_tok.length);
         if (min > max) { parser_error(p, "Range min > max"); return; }
     } else if (type_op == OP_IO_U64) {
-        uint64_t min = (uint64_t)parse_int64(min_tok);
-        uint64_t max = (uint64_t)parse_int64(max_tok);
+        uint64_t min = (uint64_t)parse_number_i64(min_tok.start, min_tok.length);
+        uint64_t max = (uint64_t)parse_number_i64(max_tok.start, max_tok.length);
         if (min > max) { parser_error(p, "Range min > max"); return; }
     } else if (type_op == OP_IO_F32 || type_op == OP_IO_F64) {
-        double min = parse_double(min_tok);
-        double max = parse_double(max_tok);
+        double min = parse_number_double(min_tok.start, min_tok.length);
+        double max = parse_number_double(max_tok.start, max_tok.length);
         if (min > max) { parser_error(p, "Range min > max"); return; }
     }
 
@@ -314,40 +289,40 @@ void emit_range_check(Parser* p, uint8_t type_op, Token min_tok, Token max_tok) 
     buf_push(p->target, type_op);
     
     if (type_op == OP_IO_U8) {
-        buf_push(p->target, (uint8_t)parse_number(min_tok));
-        buf_push(p->target, (uint8_t)parse_number(max_tok));
+        buf_push(p->target, (uint8_t)parse_number_u32(min_tok.start, min_tok.length));
+        buf_push(p->target, (uint8_t)parse_number_u32(max_tok.start, max_tok.length));
     } else if (type_op == OP_IO_U16) {
-        buf_push_u16(p->target, (uint16_t)parse_number(min_tok));
-        buf_push_u16(p->target, (uint16_t)parse_number(max_tok));
+        buf_push_u16(p->target, (uint16_t)parse_number_u32(min_tok.start, min_tok.length));
+        buf_push_u16(p->target, (uint16_t)parse_number_u32(max_tok.start, max_tok.length));
     } else if (type_op == OP_IO_U32) {
-        buf_push_u32(p->target, parse_number(min_tok));
-        buf_push_u32(p->target, parse_number(max_tok));
+        buf_push_u32(p->target, parse_number_u32(min_tok.start, min_tok.length));
+        buf_push_u32(p->target, parse_number_u32(max_tok.start, max_tok.length));
     } else if (type_op == OP_IO_I8) {
-        buf_push(p->target, (uint8_t)(int8_t)parse_int64(min_tok));
-        buf_push(p->target, (uint8_t)(int8_t)parse_int64(max_tok));
+        buf_push(p->target, (uint8_t)(int8_t)parse_number_i64(min_tok.start, min_tok.length));
+        buf_push(p->target, (uint8_t)(int8_t)parse_number_i64(max_tok.start, max_tok.length));
     } else if (type_op == OP_IO_I16) {
-        buf_push_u16(p->target, (uint16_t)(int16_t)parse_int64(min_tok));
-        buf_push_u16(p->target, (uint16_t)(int16_t)parse_int64(max_tok));
+        buf_push_u16(p->target, (uint16_t)(int16_t)parse_number_i64(min_tok.start, min_tok.length));
+        buf_push_u16(p->target, (uint16_t)(int16_t)parse_number_i64(max_tok.start, max_tok.length));
     } else if (type_op == OP_IO_I32) {
-        buf_push_u32(p->target, (uint32_t)(int32_t)parse_int64(min_tok));
-        buf_push_u32(p->target, (uint32_t)(int32_t)parse_int64(max_tok));
+        buf_push_u32(p->target, (uint32_t)(int32_t)parse_number_i64(min_tok.start, min_tok.length));
+        buf_push_u32(p->target, (uint32_t)(int32_t)parse_number_i64(max_tok.start, max_tok.length));
     } else if (type_op == OP_IO_F32) {
-        float fmin = (float)parse_double(min_tok);
-        float fmax = (float)parse_double(max_tok);
+        float fmin = (float)parse_number_double(min_tok.start, min_tok.length);
+        float fmax = (float)parse_number_double(max_tok.start, max_tok.length);
         uint32_t imin, imax;
         memcpy(&imin, &fmin, 4);
         memcpy(&imax, &fmax, 4);
         buf_push_u32(p->target, imin);
         buf_push_u32(p->target, imax);
     } else if (type_op == OP_IO_U64) {
-        buf_push_u64(p->target, (uint64_t)parse_int64(min_tok));
-        buf_push_u64(p->target, (uint64_t)parse_int64(max_tok));
+        buf_push_u64(p->target, (uint64_t)parse_number_i64(min_tok.start, min_tok.length));
+        buf_push_u64(p->target, (uint64_t)parse_number_i64(max_tok.start, max_tok.length));
     } else if (type_op == OP_IO_I64) {
-        buf_push_u64(p->target, (uint64_t)parse_int64(min_tok));
-        buf_push_u64(p->target, (uint64_t)parse_int64(max_tok));
+        buf_push_u64(p->target, (uint64_t)parse_number_i64(min_tok.start, min_tok.length));
+        buf_push_u64(p->target, (uint64_t)parse_number_i64(max_tok.start, max_tok.length));
     } else if (type_op == OP_IO_F64) {
-        double dmin = parse_double(min_tok);
-        double dmax = parse_double(max_tok);
+        double dmin = parse_number_double(min_tok.start, min_tok.length);
+        double dmax = parse_number_double(max_tok.start, max_tok.length);
         uint64_t imin, imax;
         memcpy(&imin, &dmin, 8);
         memcpy(&imax, &dmax, 8);
@@ -361,76 +336,71 @@ void parse_block(Parser* p); // Forward declaration
 
 // Expression Parsing
 ExprType parse_primary(Parser* p) {
-    if (p->current.type == TOK_NUMBER) {
-        if (is_float_literal(p->current)) {
-            double val = parse_double(p->current);
-            advance(p);
+    if (p->previous.type == TOK_NUMBER) {
+        if (is_float_literal(p->previous)) {
+            double val = parse_number_double(p->previous.start, p->previous.length);
             buf_push(p->target, OP_PUSH_IMM);
             uint64_t bits; memcpy(&bits, &val, 8);
             buf_push_u64(p->target, bits);
             return TYPE_FLOAT;
         } else {
-            uint64_t val = (uint64_t)parse_int64(p->current);
-            advance(p);
+            uint64_t val = (uint64_t)parse_number_i64(p->previous.start, p->previous.length);
             buf_push(p->target, OP_PUSH_IMM);
             buf_push_u64(p->target, val);
             return TYPE_INT;
         }
-    } else if (p->current.type == TOK_TRUE) {
-        advance(p);
+    } else if (p->previous.type == TOK_TRUE) {
         buf_push(p->target, OP_PUSH_IMM);
         buf_push_u64(p->target, 1);
         return TYPE_INT;
-    } else if (p->current.type == TOK_FALSE) {
-        advance(p);
+    } else if (p->previous.type == TOK_FALSE) {
         buf_push(p->target, OP_PUSH_IMM);
         buf_push_u64(p->target, 0);
         return TYPE_INT;
-    } else if (p->current.type == TOK_SELF) {
-        advance(p);
+    } else if (p->previous.type == TOK_SELF) {
         buf_push(p->target, OP_DUP);
         return TYPE_UNKNOWN;
-    } else if (p->current.type == TOK_IDENTIFIER) {
-        Token name = p->current;
+    } else if (p->previous.type == TOK_IDENTIFIER) {
+        Token name = p->previous;
         
         if (match_keyword(name, "sin")) {
-            advance(p); consume(p, TOK_LPAREN, "Expect ("); 
+            consume(p, TOK_LPAREN, "Expect ("); 
             if (parse_expression(p) == TYPE_INT) buf_push(p->target, OP_ITOF);
             consume(p, TOK_RPAREN, "Expect )");
             buf_push(p->target, OP_SIN);
             return TYPE_FLOAT;
         } else if (match_keyword(name, "cos")) {
-            advance(p); consume(p, TOK_LPAREN, "Expect ("); 
+            consume(p, TOK_LPAREN, "Expect ("); 
             if (parse_expression(p) == TYPE_INT) buf_push(p->target, OP_ITOF);
             consume(p, TOK_RPAREN, "Expect )");
             buf_push(p->target, OP_COS);
             return TYPE_FLOAT;
         } else if (match_keyword(name, "tan")) {
-            advance(p); consume(p, TOK_LPAREN, "Expect ("); 
+            consume(p, TOK_LPAREN, "Expect ("); 
             if (parse_expression(p) == TYPE_INT) buf_push(p->target, OP_ITOF);
             consume(p, TOK_RPAREN, "Expect )");
             buf_push(p->target, OP_TAN);
             return TYPE_FLOAT;
         } else if (match_keyword(name, "sqrt")) {
-            advance(p); consume(p, TOK_LPAREN, "Expect ("); 
+            consume(p, TOK_LPAREN, "Expect ("); 
             if (parse_expression(p) == TYPE_INT) buf_push(p->target, OP_ITOF);
             consume(p, TOK_RPAREN, "Expect )");
             buf_push(p->target, OP_SQRT);
             return TYPE_FLOAT;
         } else if (match_keyword(name, "log")) {
-            advance(p); consume(p, TOK_LPAREN, "Expect ("); 
+            consume(p, TOK_LPAREN, "Expect ("); 
             if (parse_expression(p) == TYPE_INT) buf_push(p->target, OP_ITOF);
             consume(p, TOK_RPAREN, "Expect )");
             buf_push(p->target, OP_LOG);
             return TYPE_FLOAT;
         } else if (match_keyword(name, "abs")) {
-            advance(p); consume(p, TOK_LPAREN, "Expect ("); 
+            consume(p, TOK_LPAREN, "Expect ("); 
             if (parse_expression(p) == TYPE_INT) buf_push(p->target, OP_ITOF);
             consume(p, TOK_RPAREN, "Expect )");
             buf_push(p->target, OP_ABS);
             return TYPE_FLOAT;
         } else if (match_keyword(name, "pow")) {
-            advance(p); consume(p, TOK_LPAREN, "Expect ("); 
+            consume(p, TOK_LPAREN, "Expect ("); 
             if (parse_expression(p) == TYPE_INT) buf_push(p->target, OP_ITOF);
             consume(p, TOK_COMMA, "Expect ,");
             if (parse_expression(p) == TYPE_INT) buf_push(p->target, OP_ITOF);
@@ -438,33 +408,25 @@ ExprType parse_primary(Parser* p) {
             buf_push(p->target, OP_POW);
             return TYPE_FLOAT;
         } else if (match_keyword(name, "float")) {
-            advance(p); consume(p, TOK_LPAREN, "Expect ("); 
+            consume(p, TOK_LPAREN, "Expect ("); 
             parse_expression(p); // Ignore type, force ITOF
             consume(p, TOK_RPAREN, "Expect )");
             buf_push(p->target, OP_ITOF);
             return TYPE_FLOAT;
         } else if (match_keyword(name, "int")) {
-            advance(p); consume(p, TOK_LPAREN, "Expect ("); 
+            consume(p, TOK_LPAREN, "Expect ("); 
             parse_expression(p); // Ignore type, force FTOI
             consume(p, TOK_RPAREN, "Expect )");
             buf_push(p->target, OP_FTOI);
             return TYPE_INT;
         } else {
-            advance(p);
             uint16_t key_id = strtab_add(&p->strtab, name.start, name.length);
             buf_push(p->target, OP_LOAD_CTX);
             buf_push_u16(p->target, key_id);
             return TYPE_UNKNOWN;
         }
-    } else if (p->current.type == TOK_LPAREN) {
-        advance(p);
-        ExprType t = parse_expression(p);
-        consume(p, TOK_RPAREN, "Expect ) after expression");
-        return t;
-    } else {
-        parser_error(p, "Expect expression");
-        return TYPE_UNKNOWN;
     }
+    return TYPE_UNKNOWN;
 }
 
 void parse_if(Parser* p) {
@@ -541,7 +503,7 @@ void parse_switch(Parser* p) {
             
             uint64_t val = 0;
             if (p->current.type == TOK_NUMBER) {
-                val = (uint64_t)parse_int64(p->current);
+                val = (uint64_t)parse_number_i64(p->current.start, p->current.length);
                 advance(p);
             } else if (p->current.type == TOK_IDENTIFIER) {
                 // Enum.Value syntax
@@ -804,7 +766,7 @@ void parse_field(Parser* p, const char* doc) {
                 advance(p);
                 Token num = p->current;
                 consume(p, TOK_NUMBER, "Expect fill bit value (0 or 1)");
-                fill_val = (uint8_t)parse_number(num);
+                fill_val = (uint8_t)parse_number_u32(num.start, num.length);
                 if (fill_val > 1) {
                     parser_error(p, "Fill bit must be 0 or 1");
                 }
@@ -840,17 +802,17 @@ void parse_field(Parser* p, const char* doc) {
                 } else if (p->current.type == TOK_NUMBER) {
                     Token num = p->current; 
                     advance(p);
-                    array_fixed_count = parse_number(num); has_fixed_array_count = 1;
+                    array_fixed_count = parse_number_u32(num.start, num.length); has_fixed_array_count = 1;
                 } else {
                     parser_error(p, "Expect number or variable name for count");
                 }
             } else if (match_keyword(dec_name_token, "const") || match_keyword(dec_name_token, "match")) {
                 Token num = p->current; consume(p, TOK_NUMBER, "Expect const/match value");
-                const_val = (uint64_t)parse_int64(num); has_const = 1;
+                const_val = (uint64_t)parse_number_i64(num.start, num.length); has_const = 1;
             } else if (match_keyword(dec_name_token, "pad")) {
                 is_standalone_op = 1;
                 Token num = p->current; consume(p, TOK_NUMBER, "Expect pad bits");
-                uint32_t pad_bits = parse_number(num); buf_push(p->target, OP_ALIGN_PAD); buf_push(p->target, (uint8_t)pad_bits);
+                uint32_t pad_bits = parse_number_u32(num.start, num.length); buf_push(p->target, OP_ALIGN_PAD); buf_push(p->target, (uint8_t)pad_bits);
                 if (p->in_bit_mode && p->is_bit_count_valid) {
                     p->current_bit_count += pad_bits;
                 }
@@ -861,33 +823,33 @@ void parse_field(Parser* p, const char* doc) {
                 has_range = 1;
             } else if (match_keyword(dec_name_token, "crc")) {
                 Token num = p->current; consume(p, TOK_NUMBER, "Expect width");
-                crc_width = parse_number(num); has_crc = 1;
+                crc_width = parse_number_u32(num.start, num.length); has_crc = 1;
                 if (crc_width == 16) { crc_poly = 0x1021; crc_init = 0xFFFF; crc_xor = 0; crc_flags = 0; } 
                 else if (crc_width == 32) { crc_poly = 0x04C11DB7; crc_init = 0xFFFFFFFF; crc_xor = 0xFFFFFFFF; crc_flags = 3; }
             } else if (match_keyword(dec_name_token, "crc_poly")) {
-                Token num = p->current; consume(p, TOK_NUMBER, "Expect poly"); crc_poly = parse_number(num);
+                Token num = p->current; consume(p, TOK_NUMBER, "Expect poly"); crc_poly = parse_number_u32(num.start, num.length);
             } else if (match_keyword(dec_name_token, "crc_init")) {
-                Token num = p->current; consume(p, TOK_NUMBER, "Expect init"); crc_init = parse_number(num);
+                Token num = p->current; consume(p, TOK_NUMBER, "Expect init"); crc_init = parse_number_u32(num.start, num.length);
             } else if (match_keyword(dec_name_token, "crc_xor")) {
-                Token num = p->current; consume(p, TOK_NUMBER, "Expect xor"); crc_xor = parse_number(num);
+                Token num = p->current; consume(p, TOK_NUMBER, "Expect xor"); crc_xor = parse_number_u32(num.start, num.length);
             } else if (match_keyword(dec_name_token, "scale")) {
                 Token num = p->current; if (num.type == TOK_NUMBER) advance(p); else consume(p, TOK_NUMBER, "Expect scale factor");
-                trans_type = CND_TRANS_SCALE_F64; trans_scale = parse_double(num);
+                trans_type = CND_TRANS_SCALE_F64; trans_scale = parse_number_double(num.start, num.length);
             } else if (match_keyword(dec_name_token, "offset")) {
                 Token num = p->current; if (num.type == TOK_NUMBER) advance(p); else consume(p, TOK_NUMBER, "Expect offset value");
-                if (trans_type != CND_TRANS_SCALE_F64) { trans_type = CND_TRANS_SCALE_F64; trans_scale = 1.0; } trans_offset = parse_double(num);
+                if (trans_type != CND_TRANS_SCALE_F64) { trans_type = CND_TRANS_SCALE_F64; trans_scale = 1.0; } trans_offset = parse_number_double(num.start, num.length);
             } else if (match_keyword(dec_name_token, "mul")) {
                 Token num = p->current; if (num.type == TOK_NUMBER) advance(p); else consume(p, TOK_NUMBER, "Expect mul value");
-                trans_type = CND_TRANS_MUL_I64; trans_int_val = parse_int64(num);
+                trans_type = CND_TRANS_MUL_I64; trans_int_val = parse_number_i64(num.start, num.length);
             } else if (match_keyword(dec_name_token, "div")) {
                 Token num = p->current; if (num.type == TOK_NUMBER) advance(p); else consume(p, TOK_NUMBER, "Expect div value");
-                trans_type = CND_TRANS_DIV_I64; trans_int_val = parse_int64(num);
+                trans_type = CND_TRANS_DIV_I64; trans_int_val = parse_number_i64(num.start, num.length);
             } else if (match_keyword(dec_name_token, "add")) {
                 Token num = p->current; if (num.type == TOK_NUMBER) advance(p); else consume(p, TOK_NUMBER, "Expect add value");
-                trans_type = CND_TRANS_ADD_I64; trans_int_val = parse_int64(num);
+                trans_type = CND_TRANS_ADD_I64; trans_int_val = parse_number_i64(num.start, num.length);
             } else if (match_keyword(dec_name_token, "sub")) {
                 Token num = p->current; if (num.type == TOK_NUMBER) advance(p); else consume(p, TOK_NUMBER, "Expect sub value");
-                trans_type = CND_TRANS_SUB_I64; trans_int_val = parse_int64(num);
+                trans_type = CND_TRANS_SUB_I64; trans_int_val = parse_number_i64(num.start, num.length);
             } else if (match_keyword(dec_name_token, "poly")) {
                 trans_type = CND_TRANS_POLY;
                 while (true) {
@@ -895,7 +857,7 @@ void parse_field(Parser* p, const char* doc) {
                     if (num.type == TOK_NUMBER) {
                         advance(p);
                         if (poly_count < 16) {
-                            poly_coeffs[poly_count++] = parse_double(num);
+                            poly_coeffs[poly_count++] = parse_number_double(num.start, num.length);
                         } else {
                             parser_error(p, "Too many polynomial coefficients (max 16)");
                         }
@@ -915,11 +877,11 @@ void parse_field(Parser* p, const char* doc) {
                     if (num.type == TOK_NUMBER) {
                         advance(p);
                         if (spline_count < 16) { // 16 pairs = 32 doubles
-                            spline_points[spline_count * 2] = parse_double(num);
+                            spline_points[spline_count * 2] = parse_number_double(num.start, num.length);
                             consume(p, TOK_COMMA, "Expect comma between x and y");
                             Token y_tok = p->current;
                             consume(p, TOK_NUMBER, "Expect y value");
-                            spline_points[spline_count * 2 + 1] = parse_double(y_tok);
+                            spline_points[spline_count * 2 + 1] = parse_number_double(y_tok.start, y_tok.length);
                             spline_count++;
                         } else {
                             parser_error(p, "Too many spline points (max 16)");
@@ -1003,7 +965,7 @@ void parse_field(Parser* p, const char* doc) {
     uint8_t bit_width = 0;
     if (p->current.type == TOK_COLON) {
         advance(p); consume(p, TOK_NUMBER, "Expect bit width");
-        bit_width = (uint8_t)parse_number(p->previous);
+        bit_width = (uint8_t)parse_number_u32(p->previous.start, p->previous.length);
     }
 
     int is_array_field = 0; 
@@ -1018,7 +980,7 @@ void parse_field(Parser* p, const char* doc) {
         if (p->current.type == TOK_RBRACKET) { advance(p); is_variable_array = 1; } 
         else {
             Token num = p->current; consume(p, TOK_NUMBER, "Expect array size");
-            array_fixed_count = parse_number(num); has_fixed_array_count = 1;
+            array_fixed_count = parse_number_u32(num.start, num.length); has_fixed_array_count = 1;
             consume(p, TOK_RBRACKET, "Expect ]");
         }
     } else {
@@ -1050,7 +1012,7 @@ void parse_field(Parser* p, const char* doc) {
         } else { parser_error(p, "Prefix keyword used for non-variable-array/non-string type"); }
     } else if (match_keyword(type_tok, "string")) {
         if (match_keyword(p->current, "until")) { advance(p); consume(p, TOK_NUMBER, "Expect val"); has_until = 1; }
-        if (match_keyword(p->current, "max")) { advance(p); Token max_tok = p->current; consume(p, TOK_NUMBER, "Expect max length"); max_len = (uint16_t)parse_number(max_tok); }
+        if (match_keyword(p->current, "max")) { advance(p); Token max_tok = p->current; consume(p, TOK_NUMBER, "Expect max length"); max_len = (uint16_t)parse_number_u32(max_tok.start, max_tok.length); }
     }
 
     if (is_array_field && match_keyword(type_tok, "string")) {
@@ -1360,7 +1322,7 @@ void parse_enum(Parser* p, const char* doc) {
             advance(p);
             Token num = p->current;
             consume(p, TOK_NUMBER, "Expect enum value");
-            val = parse_int64(num);
+            val = parse_number_i64(num.start, num.length);
         }
         
         // Check for duplicate value
@@ -1626,7 +1588,7 @@ void parse_top_level(Parser* p) {
             
             if (match_keyword(dec, "version")) {
                 consume(p, TOK_LPAREN, "Expect ("); Token ver = p->current; consume(p, TOK_NUMBER, "Expect version number");
-                uint32_t v = parse_number(ver); buf_push(p->target, OP_META_VERSION); buf_push(p->target, (uint8_t)v);
+                uint32_t v = parse_number_u32(ver.start, ver.length); buf_push(p->target, OP_META_VERSION); buf_push(p->target, (uint8_t)v);
                 consume(p, TOK_RPAREN, "Expect )");
             } else if (match_keyword(dec, "import")) {
                 parse_import(p);

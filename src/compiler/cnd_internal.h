@@ -97,8 +97,19 @@ typedef struct {
     int line;
 } Lexer;
 
+// --- Character Classification Helpers ---
+static inline int is_alpha_c(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
+static inline int is_digit_c(char c) { return c >= '0' && c <= '9'; }
+static inline int is_hex_c(char c) { return is_digit_c(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
+
 void lexer_init(Lexer* lexer, const char* source);
 Token lexer_next(Lexer* lexer);
+
+// --- Utils: Number Parsing ---
+int hex_char_to_int(char c);
+uint32_t parse_number_u32(const char* start, int length);
+int64_t parse_number_i64(const char* start, int length);
+double parse_number_double(const char* start, int length);
 
 // --- Utils: Buffer ---
 typedef struct {
@@ -229,9 +240,6 @@ void parser_error(Parser* p, const char* msg);
 void advance(Parser* p);
 void consume(Parser* p, TokenType type, const char* msg);
 int match_keyword(Token t, const char* kw);
-uint32_t parse_number(Token t);
-int64_t parse_int64(Token t);
-double parse_double(Token t);
 
 void parse_top_level(Parser* p);
 

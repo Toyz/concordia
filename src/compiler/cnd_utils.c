@@ -200,3 +200,68 @@ EnumDef* enum_reg_find(EnumRegistry* r, const char* name, int len) {
     }
     return NULL;
 }
+
+// --- Number Parsing ---
+
+int hex_char_to_int(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return 0;
+}
+
+uint32_t parse_number_u32(const char* start, int length) {
+    uint32_t res = 0;
+    // Handle hex
+    if (length > 2 && start[0] == '0' && (start[1] == 'x' || start[1] == 'X')) {
+        for (int i = 2; i < length; i++) {
+            res = (res << 4) | hex_char_to_int(start[i]);
+        }
+    } else {
+        for (int i = 0; i < length; i++) {
+            if (start[i] >= '0' && start[i] <= '9') {
+                res = res * 10 + (start[i] - '0');
+            }
+        }
+    }
+    return res;
+}
+
+int64_t parse_number_i64(const char* start, int length) {
+    const char* s = start;
+    const char* end = s + length;
+    if (s == end) return 0;
+    
+    int neg = 0;
+    if (*s == '-') {
+        neg = 1;
+        s++;
+    } else if (*s == '+') {
+        s++;
+    }
+    
+    uint64_t res = 0;
+    if (end - s > 2 && *s == '0' && (s[1] == 'x' || s[1] == 'X')) {
+        s += 2;
+        while (s < end) {
+            res = (res << 4) | hex_char_to_int(*s++);
+        }
+    } else {
+        while (s < end) {
+            char c = *s++;
+            if (c >= '0' && c <= '9') {
+                res = res * 10 + (c - '0');
+            }
+        }
+    }
+    
+    return neg ? -(int64_t)res : (int64_t)res;
+}
+
+double parse_number_double(const char* start, int length) {
+    char buf[64];
+    if (length >= 63) return 0.0;
+    memcpy(buf, start, length);
+    buf[length] = '\0';
+    return strtod(buf, NULL);
+}
