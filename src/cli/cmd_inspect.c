@@ -69,6 +69,8 @@ static const char* get_opcode_name(uint8_t op) {
         case OP_ARR_PRE_U16: return "ARR_PRE_U16";
         case OP_ARR_PRE_U32: return "ARR_PRE_U32";
         case OP_ARR_END: return "ARR_END";
+        case OP_ARR_EOF: return "ARR_EOF";
+        case OP_ARR_DYNAMIC: return "ARR_DYNAMIC";
         case OP_RAW_BYTES: return "RAW_BYTES";
         case OP_CONST_CHECK: return "CONST_CHECK";
         case OP_CONST_WRITE: return "CONST_WRITE";
@@ -91,6 +93,9 @@ static const char* get_opcode_name(uint8_t op) {
         case OP_STORE_CTX: return "STORE_CTX";
         case OP_PUSH_IMM: return "PUSH_IMM";
         case OP_POP: return "POP";
+        case OP_SWAP: return "SWAP";
+        case OP_DUP: return "DUP";
+        case OP_EMIT: return "EMIT";
         case OP_ADD: return "ADD";
         case OP_SUB: return "SUB";
         case OP_MUL: return "MUL";
@@ -100,6 +105,26 @@ static const char* get_opcode_name(uint8_t op) {
         case OP_LOG_AND: return "LOG_AND";
         case OP_LOG_OR: return "LOG_OR";
         case OP_LOG_NOT: return "LOG_NOT";
+        case OP_FADD: return "FADD";
+        case OP_FSUB: return "FSUB";
+        case OP_FMUL: return "FMUL";
+        case OP_FDIV: return "FDIV";
+        case OP_FNEG: return "FNEG";
+        case OP_SIN: return "SIN";
+        case OP_COS: return "COS";
+        case OP_TAN: return "TAN";
+        case OP_SQRT: return "SQRT";
+        case OP_POW: return "POW";
+        case OP_LOG: return "LOG";
+        case OP_ABS: return "ABS";
+        case OP_ITOF: return "ITOF";
+        case OP_FTOI: return "FTOI";
+        case OP_EQ_F: return "EQ_F";
+        case OP_NEQ_F: return "NEQ_F";
+        case OP_GT_F: return "GT_F";
+        case OP_LT_F: return "LT_F";
+        case OP_GTE_F: return "GTE_F";
+        case OP_LTE_F: return "LTE_F";
         case OP_BIT_AND: return "BIT_AND";
         case OP_BIT_OR: return "BIT_OR";
         case OP_BIT_XOR: return "BIT_XOR";
@@ -247,6 +272,13 @@ int cmd_inspect(int argc, char** argv) {
                     uint16_t k = read_u16(&ptr, end);
                     uint32_t c = read_u32(&ptr, end);
                     printf(" KeyID=%d Count=%d", k, c);
+                    break;
+                }
+
+                case OP_ARR_DYNAMIC: {
+                    uint16_t k = read_u16(&ptr, end);
+                    uint16_t ref = read_u16(&ptr, end);
+                    printf(" KeyID=%d RefKeyID=%d", k, ref);
                     break;
                 }
 
@@ -402,6 +434,12 @@ int cmd_inspect(int argc, char** argv) {
                 case OP_PUSH_IMM: {
                     uint64_t v = read_u64(&ptr, end);
                     printf(" Val=%" PRIu64, v);
+                    break;
+                }
+
+                case OP_EMIT: {
+                    uint8_t type = read_u8(&ptr, end);
+                    printf(" Type=%s", get_opcode_name(type));
                     break;
                 }
 

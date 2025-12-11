@@ -15,6 +15,7 @@ const (
 	ErrStackOverflow Error = 5
 	ErrStackUnderflow Error = 6
 	ErrCRCMismatch Error = 7
+	ErrArithmetic Error = 8
 )
 
 const (
@@ -117,6 +118,12 @@ const (
 	OpAbs OpCode = 0x8B
 	OpItof OpCode = 0x90
 	OpFtoi OpCode = 0x91
+	OpEqF OpCode = 0x92
+	OpNeqF OpCode = 0x93
+	OpGtF OpCode = 0x94
+	OpLtF OpCode = 0x95
+	OpGteF OpCode = 0x96
+	OpLteF OpCode = 0x97
 	OpBitAnd OpCode = 0xA0
 	OpBitOr OpCode = 0xA1
 	OpBitXor OpCode = 0xA2

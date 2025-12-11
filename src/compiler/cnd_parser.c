@@ -82,12 +82,26 @@ static ExprType parse_binary(Parser* p, ExprType left) {
         case TOK_PIPE: buf_push(p->target, OP_BIT_OR); return TYPE_INT;
         case TOK_CARET: buf_push(p->target, OP_BIT_XOR); return TYPE_INT;
         case TOK_AMP: buf_push(p->target, OP_BIT_AND); return TYPE_INT;
-        case TOK_EQ_EQ: buf_push(p->target, OP_EQ); return TYPE_INT;
-        case TOK_BANG_EQ: buf_push(p->target, OP_NEQ); return TYPE_INT;
-        case TOK_LT: buf_push(p->target, OP_LT); return TYPE_INT;
-        case TOK_LT_EQ: buf_push(p->target, OP_LTE); return TYPE_INT;
-        case TOK_GT: buf_push(p->target, OP_GT); return TYPE_INT;
-        case TOK_GT_EQ: buf_push(p->target, OP_GTE); return TYPE_INT;
+        
+        case TOK_EQ_EQ: 
+            if (is_float_op) { buf_push(p->target, OP_EQ_F); return TYPE_INT; }
+            else { buf_push(p->target, OP_EQ); return TYPE_INT; }
+        case TOK_BANG_EQ: 
+            if (is_float_op) { buf_push(p->target, OP_NEQ_F); return TYPE_INT; }
+            else { buf_push(p->target, OP_NEQ); return TYPE_INT; }
+        case TOK_LT: 
+            if (is_float_op) { buf_push(p->target, OP_LT_F); return TYPE_INT; }
+            else { buf_push(p->target, OP_LT); return TYPE_INT; }
+        case TOK_LT_EQ: 
+            if (is_float_op) { buf_push(p->target, OP_LTE_F); return TYPE_INT; }
+            else { buf_push(p->target, OP_LTE); return TYPE_INT; }
+        case TOK_GT: 
+            if (is_float_op) { buf_push(p->target, OP_GT_F); return TYPE_INT; }
+            else { buf_push(p->target, OP_GT); return TYPE_INT; }
+        case TOK_GT_EQ: 
+            if (is_float_op) { buf_push(p->target, OP_GTE_F); return TYPE_INT; }
+            else { buf_push(p->target, OP_GTE); return TYPE_INT; }
+
         case TOK_LSHIFT: buf_push(p->target, OP_SHL); return TYPE_INT;
         case TOK_RSHIFT: buf_push(p->target, OP_SHR); return TYPE_INT;
         
@@ -420,6 +434,31 @@ ExprType parse_primary(Parser* p) {
             buf_push(p->target, OP_FTOI);
             return TYPE_INT;
         } else {
+            // Handle Dot Notation (e.g. position.x)
+            if (p->current.type == TOK_DOT) {
+                char full_name[256];
+                int len = 0;
+                if (name.length >= 256) { parser_error(p, "Identifier too long"); return TYPE_UNKNOWN; }
+                memcpy(full_name, name.start, name.length);
+                len += name.length;
+                
+                while (p->current.type == TOK_DOT) {
+                    advance(p); // Consume .
+                    Token sub = p->current;
+                    consume(p, TOK_IDENTIFIER, "Expect identifier after .");
+                    
+                    if (len + 1 + sub.length >= 256) { parser_error(p, "Identifier path too long"); return TYPE_UNKNOWN; }
+                    full_name[len++] = '.';
+                    memcpy(full_name + len, sub.start, sub.length);
+                    len += sub.length;
+                }
+                
+                uint16_t key_id = strtab_add(&p->strtab, full_name, len);
+                buf_push(p->target, OP_LOAD_CTX);
+                buf_push_u16(p->target, key_id);
+                return TYPE_UNKNOWN;
+            }
+
             uint16_t key_id = strtab_add(&p->strtab, name.start, name.length);
             buf_push(p->target, OP_LOAD_CTX);
             buf_push_u16(p->target, key_id);
@@ -753,6 +792,7 @@ void parse_field(Parser* p, const char* doc) {
         advance(p); // Consume the '@'
         Token dec_name_token = p->current; // Save token of decorator name
         if (p->verbose) printf("    [Decorator] @%.*s\n", dec_name_token.length, dec_name_token.start);
+        // printf("DEBUG: Checking decorator '%.*s'\n", dec_name_token.length, dec_name_token.start);
         consume(p, TOK_IDENTIFIER, "Expect decorator name");
         
         if (match_keyword(dec_name_token, "big_endian") || match_keyword(dec_name_token, "be")) {
@@ -1117,7 +1157,17 @@ void parse_field(Parser* p, const char* doc) {
             if (bit_width > 0) { parser_error(p, "Bitfields not supported for struct fields"); }
 
             buf_push(p->target, OP_ENTER_STRUCT); buf_push_u16(p->target, key_id);
-            buf_append(p->target, sdef->bytecode.data, sdef->bytecode.size);
+            
+            // Get the field name for prefixing nested fields
+            char field_name[256];
+            int field_name_len = name_tok.length < 255 ? name_tok.length : 255;
+            memcpy(field_name, name_tok.start, field_name_len);
+            field_name[field_name_len] = '\0';
+            
+            // Append struct bytecode with field names prefixed
+            buf_append_with_prefix(p->target, sdef->bytecode.data, sdef->bytecode.size,
+                                   field_name, field_name_len, &p->strtab);
+            
             buf_push(p->target, OP_EXIT_STRUCT);
         } else if (edef) {
             if (trans_type != CND_TRANS_NONE) { parser_error(p, "Cannot apply scale/transform to enum field"); }

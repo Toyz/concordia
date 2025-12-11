@@ -141,6 +141,10 @@ void strtab_init(StringTable* t);
 void strtab_free(StringTable* t);
 uint16_t strtab_add(StringTable* t, const char* start, int len);
 
+// Append struct bytecode with key IDs remapped to include prefix
+void buf_append_with_prefix(Buffer* b, const uint8_t* src, size_t len, 
+                            const char* prefix, int prefix_len, StringTable* strtab);
+
 // --- Utils: StringBuilder ---
 typedef struct {
     char* data;
@@ -246,6 +250,10 @@ typedef struct {
     // Bit Tracking for Validation
     int current_bit_count; // Bits consumed in current struct
     int is_bit_count_valid; // 1 if bit count is deterministic, 0 if dynamic (loops/ifs)
+
+    // Field Name Prefix for nested structs (e.g., "position." when inside Vec3 position)
+    char field_prefix[256];
+    int field_prefix_len;
 
     CompilerError* errors; // List of errors for LSP
     size_t error_cap;

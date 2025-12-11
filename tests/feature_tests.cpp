@@ -246,9 +246,10 @@ TEST_F(ConcordiaTest, SwitchInsideStruct) {
     );
     
     // Case 2 (v2)
+    // Key IDs after struct prefixing: [0]=c, [1]=c.t, [2]=c.v1, [3]=c.v2
     clear_test_data();
-    g_test_data[0] = {0, 2, 0, ""}; // Key 0 (t) = 2
-    g_test_data[1] = {2, 0x3412, 0, ""}; // Key 2 (v2) = 0x3412 (LE)
+    g_test_data[0] = {1, 2, 0, ""}; // Key 1 (c.t) = 2
+    g_test_data[1] = {3, 0x3412, 0, ""}; // Key 3 (c.v2) = 0x3412 (LE)
     
     uint8_t local_buffer[8] = {0};
     cnd_init(&ctx, CND_MODE_ENCODE, &program, local_buffer, sizeof(local_buffer), test_io_callback, NULL);

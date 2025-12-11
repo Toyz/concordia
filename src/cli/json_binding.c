@@ -96,8 +96,14 @@ static cnd_error_t handle_array_start(IOCtx* io, cnd_vm_ctx* ctx, uint8_t type, 
 static cnd_error_t handle_primitive(IOCtx* io, cnd_vm_ctx* ctx, uint8_t type, void* ptr, cJSON* item) {
     if (ctx->mode == CND_MODE_ENCODE) {
         if (!item) {
-            // Allow implicit zero/empty if not found
-            memset(ptr, 0, 8); // Safe upper bound for primitives
+            // Allow implicit zero/empty if not found - write only the correct size
+            switch (type) {
+                case OP_IO_U8:  case OP_IO_I8:  case OP_IO_BOOL: case OP_IO_BIT_BOOL: *(uint8_t*)ptr = 0; break;
+                case OP_IO_U16: case OP_IO_I16: *(uint16_t*)ptr = 0; break;
+                case OP_IO_U32: case OP_IO_I32: case OP_IO_F32: *(uint32_t*)ptr = 0; break;
+                case OP_IO_U64: case OP_IO_I64: case OP_IO_F64: case OP_IO_BIT_U: case OP_IO_BIT_I: *(uint64_t*)ptr = 0; break;
+                default: break;
+            }
             return CND_ERR_OK;
         }
         // Extract value
@@ -211,12 +217,21 @@ static cnd_error_t handle_primitive(IOCtx* io, cnd_vm_ctx* ctx, uint8_t type, vo
     return CND_ERR_OK;
 }
 
+// Helper: get the last component of a dot-separated key (e.g., "position.x" -> "x")
+static const char* get_json_key(const char* key_name) {
+    const char* dot = strrchr(key_name, '.');
+    return dot ? (dot + 1) : key_name;
+}
+
 cnd_error_t json_io_callback(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
     IOCtx* io = (IOCtx*)ctx->user_ptr;
     
-    // Get Key Name
-    const char* key_name = "";
-    if (key_id < io->il->str_count) key_name = io->il->string_table[key_id];
+    // Get Key Name (full path)
+    const char* key_name_full = "";
+    if (key_id < io->il->str_count) key_name_full = io->il->string_table[key_id];
+    
+    // For JSON lookups, use only the last component (after the last dot)
+    const char* key_name = get_json_key(key_name_full);
 
     // Get Current Context
     cJSON* current = io->stack[io->depth];

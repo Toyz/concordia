@@ -54,6 +54,12 @@ cnd_error_t cnd_verify_program(const cnd_program* program)
             case OP_ABS:
             case OP_ITOF:
             case OP_FTOI:
+            case OP_EQ_F:
+            case OP_NEQ_F:
+            case OP_GT_F:
+            case OP_LT_F:
+            case OP_GTE_F:
+            case OP_LTE_F:
             case OP_BIT_AND:
             case OP_BIT_OR:
             case OP_BIT_XOR:

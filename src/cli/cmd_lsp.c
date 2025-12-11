@@ -667,7 +667,7 @@ static void handle_completion(cJSON* id, cJSON* params) {
             }
         }
 
-        // Struct Fields
+        // Struct Fields - scan for IO operations which define fields
         if (active_struct) {
             StructDef* sdef = reg_find(&p.registry, active_struct, (int)strlen(active_struct));
             if (sdef && sdef->bytecode.data) {
@@ -675,15 +675,31 @@ static void handle_completion(cJSON* id, cJSON* params) {
                 const uint8_t* end = bc_ptr + sdef->bytecode.size;
                 while (bc_ptr < end) {
                     uint8_t op = read_u8(&bc_ptr, end);
-                    if (op == OP_LOAD_CTX) {
+                    // Check for IO operations that define fields
+                    if (op == OP_IO_U8 || op == OP_IO_U16 || op == OP_IO_U32 || op == OP_IO_U64 ||
+                        op == OP_IO_I8 || op == OP_IO_I16 || op == OP_IO_I32 || op == OP_IO_I64 ||
+                        op == OP_IO_F32 || op == OP_IO_F64 || op == OP_IO_BOOL ||
+                        op == OP_IO_BIT_U || op == OP_IO_BIT_I || op == OP_IO_BIT_BOOL ||
+                        op == OP_STR_NULL || op == OP_STR_PRE_U8 || op == OP_STR_PRE_U16 || op == OP_STR_PRE_U32 ||
+                        op == OP_ARR_PRE_U8 || op == OP_ARR_PRE_U16 || op == OP_ARR_PRE_U32 || op == OP_ARR_FIXED ||
+                        op == OP_ENTER_STRUCT || op == OP_LOAD_CTX || op == OP_STORE_CTX) {
                         uint16_t key = read_u16(&bc_ptr, end);
                         if (key < p.strtab.count) {
-                            cJSON* item = cJSON_CreateObject();
-                            cJSON_AddStringToObject(item, "label", p.strtab.strings[key]);
-                            cJSON_AddNumberToObject(item, "kind", 5); // Field
-                            cJSON_AddStringToObject(item, "detail", "Field");
-                            cJSON_AddItemToArray(items, item);
+                            // Only add each field once (skip struct markers and use leaf fields)
+                            const char* field_name = p.strtab.strings[key];
+                            // Skip ENTER_STRUCT names (they're not leaf fields)
+                            if (op != OP_ENTER_STRUCT) {
+                                cJSON* item = cJSON_CreateObject();
+                                cJSON_AddStringToObject(item, "label", field_name);
+                                cJSON_AddNumberToObject(item, "kind", 5); // Field
+                                cJSON_AddStringToObject(item, "detail", "Field");
+                                cJSON_AddItemToArray(items, item);
+                            }
                         }
+                        // Skip remaining bytes for ops that have more data after key
+                        if (op == OP_IO_BIT_U || op == OP_IO_BIT_I) bc_ptr += 1; // bits
+                        else if (op == OP_STR_NULL) bc_ptr += 2; // max_len
+                        else if (op == OP_ARR_FIXED) bc_ptr += 4; // count
                     } else {
                         skip_instruction(&bc_ptr, end, op);
                     }

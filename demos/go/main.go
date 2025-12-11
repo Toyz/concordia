@@ -62,6 +62,9 @@ type KitchenSink struct {
 		DAligned uint8
 	}
 
+	IsFarX     bool
+	IsGrounded bool
+
 	HasExtra  bool
 	ExtraData string
 
@@ -172,9 +175,6 @@ func main() {
 		}
 
 		name := prog.GetKeyName(keyID)
-		if name == "dynamic_len" || name == "dynamic_bytes" || name == "str_count" || name == "dynamic_strings" {
-			fmt.Printf("[ENC] Key=%s (%d), Op=0x%X\n", name, keyID, uint8(typeOp))
-		}
 		switch name {
 		case "magic":
 			val.SetUint32(data.Magic)
@@ -186,11 +186,11 @@ func main() {
 			val.SetInt8(data.ValC)
 		case "timestamp":
 			val.SetInt64(data.Timestamp)
-		case "x":
+		case "position.x":
 			val.SetFloat32(data.Position.X)
-		case "y":
+		case "position.y":
 			val.SetFloat32(data.Position.Y)
-		case "z":
+		case "position.z":
 			val.SetFloat32(data.Position.Z)
 		case "matrix":
 			// Array Start
@@ -243,14 +243,18 @@ func main() {
 			val.SetFloat64(data.PolyVal)
 		case "spline_val":
 			val.SetFloat64(data.SplineVal)
-		case "a_3bits":
+		case "bit_packed.a_3bits":
 			val.SetUint8(data.BitPacked.A3bits)
-		case "b_5bits":
+		case "bit_packed.b_5bits":
 			val.SetUint8(data.BitPacked.B5bits)
-		case "c_4bits":
+		case "bit_packed.c_4bits":
 			val.SetUint8(data.BitPacked.C4bits)
-		case "d_aligned":
+		case "bit_packed.d_aligned":
 			val.SetUint8(data.BitPacked.DAligned)
+		case "is_far_x":
+			val.SetBool(data.IsFarX)
+		case "is_grounded":
+			val.SetBool(data.IsGrounded)
 		case "has_extra":
 			val.SetBool(data.HasExtra)
 		case "extra_data":
@@ -340,9 +344,6 @@ func main() {
 		isQuery := typeOp == concordia.OpCtxQuery || typeOp == concordia.OpLoadCtx
 
 		name := prog.GetKeyName(keyID)
-		if name == "dynamic_len" || name == "dynamic_bytes" || name == "str_count" || name == "dynamic_strings" {
-			fmt.Printf("[DEC] Key=%s (%d), Op=0x%X\n", name, keyID, uint8(typeOp))
-		}
 		switch name {
 		case "magic":
 			decoded.Magic = val.Uint32()
@@ -354,11 +355,11 @@ func main() {
 			decoded.ValC = val.Int8()
 		case "timestamp":
 			decoded.Timestamp = val.Int64()
-		case "x":
+		case "position.x":
 			decoded.Position.X = val.Float32()
-		case "y":
+		case "position.y":
 			decoded.Position.Y = val.Float32()
-		case "z":
+		case "position.z":
 			decoded.Position.Z = val.Float32()
 		case "matrix":
 			if typeOp == concordia.OpArrFixed {
@@ -422,14 +423,18 @@ func main() {
 			decoded.SplineVal = val.Float64()
 		case "expr_val":
 			decoded.ExprVal = val.Uint8()
-		case "a_3bits":
+		case "bit_packed.a_3bits":
 			decoded.BitPacked.A3bits = val.Uint8()
-		case "b_5bits":
+		case "bit_packed.b_5bits":
 			decoded.BitPacked.B5bits = val.Uint8()
-		case "c_4bits":
+		case "bit_packed.c_4bits":
 			decoded.BitPacked.C4bits = val.Uint8()
-		case "d_aligned":
+		case "bit_packed.d_aligned":
 			decoded.BitPacked.DAligned = val.Uint8()
+		case "is_far_x":
+			decoded.IsFarX = val.Bool()
+		case "is_grounded":
+			decoded.IsGrounded = val.Bool()
 		case "has_extra":
 			if isQuery {
 				val.SetBool(decoded.HasExtra)

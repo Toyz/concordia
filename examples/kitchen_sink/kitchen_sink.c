@@ -76,6 +76,9 @@ typedef struct {
     uint8_t rest_of_stream[1024];
     size_t rest_of_stream_len;
     int rest_of_stream_idx;
+
+    bool is_far_x;
+    bool is_grounded;
 } KitchenSink;
 
 // --- IO Callback ---
@@ -88,29 +91,7 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
     // printf("Callback: key_id=%d, type=%d\n", key_id, type);
     KitchenSink* obj = (KitchenSink*)ctx->user_ptr;
     const char* key_name = cnd_get_key_name(ctx->program, key_id); // Optional: Use name lookup for debug/robustness
-    // printf("Key Name: %s\n", key_name ? key_name : "NULL");
     
-    if (key_name && (strcmp(key_name, "str_count") == 0 || strcmp(key_name, "dynamic_len") == 0)) {
-        printf("CB: Key=%s (%d), Type=%d, Mode=%s\n", key_name, key_id, type, ctx->mode == CND_MODE_ENCODE ? "ENC" : "DEC");
-        if (type == OP_IO_U8 || type == OP_IO_U16) {
-             if (ctx->mode == CND_MODE_DECODE) {
-                 // We are about to read into obj->field. The value in *ptr is what was read from stream.
-                 // Wait, IO_VAL does: obj->field = *(ctype*)ptr;
-                 // So we can print *ptr
-                 if (type == OP_IO_U8) printf("  Reading Value: %d\n", *(uint8_t*)ptr);
-                 if (type == OP_IO_U16) printf("  Reading Value: %d\n", *(uint16_t*)ptr);
-             } else {
-                 // Encode
-                 if (type == OP_IO_U8) printf("  Writing Value: %d\n", obj->str_count); // Assuming str_count for now
-             }
-        }
-        if (type == OP_CTX_QUERY) {
-             // We are about to return the value in *ptr
-             // But we haven't set it yet.
-             // The code below sets it.
-        }
-    }
-
     // Helper macros
     #define ENCODE (ctx->mode == CND_MODE_ENCODE)
     #define DECODE (ctx->mode == CND_MODE_DECODE)
@@ -132,6 +113,26 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
         else if (strcmp(key_name, "val_sub") == 0) *(uint64_t*)ptr = obj->val_sub;
         else if (strcmp(key_name, "dynamic_len") == 0) *(uint64_t*)ptr = obj->dynamic_len;
         else if (strcmp(key_name, "str_count") == 0) *(uint64_t*)ptr = obj->str_count;
+        // Nested struct field access - the compiler emits "position.x" as the key
+        else if (strcmp(key_name, "position.x") == 0) {
+            // For float comparisons, we need to pass as double bits
+            double val = (double)obj->position.x;
+            uint64_t bits;
+            memcpy(&bits, &val, sizeof(bits));
+            *(uint64_t*)ptr = bits;
+        }
+        else if (strcmp(key_name, "position.y") == 0) {
+            double val = (double)obj->position.y;
+            uint64_t bits;
+            memcpy(&bits, &val, sizeof(bits));
+            *(uint64_t*)ptr = bits;
+        }
+        else if (strcmp(key_name, "position.z") == 0) {
+            double val = (double)obj->position.z;
+            uint64_t bits;
+            memcpy(&bits, &val, sizeof(bits));
+            *(uint64_t*)ptr = bits;
+        }
         return CND_ERR_OK;
     }
 
@@ -179,6 +180,9 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
     else if (strcmp(key_name, "x") == 0) IO_VAL(float, position.x)
     else if (strcmp(key_name, "y") == 0) IO_VAL(float, position.y)
     else if (strcmp(key_name, "z") == 0) IO_VAL(float, position.z)
+    else if (strcmp(key_name, "position.x") == 0) IO_VAL(float, position.x)
+    else if (strcmp(key_name, "position.y") == 0) IO_VAL(float, position.y)
+    else if (strcmp(key_name, "position.z") == 0) IO_VAL(float, position.z)
     else if (strcmp(key_name, "matrix") == 0 && type == OP_IO_U8) {
         if (obj->matrix_idx < 4) {
             IO_VAL(uint8_t, matrix[obj->matrix_idx]);
@@ -263,20 +267,26 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
         if (ENCODE) *(uint8_t*)ptr = obj->expr_val;
         else obj->expr_val = *(uint8_t*)ptr;
     }
-    else if (strcmp(key_name, "a_3bits") == 0) {
-        if (ENCODE) *(uint8_t*)ptr = obj->bit_packed.a_3bits; else obj->bit_packed.a_3bits = *(uint8_t*)ptr;
+    else if (strcmp(key_name, "a_3bits") == 0 || strcmp(key_name, "bit_packed.a_3bits") == 0) {
+        if (ENCODE) *(uint64_t*)ptr = obj->bit_packed.a_3bits; else obj->bit_packed.a_3bits = (uint8_t)*(uint64_t*)ptr;
     }
-    else if (strcmp(key_name, "b_5bits") == 0) {
-        if (ENCODE) *(uint8_t*)ptr = obj->bit_packed.b_5bits; else obj->bit_packed.b_5bits = *(uint8_t*)ptr;
+    else if (strcmp(key_name, "b_5bits") == 0 || strcmp(key_name, "bit_packed.b_5bits") == 0) {
+        if (ENCODE) *(uint64_t*)ptr = obj->bit_packed.b_5bits; else obj->bit_packed.b_5bits = (uint8_t)*(uint64_t*)ptr;
     }
-    else if (strcmp(key_name, "c_4bits") == 0) {
-        if (ENCODE) *(uint8_t*)ptr = obj->bit_packed.c_4bits; else obj->bit_packed.c_4bits = *(uint8_t*)ptr;
+    else if (strcmp(key_name, "c_4bits") == 0 || strcmp(key_name, "bit_packed.c_4bits") == 0) {
+        if (ENCODE) *(uint64_t*)ptr = obj->bit_packed.c_4bits; else obj->bit_packed.c_4bits = (uint8_t)*(uint64_t*)ptr;
     }
-    else if (strcmp(key_name, "d_aligned") == 0) {
-        if (ENCODE) *(uint8_t*)ptr = obj->bit_packed.d_aligned; else obj->bit_packed.d_aligned = *(uint8_t*)ptr;
+    else if (strcmp(key_name, "d_aligned") == 0 || strcmp(key_name, "bit_packed.d_aligned") == 0) {
+        if (ENCODE) *(uint64_t*)ptr = obj->bit_packed.d_aligned; else obj->bit_packed.d_aligned = (uint8_t)*(uint64_t*)ptr;
     }
     else if (strcmp(key_name, "has_extra") == 0) {
         if (ENCODE) *(uint8_t*)ptr = obj->has_extra; else obj->has_extra = *(uint8_t*)ptr;
+    }
+    else if (strcmp(key_name, "is_far_x") == 0) {
+        if (ENCODE) *(uint8_t*)ptr = obj->is_far_x; else obj->is_far_x = *(uint8_t*)ptr;
+    }
+    else if (strcmp(key_name, "is_grounded") == 0) {
+        if (ENCODE) *(uint8_t*)ptr = obj->is_grounded; else obj->is_grounded = *(uint8_t*)ptr;
     }
     else if (strcmp(key_name, "extra_data") == 0) {
         if (ENCODE) *(const char**)ptr = obj->extra_data;
@@ -382,6 +392,8 @@ int main(void) {
     printf("  Spline Val: %.2f\n", out.spline_val);
     printf("  Expr Val: %d\n", out.expr_val);
     printf("  BitPacked: A=%d, B=%d, C=%d, D=%d\n", out.bit_packed.a_3bits, out.bit_packed.b_5bits, out.bit_packed.c_4bits, out.bit_packed.d_aligned);
+    printf("  Is Far X: %s\n", out.is_far_x ? "true" : "false");
+    printf("  Is Grounded: %s\n", out.is_grounded ? "true" : "false");
     printf("  Has Extra: %s\n", out.has_extra ? "true" : "false");
     if (out.has_extra) printf("    Extra Data: %s\n", out.extra_data);
     printf("  Adv Mode: %d\n", out.adv_mode);

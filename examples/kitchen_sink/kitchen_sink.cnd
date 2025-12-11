@@ -125,6 +125,13 @@ packet KitchenSink {
     @count(str_count)
     string dynamic_strings[] prefix uint8;
 
+    // Float Logic
+    @expr(position.x > 10.0)
+    bool is_far_x;
+
+    @expr(position.y == 0.0)
+    bool is_grounded;
+
     @eof
     uint8 rest_of_stream[];
 }

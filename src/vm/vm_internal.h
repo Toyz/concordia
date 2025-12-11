@@ -95,6 +95,17 @@ static inline uint64_t read_u64(const uint8_t* buf, cnd_endian_t endian) {
 }
 
 static inline uint64_t read_bits(cnd_vm_ctx* ctx, uint8_t count) {
+    // Optimization: Byte-aligned reads
+    if (ctx->bit_offset == 0 && (count & 7) == 0) {
+        uint8_t bytes = count / 8;
+        if (ctx->cursor + bytes <= ctx->data_len) {
+            if (bytes == 1) { uint64_t v = read_u8(ctx->data_buffer + ctx->cursor); ctx->cursor++; return v; }
+            if (bytes == 2) { uint64_t v = read_u16(ctx->data_buffer + ctx->cursor, ctx->endianness); ctx->cursor+=2; return v; }
+            if (bytes == 4) { uint64_t v = read_u32(ctx->data_buffer + ctx->cursor, ctx->endianness); ctx->cursor+=4; return v; }
+            if (bytes == 8) { uint64_t v = read_u64(ctx->data_buffer + ctx->cursor, ctx->endianness); ctx->cursor+=8; return v; }
+        }
+    }
+
     uint64_t val = 0;
     for (uint8_t i = 0; i < count; i++) {
         if (ctx->cursor >= ctx->data_len) break; 
@@ -176,6 +187,17 @@ static inline void write_u64(uint8_t* buf, uint64_t val, cnd_endian_t endian) {
 }
 
 static inline void write_bits(cnd_vm_ctx* ctx, uint64_t val, uint8_t count) {
+    // Optimization: Byte-aligned writes
+    if (ctx->bit_offset == 0 && (count & 7) == 0) {
+        uint8_t bytes = count / 8;
+        if (ctx->cursor + bytes <= ctx->data_len) {
+            if (bytes == 1) { write_u8(ctx->data_buffer + ctx->cursor, (uint8_t)val); ctx->cursor++; return; }
+            if (bytes == 2) { write_u16(ctx->data_buffer + ctx->cursor, (uint16_t)val, ctx->endianness); ctx->cursor+=2; return; }
+            if (bytes == 4) { write_u32(ctx->data_buffer + ctx->cursor, (uint32_t)val, ctx->endianness); ctx->cursor+=4; return; }
+            if (bytes == 8) { write_u64(ctx->data_buffer + ctx->cursor, val, ctx->endianness); ctx->cursor+=8; return; }
+        }
+    }
+
     for (uint8_t i = 0; i < count; i++) {
         if (ctx->cursor >= ctx->data_len) return; 
 

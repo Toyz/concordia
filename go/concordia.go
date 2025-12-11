@@ -181,6 +181,16 @@ func (p *Program) GetKeyName(keyID uint16) string {
 	return C.GoString(cStr)
 }
 
+// GetKeyID returns the Key ID for a given string name. Returns 0xFFFF if not found.
+func (p *Program) GetKeyID(name string) uint16 {
+	if p.cProg == nil {
+		return 0xFFFF
+	}
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	return uint16(C.cnd_get_key_id(p.cProg, cName))
+}
+
 // Execute runs the VM with the given data
 func (p *Program) Execute(data []byte, mode Mode, cb CallbackFunc) error {
 	var cData unsafe.Pointer

@@ -177,18 +177,18 @@ TEST_F(ConcordiaTest, NestedArrays) {
         "packet Matrix { Row rows[2]; }"
     );
     
-    // Keys:
-    // cols: 0
-    // rows: 1
+    // Keys after struct prefixing:
+    // [0] rows
+    // [1] rows.cols
     
     // We need to provide data for 2 rows * 2 cols = 4 items.
     // Since test_io_callback is stateless/simple, we need to be careful.
     // But for fixed arrays, it just calls callback for start.
-    // OP_ARR_FIXED (rows) -> Callback(Key 1)
+    // OP_ARR_FIXED (rows) -> Callback(Key 0)
     //   OP_ENTER_STRUCT
-    //     OP_ARR_FIXED (cols) -> Callback(Key 0)
-    //       OP_IO_U8 -> Callback(Key 0)
-    //       OP_IO_U8 -> Callback(Key 0)
+    //     OP_ARR_FIXED (rows.cols) -> Callback(Key 1)
+    //       OP_IO_U8 -> Callback(Key 1)
+    //       OP_IO_U8 -> Callback(Key 1)
     //     OP_ARR_END
     //   OP_EXIT_STRUCT
     //   ... repeat for row 2
@@ -198,8 +198,8 @@ TEST_F(ConcordiaTest, NestedArrays) {
     // and produces correct size.
     // Let's use a simple value for all U8s.
     
-    g_test_data[0].key = 0; g_test_data[0].u64_val = 0x55; // cols data
-    g_test_data[1].key = 1; g_test_data[1].u64_val = 2; // rows count (ignored for fixed, but good practice)
+    g_test_data[0].key = 0; g_test_data[0].u64_val = 2; // rows count (ignored for fixed, but good practice)
+    g_test_data[1].key = 1; g_test_data[1].u64_val = 0x55; // rows.cols data
     
     memset(m_buffer, 0, sizeof(m_buffer));
     cnd_init(&ctx, CND_MODE_ENCODE, &program, m_buffer, sizeof(m_buffer), test_io_callback, NULL);
@@ -679,52 +679,16 @@ TEST_F(ConcordiaTest, MultiRTT) {
         "}"
     );
     
-    // Prepare Mock Data for Encoding
-    // Key 0: id (u32) -> 0xDEADBEEF
-    // Key 1: nested (struct) -> Enter
-    // Key 2: val (u8) -> 0x99
-    // Key 3: nested (struct) -> Exit (implicit in VM flow, but key matches loop?)
-    // Key 3: list (array) -> 2 items
-    // Key 4: list item (u16) -> 0x1111
-    // Key 4: list item (u16) -> 0x2222
-    // Key 5: name (string) -> "Test"
-    
-    // Note: Strings in compiler are deduplicated.
-    // "id" -> 0
-    // "nested" -> 1
-    // "val" -> 2
-    // "list" -> 3
-    // "name" -> 4
-    // prefix count fields get their parent's key id.
-    // array items get their parent's key id? No, standard logic:
-    // Array wrapper: OP_ARR_PRE (Key X)
-    // Array body: OP_IO_U16 (Key X)
+    // Key IDs after struct prefixing:
+    // [0] id
+    // [1] nested (struct marker)
+    // [2] nested.val (prefixed!)
+    // [3] list
+    // [4] name
     
     clear_test_data();
-    g_test_data[0].key = 0; g_test_data[0].u64_val = 0xDEADBEEF;
-    g_test_data[1].key = 2; g_test_data[1].u64_val = 0x99;
-    g_test_data[2].key = 3; g_test_data[2].u64_val = 2; // Array count
-    g_test_data[3].key = 3; g_test_data[3].u64_val = 0x1111; // Item 1? 
-    // Wait, `test_io_callback` logic uses `key_id`. 
-    // For arrays, the `OP_IO` inside the loop uses the SAME key_id as the array def?
-    // Yes, the compiler emits `OP_IO_U16` with `key_id`.
-    // So we need multiple entries with same key?
-    // My `test_io_callback` finds FIRST match. That's a limitation for arrays.
-    // I need to update `test_io_callback` to handle multiple reads for same key (stateful mock).
-    
-    // Let's skip sophisticated array RTT for now or update mock. 
-    // Or just test scalar fields for RTT.
-    
-    // Correct mapping based on parsing order:
-    // 1. "val" (Key 0) - from struct Inner
-    // 2. "id" (Key 1) - from packet RTT
-    // 3. "nested" (Key 2)
-    // 4. "list" (Key 3)
-    // 5. "name" (Key 4)
-    
-    clear_test_data();
-    g_test_data[0].key = 1; g_test_data[0].u64_val = 0xDEADBEEF; // id
-    g_test_data[1].key = 0; g_test_data[1].u64_val = 0x99; // val
+    g_test_data[0].key = 0; g_test_data[0].u64_val = 0xDEADBEEF; // id
+    g_test_data[1].key = 2; g_test_data[1].u64_val = 0x99; // nested.val
     g_test_data[2].key = 3; g_test_data[2].u64_val = 0; // list count
     g_test_data[3].key = 4; // name
     #ifdef _MSC_VER
@@ -743,8 +707,8 @@ TEST_F(ConcordiaTest, MultiRTT) {
     // Clear mock data to receive values
     clear_test_data(); 
     // Prepare keys to receive
-    g_test_data[0].key = 1; // id
-    g_test_data[1].key = 0; // val
+    g_test_data[0].key = 0; // id
+    g_test_data[1].key = 2; // nested.val
     g_test_data[2].key = 3; // list
     g_test_data[3].key = 4; // name
     
@@ -1016,37 +980,37 @@ TEST_F(ConcordiaTest, ComplexIntegration) {
     // Prepare Data for ENCODE
     clear_test_data();
     
-    // Key Mapping (Global String Table Order):
-    // 0: imp_val (from Imported, parsed first)
-    // 1: x (from Point)
-    // 2: y (from Point)
-    // 3: magic
-    // 4: version
-    // 5: signature
-    // 6: flags
-    // 7: aligned_byte
-    // 8: points
-    // 9: name
-    // 10: sensor_val
-    // 11: imp_data
-    // 12: checksum
+    // Key Mapping (Global String Table Order with struct prefixing):
+    // 0: magic
+    // 1: version
+    // 2: signature
+    // 3: flags
+    // 4: aligned_byte
+    // 5: points
+    // 6: points.x
+    // 7: points.y
+    // 8: name
+    // 9: sensor_val
+    // 10: imp_data
+    // 11: imp_data.imp_val
+    // 12: ComplexAll
 
-    g_test_data[0].key = 3; g_test_data[0].u64_val = 0x12345678; // magic
-    g_test_data[1].key = 4; g_test_data[1].u64_val = 0x0100;     // version
-    g_test_data[2].key = 6; g_test_data[2].u64_val = 0xA;        // flags (1010)
-    g_test_data[3].key = 7; g_test_data[3].u64_val = 0xFF;       // aligned_byte
-    g_test_data[4].key = 8; g_test_data[4].u64_val = 2;          // count (2 points)
+    g_test_data[0].key = 0; g_test_data[0].u64_val = 0x12345678; // magic
+    g_test_data[1].key = 1; g_test_data[1].u64_val = 0x0100;     // version
+    g_test_data[2].key = 3; g_test_data[2].u64_val = 0xA;        // flags (1010)
+    g_test_data[3].key = 4; g_test_data[3].u64_val = 0xFF;       // aligned_byte
+    g_test_data[4].key = 5; g_test_data[4].u64_val = 2;          // count (2 points)
     
     // Point 1
-    g_test_data[5].key = 1; g_test_data[5].u64_val = 10;         // x
-    g_test_data[6].key = 2; g_test_data[6].u64_val = 20;         // y
+    g_test_data[5].key = 6; g_test_data[5].u64_val = 10;         // points.x
+    g_test_data[6].key = 7; g_test_data[6].u64_val = 20;         // points.y
     
     // Point 2
-    g_test_data[7].key = 1; g_test_data[7].u64_val = 30;         // x
-    g_test_data[8].key = 2; g_test_data[8].u64_val = 40;         // y
+    g_test_data[7].key = 6; g_test_data[7].u64_val = 30;         // points.x
+    g_test_data[8].key = 7; g_test_data[8].u64_val = 40;         // points.y
     
     // Name
-    g_test_data[9].key = 9; 
+    g_test_data[9].key = 8; 
     #ifdef _MSC_VER
     strcpy_s(g_test_data[9].string_val, 64, "Test");
     #else
@@ -1054,12 +1018,12 @@ TEST_F(ConcordiaTest, ComplexIntegration) {
     #endif
 
     // Sensor (Eng 15.0 -> Raw 100)
-    g_test_data[10].key = 10; g_test_data[10].f64_val = 15.0;
+    g_test_data[10].key = 9; g_test_data[10].f64_val = 15.0;
 
     // Imported Data
-    // Note: OP_ENTER_STRUCT (Key 11) is skipped by test_io_callback logic, so it doesn't consume a tape entry.
+    // Note: OP_ENTER_STRUCT (Key 10) is skipped by test_io_callback logic, so it doesn't consume a tape entry.
     // We only provide data for the field inside the struct.
-    g_test_data[11].key = 0; g_test_data[11].u64_val = 0x9999; // imp_val (Key 0)
+    g_test_data[11].key = 11; g_test_data[11].u64_val = 0x9999; // imp_data.imp_val
 
     TestContext tctx = { true, 0 }; // Enable Tape Mode
 
@@ -1131,30 +1095,30 @@ TEST_F(ConcordiaTest, ComplexIntegration) {
     err = cnd_execute(&ctx);
     ASSERT_EQ(err, CND_ERR_OK);
     
-    // Verify Decoded Values
+    // Verify Decoded Values (using new key mappings with struct prefixing)
     
-    EXPECT_EQ(g_test_data[0].key, 3); EXPECT_EQ(g_test_data[0].u64_val, 0x12345678); // Magic
-    EXPECT_EQ(g_test_data[1].key, 4); EXPECT_EQ(g_test_data[1].u64_val, 0x0100);     // Version
-    EXPECT_EQ(g_test_data[2].key, 5); EXPECT_EQ(g_test_data[2].u64_val, 0xDEADBEEF); // Signature
-    EXPECT_EQ(g_test_data[3].key, 6); EXPECT_EQ(g_test_data[3].u64_val, 0xA);        // Flags
-    EXPECT_EQ(g_test_data[4].key, 7); EXPECT_EQ(g_test_data[4].u64_val, 0xFF);       // Aligned
-    EXPECT_EQ(g_test_data[5].key, 8); EXPECT_EQ(g_test_data[5].u64_val, 2);          // Count
+    EXPECT_EQ(g_test_data[0].key, 0); EXPECT_EQ(g_test_data[0].u64_val, 0x12345678); // magic
+    EXPECT_EQ(g_test_data[1].key, 1); EXPECT_EQ(g_test_data[1].u64_val, 0x0100);     // version
+    EXPECT_EQ(g_test_data[2].key, 2); EXPECT_EQ(g_test_data[2].u64_val, 0xDEADBEEF); // signature
+    EXPECT_EQ(g_test_data[3].key, 3); EXPECT_EQ(g_test_data[3].u64_val, 0xA);        // flags
+    EXPECT_EQ(g_test_data[4].key, 4); EXPECT_EQ(g_test_data[4].u64_val, 0xFF);       // aligned_byte
+    EXPECT_EQ(g_test_data[5].key, 5); EXPECT_EQ(g_test_data[5].u64_val, 2);          // points count
     
     // Point 1
-    EXPECT_EQ(g_test_data[6].key, 1); EXPECT_EQ(g_test_data[6].u64_val, 10);         // x
-    EXPECT_EQ(g_test_data[7].key, 2); EXPECT_EQ(g_test_data[7].u64_val, 20);         // y
+    EXPECT_EQ(g_test_data[6].key, 6); EXPECT_EQ(g_test_data[6].u64_val, 10);         // points.x
+    EXPECT_EQ(g_test_data[7].key, 7); EXPECT_EQ(g_test_data[7].u64_val, 20);         // points.y
     
     // Point 2
-    EXPECT_EQ(g_test_data[8].key, 1); EXPECT_EQ(g_test_data[8].u64_val, 30);         // x
-    EXPECT_EQ(g_test_data[9].key, 2); EXPECT_EQ(g_test_data[9].u64_val, 40);         // y
+    EXPECT_EQ(g_test_data[8].key, 6); EXPECT_EQ(g_test_data[8].u64_val, 30);         // points.x
+    EXPECT_EQ(g_test_data[9].key, 7); EXPECT_EQ(g_test_data[9].u64_val, 40);         // points.y
     
-    EXPECT_EQ(g_test_data[10].key, 9); EXPECT_STREQ(g_test_data[10].string_val, "Test"); // Name
-    EXPECT_EQ(g_test_data[11].key, 10); EXPECT_NEAR(g_test_data[11].f64_val, 15.0, 0.001); // Sensor
+    EXPECT_EQ(g_test_data[10].key, 8); EXPECT_STREQ(g_test_data[10].string_val, "Test"); // name
+    EXPECT_EQ(g_test_data[11].key, 9); EXPECT_NEAR(g_test_data[11].f64_val, 15.0, 0.001); // sensor_val
     
     // Imported
-    // imp_data (Key 11) is skipped by callback in DECODE too.
-    // So next entry is imp_val (Key 0).
-    EXPECT_EQ(g_test_data[12].key, 0); EXPECT_EQ(g_test_data[12].u64_val, 0x9999); // imp_val
+    // imp_data (Key 10) is skipped by callback in DECODE too.
+    // So next entry is imp_data.imp_val (Key 11).
+    EXPECT_EQ(g_test_data[12].key, 11); EXPECT_EQ(g_test_data[12].u64_val, 0x9999); // imp_data.imp_val
 }
 
 struct ThreadData {

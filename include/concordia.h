@@ -116,6 +116,14 @@ extern "C" {
 #define OP_ITOF             0x90
 #define OP_FTOI             0x91
 
+// Comparison (Float)
+#define OP_EQ_F             0x92
+#define OP_NEQ_F            0x93
+#define OP_GT_F             0x94
+#define OP_LT_F             0x95
+#define OP_GTE_F            0x96
+#define OP_LTE_F            0x97
+
 // Bitwise
 #define OP_BIT_AND          0xA0
 #define OP_BIT_OR           0xA1
@@ -147,7 +155,8 @@ typedef enum {
     CND_ERR_CALLBACK = 4,      // User callback returned error
     CND_ERR_STACK_OVERFLOW = 5,
     CND_ERR_STACK_UNDERFLOW = 6,
-    CND_ERR_CRC_MISMATCH = 7   // CRC check failed
+    CND_ERR_CRC_MISMATCH = 7,   // CRC check failed
+    CND_ERR_ARITHMETIC = 8      // Arithmetic error (div by zero, overflow, etc.)
 } cnd_error_t;
 
 typedef enum {
@@ -260,6 +269,12 @@ cnd_error_t cnd_program_load_il(cnd_program* program, const uint8_t* image, size
  * Returns NULL if key_id is out of range or string table is missing.
  */
 const char* cnd_get_key_name(const cnd_program* program, uint16_t key_id);
+
+/**
+ * Look up a Key ID by its name.
+ * Returns 0xFFFF if not found.
+ */
+uint16_t cnd_get_key_id(const cnd_program* program, const char* name);
 
 /**
  * Initialize a VM context.

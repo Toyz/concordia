@@ -37,7 +37,43 @@ protected:
         std::ifstream f(target, std::ios::binary | std::ios::ate);
         return f.good() && f.tellg() > 0;
     }
+
+    std::vector<uint8_t> ReadOutputFile(const char* path = nullptr) {
+        const char* target = path ? path : kOutFile;
+        std::ifstream f(target, std::ios::binary | std::ios::ate);
+        if (!f.good()) return {};
+        std::streamsize size = f.tellg();
+        f.seekg(0, std::ios::beg);
+        std::vector<uint8_t> buffer(size);
+        if (f.read((char*)buffer.data(), size)) return buffer;
+        return {};
+    }
 };
+
+TEST_F(CompilerTest, FloatComparisonEmission) {
+    // We use @expr to force expression evaluation
+    WriteSource("packet P { @expr(1.0 == 2.0) bool eq; @expr(1.0 != 2.0) bool neq; @expr(1.0 > 2.0) bool gt; }");
+    int res = cnd_compile_file(kSourceFile, kOutFile, 0, 0);
+    EXPECT_EQ(res, 0);
+    
+    auto bytes = ReadOutputFile();
+    ASSERT_FALSE(bytes.empty());
+    
+    // Scan for opcodes
+    bool found_eq_f = false;
+    bool found_neq_f = false;
+    bool found_gt_f = false;
+    
+    for (uint8_t b : bytes) {
+        if (b == 0x92) found_eq_f = true; // OP_EQ_F
+        if (b == 0x93) found_neq_f = true; // OP_NEQ_F
+        if (b == 0x94) found_gt_f = true; // OP_GT_F
+    }
+    
+    EXPECT_TRUE(found_eq_f) << "OP_EQ_F (0x92) not found in bytecode";
+    EXPECT_TRUE(found_neq_f) << "OP_NEQ_F (0x93) not found in bytecode";
+    EXPECT_TRUE(found_gt_f) << "OP_GT_F (0x94) not found in bytecode";
+}
 
 TEST_F(CompilerTest, BasicStruct) {
     WriteSource("struct Point { float x; float y; } packet P { Point p; }");

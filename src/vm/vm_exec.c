@@ -578,6 +578,18 @@ const char* cnd_get_key_name(const cnd_program* program, uint16_t key_id) {
     return ptr;
 }
 
+uint16_t cnd_get_key_id(const cnd_program* program, const char* name) {
+    if (!program || !program->string_table || !name) return 0xFFFF;
+    
+    const char* ptr = program->string_table;
+    for (uint16_t i = 0; i < program->string_count; i++) {
+        if (strcmp(ptr, name) == 0) return i;
+        while (*ptr) ptr++; // Skip current string
+        ptr++; // Skip null terminator
+    }
+    return 0xFFFF;
+}
+
 void cnd_init(cnd_vm_ctx* ctx, 
               cnd_mode_t mode,
               const cnd_program* program,
@@ -639,6 +651,14 @@ static inline cnd_error_t stack_pop(cnd_vm_ctx* ctx, uint64_t* val) {
     double res = a OP b; \
     uint64_t res_bits; memcpy(&res_bits, &res, 8); \
     if (stack_push(ctx, res_bits) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
+
+// Helper for float comparison operations (returns boolean integer)
+#define BINARY_OP_F_BOOL(OP) \
+    uint64_t b_bits; if (stack_pop(ctx, &b_bits) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW; \
+    uint64_t a_bits; if (stack_pop(ctx, &a_bits) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW; \
+    double a, b; memcpy(&a, &a_bits, 8); memcpy(&b, &b_bits, 8); \
+    uint64_t res = (a OP b) ? 1 : 0; \
+    if (stack_push(ctx, res) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
 
 // Helper for float unary operations
 #define UNARY_OP_F(FUNC) \
@@ -1022,13 +1042,9 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 if (ctx->mode == CND_MODE_ENCODE) {
                     write_bits(ctx, 0, b);
                 } else {
-                    for(int i=0;i<b;i++) { 
-                        ctx->bit_offset++; 
-                        if(ctx->bit_offset>=8){
-                            ctx->bit_offset=0; 
-                            ctx->cursor++;
-                        } 
-                    } 
+                    size_t total_bits = ctx->bit_offset + b;
+                    ctx->cursor += total_bits / 8;
+                    ctx->bit_offset = total_bits % 8;
                 }
                 break; 
             } 
@@ -1153,8 +1169,9 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 uint64_t count_val = 0;
                 SYNC_IP();
                 if (ctx->io_callback(ctx, ref_key, OP_CTX_QUERY, &count_val) != CND_ERR_OK) return CND_ERR_CALLBACK;
-                printf("VM_DEBUG: OpCtxQuery Key=%d returned %" PRIu64 "\n", ref_key, count_val);
+                // printf("VM_DEBUG: OpCtxQuery Key=%d returned %" PRIu64 "\n", ref_key, count_val);
                 
+                if (count_val > 0xFFFFFFFF) return CND_ERR_ARITHMETIC;
                 uint32_t count = (uint32_t)count_val;
                 
                 SYNC_IP();
@@ -1255,10 +1272,13 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 ctx->ip = original_ip; // Restore just in case calculations need it, or just set new
                 
                 if (target_off < 0) {
-                     if (code_start_ip < (size_t)(-target_off)) return CND_ERR_OOB;
-                     ctx->ip = code_start_ip - (size_t)(-target_off);
+                     size_t abs_off = (size_t)(-(int64_t)target_off);
+                     if (code_start_ip < abs_off) return CND_ERR_OOB;
+                     ctx->ip = code_start_ip - abs_off;
                 } else {
-                     ctx->ip = code_start_ip + (size_t)target_off;
+                     size_t abs_off = (size_t)target_off;
+                     if (code_start_ip + abs_off < code_start_ip) return CND_ERR_OOB;
+                     ctx->ip = code_start_ip + abs_off;
                 }
                 
                 if (ctx->ip > ctx->program->bytecode_len) return CND_ERR_OOB;
@@ -1306,10 +1326,13 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 ctx->ip = original_ip;
                 
                 if (target_off < 0) {
-                     if (code_start_ip < (size_t)(-target_off)) return CND_ERR_OOB;
-                     ctx->ip = code_start_ip - (size_t)(-target_off);
+                     size_t abs_off = (size_t)(-(int64_t)target_off);
+                     if (code_start_ip < abs_off) return CND_ERR_OOB;
+                     ctx->ip = code_start_ip - abs_off;
                 } else {
-                     ctx->ip = code_start_ip + (size_t)target_off;
+                     size_t abs_off = (size_t)target_off;
+                     if (code_start_ip + abs_off < code_start_ip) return CND_ERR_OOB;
+                     ctx->ip = code_start_ip + abs_off;
                 }
                 
                 if (ctx->ip > ctx->program->bytecode_len) return CND_ERR_OOB;
@@ -1326,10 +1349,13 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                     // Jump
                     SYNC_IP();
                     if (offset < 0) {
-                        if (ctx->ip < (size_t)(-offset)) return CND_ERR_OOB;
-                        ctx->ip -= (size_t)(-offset);
+                        size_t abs_off = (size_t)(-(int64_t)offset);
+                        if (ctx->ip < abs_off) return CND_ERR_OOB;
+                        ctx->ip -= abs_off;
                     } else {
-                        ctx->ip += (size_t)offset;
+                        size_t abs_off = (size_t)offset;
+                        if (ctx->ip + abs_off < ctx->ip) return CND_ERR_OOB;
+                        ctx->ip += abs_off;
                     }
                     if (ctx->ip > ctx->program->bytecode_len) return CND_ERR_OOB;
                     RELOAD_PC();
@@ -1342,10 +1368,13 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 // Offset is relative to IP *after* reading the offset (which is current ctx->ip)
                 SYNC_IP();
                 if (offset < 0) {
-                    if (ctx->ip < (size_t)(-offset)) return CND_ERR_OOB;
-                    ctx->ip -= (size_t)(-offset);
+                    size_t abs_off = (size_t)(-(int64_t)offset);
+                    if (ctx->ip < abs_off) return CND_ERR_OOB;
+                    ctx->ip -= abs_off;
                 } else {
-                    ctx->ip += (size_t)offset;
+                    size_t abs_off = (size_t)offset;
+                    if (ctx->ip + abs_off < ctx->ip) return CND_ERR_OOB;
+                    ctx->ip += abs_off;
                 }
                 if (ctx->ip > ctx->program->bytecode_len) return CND_ERR_OOB;
                 RELOAD_PC();
@@ -1398,7 +1427,7 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 
                 if (ctx->mode == CND_MODE_ENCODE) {
                     int size = 0;
-                    if (type == OP_IO_U8 || type == OP_IO_I8) size = 1;
+                    if (type == OP_IO_U8 || type == OP_IO_I8 || type == OP_IO_BOOL) size = 1;
                     else if (type == OP_IO_U16 || type == OP_IO_I16) size = 2;
                     else if (type == OP_IO_U32 || type == OP_IO_I32 || type == OP_IO_F32) size = 4;
                     else if (type == OP_IO_U64 || type == OP_IO_I64 || type == OP_IO_F64) size = 8;
@@ -1473,7 +1502,7 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                     //    Decode: val_calc = pop(); val_bin = read(); if (val_bin != val_calc) error;
                     
                     int size = 0;
-                    if (type == OP_IO_U8 || type == OP_IO_I8) size = 1;
+                    if (type == OP_IO_U8 || type == OP_IO_I8 || type == OP_IO_BOOL) size = 1;
                     else if (type == OP_IO_U16 || type == OP_IO_I16) size = 2;
                     else if (type == OP_IO_U32 || type == OP_IO_I32 || type == OP_IO_F32) size = 4;
                     else if (type == OP_IO_U64 || type == OP_IO_I64 || type == OP_IO_F64) size = 8;
@@ -1488,8 +1517,23 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                     else if (size == 8) bin_val = read_u64(ctx->data_buffer + ctx->cursor, ctx->endianness);
                     
                     // Compare
-                    // Note: Floating point comparison might be tricky with exact bits, but let's stick to bits.
-                    if (bin_val != val) return CND_ERR_VALIDATION;
+                    if (type == OP_IO_F32) {
+                        double d_val; memcpy(&d_val, &val, 8);
+                        float f_val = (float)d_val;
+                        
+                        float f_bin; memcpy(&f_bin, &bin_val, 4);
+                        
+                        float diff = f_val - f_bin;
+                        if (diff < -0.00001f || diff > 0.00001f) return CND_ERR_VALIDATION;
+                    } else if (type == OP_IO_F64) {
+                        double d_val; memcpy(&d_val, &val, 8);
+                        double d_bin; memcpy(&d_bin, &bin_val, 8);
+                        
+                        double diff = d_val - d_bin;
+                        if (diff < -0.0000001 || diff > 0.0000001) return CND_ERR_VALIDATION;
+                    } else {
+                        if (bin_val != val) return CND_ERR_VALIDATION;
+                    }
                     
                     ctx->cursor += size;
                 }
@@ -1500,8 +1544,20 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             case OP_ADD: { BINARY_OP(+); break; }
             case OP_SUB: { BINARY_OP(-); break; }
             case OP_MUL: { BINARY_OP(*); break; }
-            case OP_DIV: { BINARY_OP(/); break; }
-            case OP_MOD: { BINARY_OP(%); break; }
+            case OP_DIV: { 
+                uint64_t b; if (stack_pop(ctx, &b) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
+                uint64_t a; if (stack_pop(ctx, &a) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
+                if (b == 0) return CND_ERR_ARITHMETIC;
+                if (stack_push(ctx, a / b) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
+                break; 
+            }
+            case OP_MOD: { 
+                uint64_t b; if (stack_pop(ctx, &b) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
+                uint64_t a; if (stack_pop(ctx, &a) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
+                if (b == 0) return CND_ERR_ARITHMETIC;
+                if (stack_push(ctx, a % b) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
+                break; 
+            }
             case OP_NEG: {
                 uint64_t a;
                 if (stack_pop(ctx, &a) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
@@ -1514,7 +1570,16 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             case OP_FADD: { BINARY_OP_F(+); break; }
             case OP_FSUB: { BINARY_OP_F(-); break; }
             case OP_FMUL: { BINARY_OP_F(*); break; }
-            case OP_FDIV: { BINARY_OP_F(/); break; }
+            case OP_FDIV: { 
+                uint64_t b_bits; if (stack_pop(ctx, &b_bits) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
+                uint64_t a_bits; if (stack_pop(ctx, &a_bits) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
+                double a, b; memcpy(&a, &a_bits, 8); memcpy(&b, &b_bits, 8);
+                if (b == 0.0) return CND_ERR_ARITHMETIC;
+                double res = a / b;
+                uint64_t res_bits; memcpy(&res_bits, &res, 8);
+                if (stack_push(ctx, res_bits) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
+                break; 
+            }
             case OP_FNEG: { UNARY_OP_F(-); break; }
 
             // Math Functions
@@ -1522,13 +1587,33 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
             case OP_SIN:  { UNARY_OP_F(sin); break; }
             case OP_COS:  { UNARY_OP_F(cos); break; }
             case OP_TAN:  { UNARY_OP_F(tan); break; }
-            case OP_SQRT: { UNARY_OP_F(sqrt); break; }
-            case OP_LOG:  { UNARY_OP_F(log); break; }
+            case OP_SQRT: { 
+                uint64_t a_bits; if (stack_pop(ctx, &a_bits) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
+                double a; memcpy(&a, &a_bits, 8);
+                if (a < 0) return CND_ERR_ARITHMETIC;
+                double res = sqrt(a);
+                uint64_t res_bits; memcpy(&res_bits, &res, 8);
+                if (stack_push(ctx, res_bits) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
+                break; 
+            }
+            case OP_LOG:  { 
+                uint64_t a_bits; if (stack_pop(ctx, &a_bits) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
+                double a; memcpy(&a, &a_bits, 8);
+                if (a <= 0) return CND_ERR_ARITHMETIC;
+                double res = log(a);
+                uint64_t res_bits; memcpy(&res_bits, &res, 8);
+                if (stack_push(ctx, res_bits) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
+                break; 
+            }
             case OP_ABS:  { UNARY_OP_F(fabs); break; }
             case OP_POW: {
                 uint64_t b_bits; if (stack_pop(ctx, &b_bits) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
                 uint64_t a_bits; if (stack_pop(ctx, &a_bits) != CND_ERR_OK) return CND_ERR_STACK_UNDERFLOW;
                 double a, b; memcpy(&a, &a_bits, 8); memcpy(&b, &b_bits, 8);
+                
+                if (a < 0 && floor(b) != b) return CND_ERR_ARITHMETIC;
+                if (a == 0 && b <= 0) return CND_ERR_ARITHMETIC;
+
                 double res = pow(a, b);
                 uint64_t res_bits; memcpy(&res_bits, &res, 8);
                 if (stack_push(ctx, res_bits) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
@@ -1551,6 +1636,14 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 if (stack_push(ctx, (uint64_t)i) != CND_ERR_OK) return CND_ERR_STACK_OVERFLOW;
                 break;
             }
+
+            // Comparison (Float)
+            case OP_EQ_F:  { BINARY_OP_F_BOOL(==); break; }
+            case OP_NEQ_F: { BINARY_OP_F_BOOL(!=); break; }
+            case OP_GT_F:  { BINARY_OP_F_BOOL(>); break; }
+            case OP_LT_F:  { BINARY_OP_F_BOOL(<); break; }
+            case OP_GTE_F: { BINARY_OP_F_BOOL(>=); break; }
+            case OP_LTE_F: { BINARY_OP_F_BOOL(<=); break; }
 
             // Bitwise
             case OP_BIT_AND: { BINARY_OP(&); break; }
@@ -1592,6 +1685,7 @@ const char* cnd_error_string(cnd_error_t err) {
         case CND_ERR_STACK_OVERFLOW: return "Stack Overflow";
         case CND_ERR_STACK_UNDERFLOW: return "Stack Underflow";
         case CND_ERR_CRC_MISMATCH: return "CRC Mismatch";
+        case CND_ERR_ARITHMETIC: return "Arithmetic Error";
         default: return "Unknown Error";
     }
 }

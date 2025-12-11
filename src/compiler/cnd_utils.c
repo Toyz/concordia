@@ -1,5 +1,208 @@
 #include "cnd_internal.h"
 
+// Helper to get opcode instruction size (returns total bytes including opcode)
+static int get_opcode_size_and_keyid_offset(uint8_t op, int* keyid_offset) {
+    *keyid_offset = -1; // -1 means no key ID in this instruction
+    
+    switch (op) {
+        case OP_NOOP:
+        case OP_SET_ENDIAN_LE:
+        case OP_SET_ENDIAN_BE:
+        case OP_EXIT_STRUCT:
+        case OP_ARR_END:
+        case OP_EXIT_BIT_MODE:
+        case OP_ENTER_BIT_MODE:
+        case OP_ADD:
+        case OP_SUB:
+        case OP_MUL:
+        case OP_DIV:
+        case OP_MOD:
+        case OP_NEG:
+        case OP_LOG_AND:
+        case OP_LOG_OR:
+        case OP_LOG_NOT:
+        case OP_BIT_AND:
+        case OP_BIT_OR:
+        case OP_BIT_XOR:
+        case OP_BIT_NOT:
+        case OP_SHL:
+        case OP_SHR:
+        case OP_EQ:
+        case OP_NEQ:
+        case OP_GT:
+        case OP_LT:
+        case OP_GTE:
+        case OP_LTE:
+        case OP_POP:
+        case OP_DUP:
+        case OP_SWAP:
+        case OP_FADD:
+        case OP_FSUB:
+        case OP_FMUL:
+        case OP_FDIV:
+        case OP_FNEG:
+        case OP_SIN:
+        case OP_COS:
+        case OP_TAN:
+        case OP_SQRT:
+        case OP_POW:
+        case OP_LOG:
+        case OP_ABS:
+        case OP_ITOF:
+        case OP_FTOI:
+        case OP_EQ_F:
+        case OP_NEQ_F:
+        case OP_GT_F:
+        case OP_LT_F:
+        case OP_GTE_F:
+        case OP_LTE_F:
+            return 1;
+            
+        case OP_ALIGN_PAD:
+        case OP_ALIGN_FILL:
+        case OP_EMIT:
+            return 2;
+            
+        // Opcodes with key_id at offset 1
+        case OP_ENTER_STRUCT:
+        case OP_META_NAME:
+        case OP_META_VERSION:
+        case OP_IO_U8:
+        case OP_IO_U16:
+        case OP_IO_U32:
+        case OP_IO_U64:
+        case OP_IO_I8:
+        case OP_IO_I16:
+        case OP_IO_I32:
+        case OP_IO_I64:
+        case OP_IO_F32:
+        case OP_IO_F64:
+        case OP_IO_BOOL:
+        case OP_IO_BIT_BOOL:
+        case OP_LOAD_CTX:
+        case OP_STORE_CTX:
+        case OP_ARR_EOF:
+            *keyid_offset = 1;
+            return 3;
+            
+        case OP_IO_BIT_U:
+        case OP_IO_BIT_I:
+            *keyid_offset = 1;
+            return 4; // op + key(2) + bits(1)
+            
+        case OP_STR_NULL:
+            *keyid_offset = 1;
+            return 5; // op + key(2) + maxlen(2)
+            
+        case OP_STR_PRE_U8:
+        case OP_STR_PRE_U16:
+        case OP_STR_PRE_U32:
+        case OP_ARR_PRE_U8:
+        case OP_ARR_PRE_U16:
+        case OP_ARR_PRE_U32:
+            *keyid_offset = 1;
+            return 3;
+            
+        case OP_ARR_FIXED:
+        case OP_RAW_BYTES:
+            *keyid_offset = 1;
+            return 7; // op + key(2) + count(4)
+            
+        case OP_ARR_DYNAMIC:
+            *keyid_offset = 1;
+            return 5; // op + key(2) + ref_key(2)
+            
+        case OP_JUMP:
+        case OP_JUMP_IF_NOT:
+            return 5; // op + offset(4)
+            
+        case OP_PUSH_IMM:
+            return 9; // op + val(8)
+            
+        case OP_SWITCH:
+            *keyid_offset = 1;
+            return 7; // op + key(2) + table_off(4)
+            
+        // Variable length - skip for now, struct bytecode shouldn't have these
+        case OP_CONST_CHECK:
+        case OP_CONST_WRITE:
+        case OP_RANGE_CHECK:
+        case OP_SCALE_LIN:
+        case OP_TRANS_ADD:
+        case OP_TRANS_SUB:
+        case OP_TRANS_MUL:
+        case OP_TRANS_DIV:
+        case OP_TRANS_POLY:
+        case OP_TRANS_SPLINE:
+        case OP_CRC_16:
+        case OP_CRC_32:
+        case OP_ENUM_CHECK:
+        case OP_MARK_OPTIONAL:
+        default:
+            return -1; // Unknown/variable - can't process
+    }
+}
+
+// Append struct bytecode with key IDs remapped to include prefix
+void buf_append_with_prefix(Buffer* b, const uint8_t* src, size_t len, 
+                            const char* prefix, int prefix_len, StringTable* strtab) {
+    size_t i = 0;
+    while (i < len) {
+        uint8_t op = src[i];
+        int keyid_offset;
+        int instr_size = get_opcode_size_and_keyid_offset(op, &keyid_offset);
+        
+        if (instr_size < 0 || i + instr_size > len) {
+            // Unknown opcode or would overflow - just copy rest verbatim
+            buf_append(b, src + i, len - i);
+            break;
+        }
+        
+        if (keyid_offset < 0) {
+            // No key ID to remap, just copy
+            buf_append(b, src + i, instr_size);
+        } else {
+            // Has key ID - need to remap
+            // Copy opcode byte(s) before key
+            buf_append(b, src + i, keyid_offset);
+            
+            // Read old key ID
+            uint16_t old_key = src[i + keyid_offset] | (src[i + keyid_offset + 1] << 8);
+            
+            // Look up old string
+            const char* old_name = (old_key < strtab->count) ? strtab->strings[old_key] : "";
+            int old_len = (int)strlen(old_name);
+            
+            // Build new prefixed name
+            char new_name[512];
+            if (prefix_len + 1 + old_len < 512) {
+                memcpy(new_name, prefix, prefix_len);
+                new_name[prefix_len] = '.';
+                memcpy(new_name + prefix_len + 1, old_name, old_len);
+                new_name[prefix_len + 1 + old_len] = '\0';
+            } else {
+                // Fallback - just use old name
+                memcpy(new_name, old_name, old_len + 1);
+            }
+            
+            // Add new name to strtab and get new key ID
+            uint16_t new_key = strtab_add(strtab, new_name, prefix_len + 1 + old_len);
+            
+            // Write new key ID
+            buf_push(b, new_key & 0xFF);
+            buf_push(b, (new_key >> 8) & 0xFF);
+            
+            // Copy rest of instruction after key ID
+            int after_key = instr_size - keyid_offset - 2;
+            if (after_key > 0) {
+                buf_append(b, src + i + keyid_offset + 2, after_key);
+            }
+        }
+        
+        i += instr_size;
+    }
+}
+
 // --- Buffer Implementation ---
 
 void buf_init(Buffer* b) {

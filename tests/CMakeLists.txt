@@ -7,6 +7,7 @@ set(TEST_SOURCES
     lexer_tests.cpp
     feature_tests.cpp
     verifier_tests.cpp
+    safety_perf_tests.cpp
 )
 
 add_executable(test_runner ${TEST_SOURCES})
