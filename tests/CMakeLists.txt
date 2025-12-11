@@ -6,6 +6,7 @@ set(TEST_SOURCES
     compiler_tests.cpp 
     lexer_tests.cpp
     feature_tests.cpp
+    verifier_tests.cpp
 )
 
 add_executable(test_runner ${TEST_SOURCES})

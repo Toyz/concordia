@@ -4,6 +4,7 @@ cmake_minimum_required(VERSION 3.14)
 add_library(concordia STATIC
     vm_exec.c
     vm_io.c
+    vm_verify.c
 )
 
 # Create an alias so users can link against concordia::vm if they prefer namespaced targets

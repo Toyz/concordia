@@ -276,6 +276,13 @@ void cnd_init(cnd_vm_ctx* ctx,
 cnd_error_t cnd_execute(cnd_vm_ctx* ctx);
 
 /**
+ * Verify a program's bytecode for basic structural validity.
+ * Checks for invalid opcodes, out-of-bounds arguments, and invalid jump targets.
+ * Returns CND_ERR_OK if valid.
+ */
+cnd_error_t cnd_verify_program(const cnd_program* program);
+
+/**
  * Get a human-readable error message for a given error code.
  */
 const char* cnd_error_string(cnd_error_t err);
