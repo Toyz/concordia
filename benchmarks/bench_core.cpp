@@ -159,14 +159,15 @@ static cnd_error_t bench_io_callback_array_struct(cnd_vm_ctx* ctx, uint16_t key_
     if (type == OP_ARR_END) return CND_ERR_OK;
 
     // Inside Item struct
+    // Key IDs: items=0, items.id=1, items.val=2
     if (bc->current_idx >= 100) return CND_ERR_OOB;
     Item* item = &bc->list.items[bc->current_idx];
 
     switch (key_id) {
-        case 0: // id
+        case 1: // items.id
             if (ctx->mode == CND_MODE_ENCODE) *(uint32_t*)ptr = item->id; else item->id = *(uint32_t*)ptr;
             break;
-        case 1: // val
+        case 2: // items.val
             if (ctx->mode == CND_MODE_ENCODE) *(uint16_t*)ptr = item->val; else item->val = *(uint16_t*)ptr;
             break;
     }

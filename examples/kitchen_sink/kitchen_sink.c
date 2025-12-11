@@ -13,6 +13,8 @@ typedef enum {
     STATUS_FAIL = 1
 } Status;
 
+typedef struct { float x, y, z; } Vec3;
+
 typedef struct {
     uint32_t magic;
     uint32_t flags_a; // Bitfield stored as full int
@@ -20,7 +22,11 @@ typedef struct {
     int8_t val_c;
     int64_t timestamp;
     
-    struct { float x, y, z; } position;
+    Vec3 position;
+    
+    Vec3 waypoints[4];
+    int waypoints_idx; // Iterator for struct array
+    bool in_waypoints_array; // Track if we're inside waypoints array
     
     uint8_t matrix[4];
     int matrix_idx; // Iterator
@@ -88,18 +94,16 @@ typedef struct {
 // This allows the Schema to evolve (Hot Reload) without breaking the Firmware.
 
 cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
-    // printf("Callback: key_id=%d, type=%d\n", key_id, type);
     KitchenSink* obj = (KitchenSink*)ctx->user_ptr;
-    const char* key_name = cnd_get_key_name(ctx->program, key_id); // Optional: Use name lookup for debug/robustness
+    const char* key_name = cnd_get_key_name(ctx->program, key_id);
     
     // Helper macros
     #define ENCODE (ctx->mode == CND_MODE_ENCODE)
     #define DECODE (ctx->mode == CND_MODE_DECODE)
     #define IO_VAL(ctype, field) { if (ENCODE) *(ctype*)ptr = (ctype)obj->field; else obj->field = *(ctype*)ptr; }
     
-    // Debug
     if (!key_name) {
-        return CND_ERR_OK; // Safe fallback
+        return CND_ERR_OK; // Safe fallback for unknown keys
     }
 
     // Control Flow
@@ -139,6 +143,7 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
     // Array Loops
     if (type == OP_ARR_FIXED) {
         if (strcmp(key_name, "matrix") == 0) obj->matrix_idx = 0;
+        else if (strcmp(key_name, "waypoints") == 0) { obj->waypoints_idx = 0; obj->in_waypoints_array = true; }
         return CND_ERR_OK;
     }
     if (type == OP_ARR_PRE_U8) { // points
@@ -153,6 +158,20 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
         else if (strcmp(key_name, "dynamic_strings") == 0) obj->dynamic_strings_idx = 0;
         return CND_ERR_OK;
     }
+    // Handle bulk byte array optimization
+    if (type == OP_RAW_BYTES) {
+        if (strcmp(key_name, "matrix") == 0) {
+            if (ENCODE) memcpy(ptr, obj->matrix, 4);
+            else memcpy(obj->matrix, ptr, 4);
+        } else if (strcmp(key_name, "dynamic_bytes") == 0) {
+            if (ENCODE) memcpy(ptr, obj->dynamic_bytes, obj->dynamic_len);
+            else memcpy(obj->dynamic_bytes, ptr, obj->dynamic_len);
+        } else if (strcmp(key_name, "rest_of_stream") == 0) {
+            // For EOF arrays, this would need special handling
+            // since we don't know the size upfront on decode
+        }
+        return CND_ERR_OK;
+    }
     if (type == OP_ARR_EOF) {
         if (strcmp(key_name, "rest_of_stream") == 0) {
             obj->rest_of_stream_idx = 0;
@@ -160,8 +179,17 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
         }
         return CND_ERR_OK;
     }
-    if (type == OP_ARR_END) return CND_ERR_OK;
-    if (type == OP_ENTER_STRUCT || type == OP_EXIT_STRUCT) return CND_ERR_OK;
+    if (type == OP_ARR_END) {
+        // Clear array tracking flags
+        obj->in_waypoints_array = false;
+        return CND_ERR_OK;
+    }
+    if (type == OP_ENTER_STRUCT) return CND_ERR_OK;
+    if (type == OP_EXIT_STRUCT) {
+        // Only advance waypoints_idx when exiting a struct inside waypoints array
+        if (obj->in_waypoints_array && obj->waypoints_idx < 4) obj->waypoints_idx++;
+        return CND_ERR_OK;
+    }
 
     // Fields by Name (String lookup is slow but robust for demo; embedded would use Switch on ID)
     if (!key_name) return CND_ERR_OK;
@@ -183,6 +211,10 @@ cnd_error_t sink_cb(cnd_vm_ctx* ctx, uint16_t key_id, uint8_t type, void* ptr) {
     else if (strcmp(key_name, "position.x") == 0) IO_VAL(float, position.x)
     else if (strcmp(key_name, "position.y") == 0) IO_VAL(float, position.y)
     else if (strcmp(key_name, "position.z") == 0) IO_VAL(float, position.z)
+    // Waypoints struct array
+    else if (strcmp(key_name, "waypoints.x") == 0 && obj->waypoints_idx < 4) IO_VAL(float, waypoints[obj->waypoints_idx].x)
+    else if (strcmp(key_name, "waypoints.y") == 0 && obj->waypoints_idx < 4) IO_VAL(float, waypoints[obj->waypoints_idx].y)
+    else if (strcmp(key_name, "waypoints.z") == 0 && obj->waypoints_idx < 4) IO_VAL(float, waypoints[obj->waypoints_idx].z)
     else if (strcmp(key_name, "matrix") == 0 && type == OP_IO_U8) {
         if (obj->matrix_idx < 4) {
             IO_VAL(uint8_t, matrix[obj->matrix_idx]);
@@ -340,6 +372,7 @@ int main(void) {
         .flags_a = 1, .flag_b = true, .val_c = -5,
         .timestamp = 123456789,
         .position = { 1.0f, 2.0f, 3.0f },
+        .waypoints = { {10.0f, 20.0f, 30.0f}, {40.0f, 50.0f, 60.0f}, {70.0f, 80.0f, 90.0f}, {100.0f, 110.0f, 120.0f} },
         .matrix = {1, 2, 3, 4},
         .points_len = 3, .points = {10, 20, 30},
         .status = STATUS_OK, .confidence = 100,
@@ -379,6 +412,9 @@ int main(void) {
     printf("  Flags A: %u, Flag B: %s, Val C: %d\n", out.flags_a, out.flag_b ? "true" : "false", out.val_c);
     printf("  Timestamp: %lld\n", (long long)out.timestamp);
     printf("  Position: { %.2f, %.2f, %.2f }\n", out.position.x, out.position.y, out.position.z);
+    printf("  Waypoints: [\n");
+    for(int i=0; i<4; i++) printf("    { %.2f, %.2f, %.2f }%s\n", out.waypoints[i].x, out.waypoints[i].y, out.waypoints[i].z, i<3?",":"");
+    printf("  ]\n");
     printf("  Matrix: [%d, %d, %d, %d]\n", out.matrix[0], out.matrix[1], out.matrix[2], out.matrix[3]);
     printf("  Points (%d): [", out.points_len);
     for(int i=0; i<out.points_len; i++) printf("%d%s", out.points[i], i==out.points_len-1 ? "" : ", ");

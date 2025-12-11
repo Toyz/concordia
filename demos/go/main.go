@@ -31,6 +31,7 @@ type KitchenSink struct {
 	ValC      int8
 	Timestamp int64
 	Position  Vec3
+	Waypoints [4]Vec3
 	Matrix    [4]uint8
 	Points    []uint16
 	Name      string
@@ -118,6 +119,7 @@ func main() {
 		ValC:        -5,
 		Timestamp:   1678886400,
 		Position:    Vec3{X: 1.0, Y: 2.0, Z: 3.0},
+		Waypoints:   [4]Vec3{{10.0, 20.0, 30.0}, {40.0, 50.0, 60.0}, {70.0, 80.0, 90.0}, {100.0, 110.0, 120.0}},
 		Matrix:      [4]uint8{10, 20, 30, 40},
 		Points:      []uint16{100, 200, 300},
 		Name:        "Concordia Go",
@@ -161,11 +163,37 @@ func main() {
 
 	matrixIdx := 0
 	pointsIdx := 0
+	waypointsIdx := 0
+	inWaypointsArray := false
 	dynBytesIdx := 0
 	dynStrIdx := 0
 	restIdx := 0
 
 	err = prog.Execute(buffer, concordia.ModeEncode, func(ctx *concordia.Context, keyID uint16, typeOp concordia.OpCode, val concordia.Value) error {
+		name := prog.GetKeyName(keyID)
+
+		// Handle struct array tracking BEFORE nil check
+		if typeOp == concordia.OpArrFixed && name == "waypoints" {
+			waypointsIdx = 0
+			inWaypointsArray = true
+			return nil
+		}
+		if typeOp == concordia.OpArrEnd {
+			if inWaypointsArray {
+				inWaypointsArray = false
+			}
+			return nil
+		}
+		if typeOp == concordia.OpExitStruct {
+			if inWaypointsArray {
+				waypointsIdx++
+			}
+			return nil
+		}
+		if typeOp == concordia.OpEnterStruct {
+			return nil
+		}
+
 		if val.UnsafeAddr() == nil {
 			return nil
 		}
@@ -174,7 +202,6 @@ func main() {
 			return concordia.GoErrInvalidOp
 		}
 
-		name := prog.GetKeyName(keyID)
 		switch name {
 		case "magic":
 			val.SetUint32(data.Magic)
@@ -192,6 +219,18 @@ func main() {
 			val.SetFloat32(data.Position.Y)
 		case "position.z":
 			val.SetFloat32(data.Position.Z)
+		case "waypoints.x":
+			if waypointsIdx < 4 {
+				val.SetFloat32(data.Waypoints[waypointsIdx].X)
+			}
+		case "waypoints.y":
+			if waypointsIdx < 4 {
+				val.SetFloat32(data.Waypoints[waypointsIdx].Y)
+			}
+		case "waypoints.z":
+			if waypointsIdx < 4 {
+				val.SetFloat32(data.Waypoints[waypointsIdx].Z)
+			}
 		case "matrix":
 			// Array Start
 			if typeOp == 0x34 { // OP_ARR_FIXED
@@ -328,11 +367,37 @@ func main() {
 
 	matrixIdx = 0
 	pointsIdx = 0
+	waypointsIdx = 0
+	inWaypointsArray = false
 	dynBytesIdx = 0
 	dynStrIdx = 0
 	// restIdx not needed for decode append
 
 	err = prog.Execute(buffer, concordia.ModeDecode, func(ctx *concordia.Context, keyID uint16, typeOp concordia.OpCode, val concordia.Value) error {
+		name := prog.GetKeyName(keyID)
+
+		// Handle struct array tracking for decode BEFORE nil check
+		if typeOp == concordia.OpArrFixed && name == "waypoints" {
+			waypointsIdx = 0
+			inWaypointsArray = true
+			return nil
+		}
+		if typeOp == concordia.OpArrEnd {
+			if inWaypointsArray {
+				inWaypointsArray = false
+			}
+			return nil
+		}
+		if typeOp == concordia.OpExitStruct {
+			if inWaypointsArray {
+				waypointsIdx++
+			}
+			return nil
+		}
+		if typeOp == concordia.OpEnterStruct {
+			return nil
+		}
+
 		if val.UnsafeAddr() == nil {
 			return nil
 		}
@@ -343,7 +408,6 @@ func main() {
 
 		isQuery := typeOp == concordia.OpCtxQuery || typeOp == concordia.OpLoadCtx
 
-		name := prog.GetKeyName(keyID)
 		switch name {
 		case "magic":
 			decoded.Magic = val.Uint32()
@@ -356,11 +420,36 @@ func main() {
 		case "timestamp":
 			decoded.Timestamp = val.Int64()
 		case "position.x":
-			decoded.Position.X = val.Float32()
+			if isQuery {
+				// For @expr that reads position.x, return the already-decoded value
+				val.SetFloat64(float64(decoded.Position.X))
+			} else {
+				decoded.Position.X = val.Float32()
+			}
 		case "position.y":
-			decoded.Position.Y = val.Float32()
+			if isQuery {
+				val.SetFloat64(float64(decoded.Position.Y))
+			} else {
+				decoded.Position.Y = val.Float32()
+			}
 		case "position.z":
-			decoded.Position.Z = val.Float32()
+			if isQuery {
+				val.SetFloat64(float64(decoded.Position.Z))
+			} else {
+				decoded.Position.Z = val.Float32()
+			}
+		case "waypoints.x":
+			if waypointsIdx < 4 {
+				decoded.Waypoints[waypointsIdx].X = val.Float32()
+			}
+		case "waypoints.y":
+			if waypointsIdx < 4 {
+				decoded.Waypoints[waypointsIdx].Y = val.Float32()
+			}
+		case "waypoints.z":
+			if waypointsIdx < 4 {
+				decoded.Waypoints[waypointsIdx].Z = val.Float32()
+			}
 		case "matrix":
 			if typeOp == concordia.OpArrFixed {
 				matrixIdx = 0

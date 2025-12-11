@@ -36,6 +36,9 @@ packet KitchenSink {
     // Nested Struct
     Vec3 position; // Key 5 (Inside: x=6, y=7, z=8)
     
+    // Array of Structs (Fixed)
+    Vec3 waypoints[4];
+    
     // Array (Fixed)
     uint8 matrix[4]; // Key 9
     

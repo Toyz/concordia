@@ -40,6 +40,19 @@ int main(int argc, char** argv) {
     if (strcmp(argv[1], "encode") == 0) return cmd_encode(argc, argv);
     if (strcmp(argv[1], "decode") == 0) return cmd_decode(argc, argv);
     if (strcmp(argv[1], "lsp") == 0) return cmd_lsp(argc, argv);
+    if (strcmp(argv[1], "help") == 0 || strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
+        printf("Concordia CLI %s (%s)\n", CND_VERSION, CND_GIT_HASH);
+        printf("Usage:\n");
+        printf("  cnd compile <in.cnd> <out.il>\n");
+        printf("  cnd fmt <in.cnd> [out.cnd]\n");
+        printf("  cnd inspect <file.il>\n");
+        printf("  cnd encode <schema.il> <in.json> <out.bin>\n");
+        printf("  cnd decode <schema.il> <in.bin> <out.json>\n");
+        printf("  cnd lsp\n");
+        printf("  cnd version\n");
+        printf("  cnd help\n");
+        return 0;
+    }
     if (strcmp(argv[1], "version") == 0 || strcmp(argv[1], "-v") == 0 || strcmp(argv[1], "--version") == 0) {
         printf("Concordia CLI %s\n", CND_VERSION);
         printf("Git Hash: %s\n", CND_GIT_HASH);
