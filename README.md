@@ -96,15 +96,18 @@ packet Telemetry {
     /// Temperature in Celsius
     float temperature;
 
-    @count(3)
+    // Fixed-size array
     uint8 sensors[3];
 
-    uint8 num_logs;
-    @count(num_logs)
-    string logs[];
+    // Variable-length array with length prefix
+    uint8 points[] prefix uint8;
+
+    // Variable-length string with length prefix
+    string message prefix uint8;
     
     Status status;
     
+    // Bitfields
     uint8 flags : 4;
     uint8 mode  : 4;
 }
