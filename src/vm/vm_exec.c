@@ -12,6 +12,109 @@
 #define FETCH_IL_U8(ctx) read_il_u8(ctx)
 #define FETCH_IL_U16(ctx) read_il_u16(ctx)
 
+// --- Math Helpers ---
+
+static inline double vm_math_poly_eval(cnd_vm_ctx* ctx, double x) {
+    double y = 0;
+    if (ctx->trans_poly_count > 0) {
+        uint64_t tmp;
+        memcpy(&tmp, ctx->trans_poly_data + (ctx->trans_poly_count - 1) * 8, 8);
+        memcpy(&y, &tmp, 8);
+        for (int i = ctx->trans_poly_count - 2; i >= 0; i--) {
+            double c;
+            memcpy(&tmp, ctx->trans_poly_data + i * 8, 8);
+            memcpy(&c, &tmp, 8);
+            y = y * x + c;
+        }
+    }
+    return y;
+}
+
+static inline double vm_math_poly_solve(cnd_vm_ctx* ctx, double target_y) {
+    double x = 0;
+    for(int iter=0; iter<20; iter++) {
+        double y = 0;
+        double dy = 0;
+        if (ctx->trans_poly_count > 0) {
+            uint64_t tmp;
+            memcpy(&tmp, ctx->trans_poly_data + (ctx->trans_poly_count - 1) * 8, 8);
+            memcpy(&y, &tmp, 8);
+            for (int i = ctx->trans_poly_count - 2; i >= 0; i--) {
+                double c;
+                memcpy(&tmp, ctx->trans_poly_data + i * 8, 8);
+                memcpy(&c, &tmp, 8);
+                dy = dy * x + y;
+                y = y * x + c;
+            }
+        }
+        double diff = y - target_y;
+        if (diff > -0.001 && diff < 0.001) break;
+        if (dy == 0) break;
+        x = x - diff / dy;
+    }
+    return x;
+}
+
+static inline double vm_math_spline_eval(cnd_vm_ctx* ctx, double x) {
+    double y = 0;
+    if (ctx->trans_spline_count >= 2) {
+        for (int i = 0; i < ctx->trans_spline_count - 1; i++) {
+            double x0, y0, x1, y1;
+            uint64_t tmp;
+            memcpy(&tmp, ctx->trans_spline_data + (i * 2) * 8, 8); memcpy(&x0, &tmp, 8);
+            memcpy(&tmp, ctx->trans_spline_data + (i * 2 + 1) * 8, 8); memcpy(&y0, &tmp, 8);
+            memcpy(&tmp, ctx->trans_spline_data + ((i + 1) * 2) * 8, 8); memcpy(&x1, &tmp, 8);
+            memcpy(&tmp, ctx->trans_spline_data + ((i + 1) * 2 + 1) * 8, 8); memcpy(&y1, &tmp, 8);
+            if ((x >= x0 && x <= x1) || (i == ctx->trans_spline_count - 2)) {
+                if (x1 == x0) y = y0;
+                else y = y0 + (x - x0) * (y1 - y0) / (x1 - x0);
+                break;
+            }
+        }
+    }
+    return y;
+}
+
+static inline double vm_math_spline_solve(cnd_vm_ctx* ctx, double target_y) {
+    double x = 0;
+    if (ctx->trans_spline_count >= 2) {
+        for (int i = 0; i < ctx->trans_spline_count - 1; i++) {
+            double x0, y0, x1, y1;
+            uint64_t tmp;
+            memcpy(&tmp, ctx->trans_spline_data + (i * 2) * 8, 8); memcpy(&x0, &tmp, 8);
+            memcpy(&tmp, ctx->trans_spline_data + (i * 2 + 1) * 8, 8); memcpy(&y0, &tmp, 8);
+            memcpy(&tmp, ctx->trans_spline_data + ((i + 1) * 2) * 8, 8); memcpy(&x1, &tmp, 8);
+            memcpy(&tmp, ctx->trans_spline_data + ((i + 1) * 2 + 1) * 8, 8); memcpy(&y1, &tmp, 8);
+            if ((target_y >= y0 && target_y <= y1) || (target_y <= y0 && target_y >= y1)) {
+                if (y1 == y0) x = x0;
+                else x = x0 + (target_y - y0) * (x1 - x0) / (y1 - y0);
+                break;
+            }
+        }
+    }
+    return x;
+}
+
+static inline int64_t vm_math_int_to_eng(cnd_vm_ctx* ctx, int64_t raw) {
+    switch(ctx->trans_type) {
+        case CND_TRANS_ADD_I64: return raw + ctx->trans_i_val;
+        case CND_TRANS_SUB_I64: return raw - ctx->trans_i_val;
+        case CND_TRANS_MUL_I64: return raw * ctx->trans_i_val;
+        case CND_TRANS_DIV_I64: return (ctx->trans_i_val != 0) ? raw / ctx->trans_i_val : raw;
+        default: return raw;
+    }
+}
+
+static inline int64_t vm_math_int_to_raw(cnd_vm_ctx* ctx, int64_t eng) {
+    switch(ctx->trans_type) {
+        case CND_TRANS_ADD_I64: return eng - ctx->trans_i_val;
+        case CND_TRANS_SUB_I64: return eng + ctx->trans_i_val;
+        case CND_TRANS_MUL_I64: return (ctx->trans_i_val != 0) ? eng / ctx->trans_i_val : eng;
+        case CND_TRANS_DIV_I64: return eng * ctx->trans_i_val;
+        default: return eng;
+    }
+}
+
 // --- Helpers / Macros to reduce repeated IO case code ---
 // HANDLE_PRIMITIVE(size, ctype, READ_EXPR, WRITE_EXPR)
 //   - size: number of bytes this IO consumes
@@ -49,45 +152,11 @@
               if (ctx->mode == CND_MODE_ENCODE) { \
                   SYNC_IP(); \
                   if (ctx->io_callback(ctx, key, OP_IO_F64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
-                  double x = 0; \
-                  for(int iter=0; iter<20; iter++) { \
-                      double y = 0; \
-                      double dy = 0; \
-                      if (ctx->trans_poly_count > 0) { \
-                          uint64_t tmp; \
-                          memcpy(&tmp, ctx->trans_poly_data + (ctx->trans_poly_count - 1) * 8, 8); \
-                          memcpy(&y, &tmp, 8); \
-                          for (int i = ctx->trans_poly_count - 2; i >= 0; i--) { \
-                              double c; \
-                              memcpy(&tmp, ctx->trans_poly_data + i * 8, 8); \
-                              memcpy(&c, &tmp, 8); \
-                              dy = dy * x + y; \
-                              y = y * x + c; \
-                          } \
-                      } \
-                      double diff = y - eng_val; \
-                      if (diff > -0.001 && diff < 0.001) break; \
-                      if (dy == 0) break; \
-                      x = x - diff / dy; \
-                  } \
-                  ctype val = (ctype)x; \
+                  ctype val = (ctype)vm_math_poly_solve(ctx, eng_val); \
                   WRITE_EXPR; \
               } else { \
                   ctype raw = (READ_EXPR); \
-                  double x = (double)raw; \
-                  double y = 0; \
-                  if (ctx->trans_poly_count > 0) { \
-                      uint64_t tmp; \
-                      memcpy(&tmp, ctx->trans_poly_data + (ctx->trans_poly_count - 1) * 8, 8); \
-                      memcpy(&y, &tmp, 8); \
-                      for (int i = ctx->trans_poly_count - 2; i >= 0; i--) { \
-                          double c; \
-                          memcpy(&tmp, ctx->trans_poly_data + i * 8, 8); \
-                          memcpy(&c, &tmp, 8); \
-                          y = y * x + c; \
-                      } \
-                  } \
-                  eng_val = y; \
+                  eng_val = vm_math_poly_eval(ctx, (double)raw); \
                   SYNC_IP(); \
                   if (ctx->io_callback(ctx, key, OP_IO_F64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
               } \
@@ -96,46 +165,11 @@
               if (ctx->mode == CND_MODE_ENCODE) { \
                   SYNC_IP(); \
                   if (ctx->io_callback(ctx, key, OP_IO_F64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
-                  double x = 0; \
-                  /* Reverse Spline: Find x given y (eng_val) */ \
-                  if (ctx->trans_spline_count >= 2) { \
-                      for (int i = 0; i < ctx->trans_spline_count - 1; i++) { \
-                          double x0, y0, x1, y1; \
-                          uint64_t tmp; \
-                          memcpy(&tmp, ctx->trans_spline_data + (i * 2) * 8, 8); memcpy(&x0, &tmp, 8); \
-                          memcpy(&tmp, ctx->trans_spline_data + (i * 2 + 1) * 8, 8); memcpy(&y0, &tmp, 8); \
-                          memcpy(&tmp, ctx->trans_spline_data + ((i + 1) * 2) * 8, 8); memcpy(&x1, &tmp, 8); \
-                          memcpy(&tmp, ctx->trans_spline_data + ((i + 1) * 2 + 1) * 8, 8); memcpy(&y1, &tmp, 8); \
-                          if ((eng_val >= y0 && eng_val <= y1) || (eng_val <= y0 && eng_val >= y1)) { \
-                              if (y1 == y0) x = x0; \
-                              else x = x0 + (eng_val - y0) * (x1 - x0) / (y1 - y0); \
-                              break; \
-                          } \
-                      } \
-                  } \
-                  ctype val = (ctype)x; \
+                  ctype val = (ctype)vm_math_spline_solve(ctx, eng_val); \
                   WRITE_EXPR; \
               } else { \
                   ctype raw = (READ_EXPR); \
-                  double x = (double)raw; \
-                  double y = 0; \
-                  /* Forward Spline: Find y given x (raw) */ \
-                  if (ctx->trans_spline_count >= 2) { \
-                      for (int i = 0; i < ctx->trans_spline_count - 1; i++) { \
-                          double x0, y0, x1, y1; \
-                          uint64_t tmp; \
-                          memcpy(&tmp, ctx->trans_spline_data + (i * 2) * 8, 8); memcpy(&x0, &tmp, 8); \
-                          memcpy(&tmp, ctx->trans_spline_data + (i * 2 + 1) * 8, 8); memcpy(&y0, &tmp, 8); \
-                          memcpy(&tmp, ctx->trans_spline_data + ((i + 1) * 2) * 8, 8); memcpy(&x1, &tmp, 8); \
-                          memcpy(&tmp, ctx->trans_spline_data + ((i + 1) * 2 + 1) * 8, 8); memcpy(&y1, &tmp, 8); \
-                          if ((x >= x0 && x <= x1) || (i == ctx->trans_spline_count - 2)) { \
-                              if (x1 == x0) y = y0; \
-                              else y = y0 + (x - x0) * (y1 - y0) / (x1 - x0); \
-                              break; \
-                          } \
-                      } \
-                  } \
-                  eng_val = y; \
+                  eng_val = vm_math_spline_eval(ctx, (double)raw); \
                   SYNC_IP(); \
                   if (ctx->io_callback(ctx, key, OP_IO_F64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
               } \
@@ -144,27 +178,11 @@
               if (ctx->mode == CND_MODE_ENCODE) { \
                   SYNC_IP(); \
                   if (ctx->io_callback(ctx, key, OP_IO_I64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
-                  int64_t raw64 = eng_val; \
-                  switch(ctx->trans_type) { \
-                      case CND_TRANS_ADD_I64: raw64 -= ctx->trans_i_val; break; \
-                      case CND_TRANS_SUB_I64: raw64 += ctx->trans_i_val; break; \
-                      case CND_TRANS_MUL_I64: if(ctx->trans_i_val!=0) raw64 /= ctx->trans_i_val; break; \
-                      case CND_TRANS_DIV_I64: raw64 *= ctx->trans_i_val; break; \
-                      default: break; \
-                  } \
-                  ctype val = (ctype)raw64; \
+                  ctype val = (ctype)vm_math_int_to_raw(ctx, eng_val); \
                   WRITE_EXPR; \
               } else { \
                   ctype raw = (READ_EXPR); \
-                  int64_t raw64 = (int64_t)raw; \
-                  switch(ctx->trans_type) { \
-                      case CND_TRANS_ADD_I64: raw64 += ctx->trans_i_val; break; \
-                      case CND_TRANS_SUB_I64: raw64 -= ctx->trans_i_val; break; \
-                      case CND_TRANS_MUL_I64: raw64 *= ctx->trans_i_val; break; \
-                      case CND_TRANS_DIV_I64: if(ctx->trans_i_val!=0) raw64 /= ctx->trans_i_val; break; \
-                      default: break; \
-                  } \
-                  eng_val = raw64; \
+                  eng_val = vm_math_int_to_eng(ctx, (int64_t)raw); \
                   SYNC_IP(); \
                   if (ctx->io_callback(ctx, key, OP_IO_I64, &eng_val) != CND_ERR_OK) return CND_ERR_CALLBACK; \
               } \
@@ -1256,7 +1274,9 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 size_t code_start_ip = ctx->ip;
                 size_t table_start_ip = code_start_ip + table_rel_offset;
                 
-                if (table_start_ip > ctx->program->bytecode_len) return CND_ERR_OOB;
+                // Check if table start is valid and if we can read the header (20 bytes)
+                if (table_start_ip > ctx->program->bytecode_len || 
+                    table_start_ip + 20 > ctx->program->bytecode_len) return CND_ERR_OOB;
                 
                 // Jump to table
                 size_t original_ip = ctx->ip;
@@ -1274,22 +1294,13 @@ cnd_error_t cnd_execute(cnd_vm_ctx* ctx) {
                 if (disc_val >= min_val && disc_val <= max_val) {
                     uint64_t index = disc_val - min_val;
                     // Offset is at table_start + 8 + 8 + 4 + index * 4
-                    // We are currently at table_start + 20
-                    // So we need to skip index * 4 bytes
+                    // We are currently at table_start + 20 (ctx->ip)
                     size_t offset_loc = ctx->ip + (size_t)(index * 4);
+                    
+                    // Check bounds for the offset entry
                     if (offset_loc + 4 > ctx->program->bytecode_len) return CND_ERR_OOB;
                     
-                    // Read offset directly
-                    // We can't use read_il_u32 because it advances ip.
-                    // We can use helper or just read from buffer.
-                    // But read_il_u32 handles endianness if needed? 
-                    // The bytecode is little endian usually? Or host endian?
-                    // The compiler writes in host endian? No, buf_push writes LE.
-                    // read_il_u32 reads LE.
-                    // So we need to read 4 bytes at offset_loc.
-                    const uint8_t* p = ctx->program->bytecode + offset_loc;
-                    uint32_t val = (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
-                    target_off = (int32_t)val;
+                    target_off = (int32_t)peek_il_u32(ctx, offset_loc);
                 }
                 
                 ctx->ip = original_ip;

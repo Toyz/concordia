@@ -44,6 +44,12 @@ static inline uint64_t read_il_u64(cnd_vm_ctx* ctx) {
     return val;
 }
 
+static inline uint32_t peek_il_u32(cnd_vm_ctx* ctx, size_t idx) {
+    if (idx + 4 > ctx->program->bytecode_len) return 0;
+    const uint8_t* b = ctx->program->bytecode + idx;
+    return b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24);
+}
+
 // --- Data Access (Read) ---
 
 static inline uint8_t read_u8(const uint8_t* buf) {
