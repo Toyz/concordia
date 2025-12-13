@@ -1560,7 +1560,9 @@ void parse_import(Parser* p) {
     memcpy(rel_path, path_tok.start, len);
     rel_path[len] = '\0';
     
-    char* full_path = resolve_path(p->current_path, rel_path);
+    char* joined_path = resolve_path(p->current_path, rel_path);
+    char* full_path = cnd_canonicalize_path(joined_path);
+    free(joined_path);
     
     // Check if already imported
     for (size_t i = 0; i < p->imports.count; i++) {

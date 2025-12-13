@@ -259,6 +259,10 @@ typedef struct {
     size_t error_cap;
 } Parser;
 
+// Returns a newly-allocated canonicalized path string for de-duplication.
+// Caller owns the returned string.
+char* cnd_canonicalize_path(const char* path);
+
 void parser_error(Parser* p, const char* msg);
 void advance(Parser* p);
 void consume(Parser* p, TokenType type, const char* msg);

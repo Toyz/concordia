@@ -1,5 +1,32 @@
 #include "cnd_internal.h"
 
+char* cnd_canonicalize_path(const char* path) {
+    if (!path) return NULL;
+
+#ifdef _WIN32
+    // _fullpath resolves relative segments and returns an absolute path.
+    char* abs_path = _fullpath(NULL, path, 0);
+    if (!abs_path) {
+        return strdup(path);
+    }
+
+    // Normalize for stable comparisons (Windows is case-insensitive).
+    for (char* c = abs_path; *c; c++) {
+        if (*c == '\\') *c = '/';
+        *c = (char)tolower((unsigned char)*c);
+    }
+    return abs_path;
+#else
+    // realpath resolves symlinks and normalizes ./ and ../ segments.
+    // It fails if the path doesn't exist; fall back to strdup in that case.
+    char* rp = realpath(path, NULL);
+    if (!rp) {
+        return strdup(path);
+    }
+    return rp;
+#endif
+}
+
 // Helper to get opcode instruction size (returns total bytes including opcode)
 static int get_opcode_size_and_keyid_offset(uint8_t op, int* keyid_offset) {
     *keyid_offset = -1; // -1 means no key ID in this instruction

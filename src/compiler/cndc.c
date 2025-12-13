@@ -257,10 +257,14 @@ static void optimize_strings(Parser* p) {
 // Implementation of cnd_compile_file using the new modular structure
 int cnd_compile_file(const char* in_path, const char* out_path, int json_output, int verbose) {
     setbuf(stdout, NULL); // Ensure debug prints are flushed immediately
-    FILE* f = fopen(in_path, "rb");
+    char* canonical_in_path = cnd_canonicalize_path(in_path);
+    const char* open_path = canonical_in_path ? canonical_in_path : in_path;
+
+    FILE* f = fopen(open_path, "rb");
     if (!f) { 
-        if (json_output) printf("{\"error\": \"Error opening input file: %s\"}\n", in_path);
-        else printf("Error opening input file: %s\n", in_path); 
+        if (json_output) printf("{\"error\": \"Error opening input file: %s\"}\n", open_path);
+        else printf("Error opening input file: %s\n", open_path);
+        if (canonical_in_path) free(canonical_in_path);
         return 1; 
     }
     fseek(f, 0, SEEK_END); long size = ftell(f); fseek(f, 0, SEEK_SET);
@@ -277,12 +281,12 @@ int cnd_compile_file(const char* in_path, const char* out_path, int json_output,
     reg_init(&p.registry);
     enum_reg_init(&p.enums);
     p.target = &p.global_bc;
-    p.current_path = in_path;
+    p.current_path = open_path;
     p.json_output = json_output;
     p.verbose = verbose;
     
     // Add main file to imports to prevent self-import
-    strtab_add(&p.imports, in_path, (int)strlen(in_path));
+    strtab_add(&p.imports, open_path, (int)strlen(open_path));
     
     advance(&p);
     parse_top_level(&p);
@@ -374,6 +378,8 @@ int cnd_compile_file(const char* in_path, const char* out_path, int json_output,
         for(size_t i=0; i<p.imports.count; i++) free(p.imports.strings[i]);
         free(p.imports.strings);
     }
+
+    if (canonical_in_path) free(canonical_in_path);
     
     return ret;
 }

@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <fstream>
 #include <cstdio>
+#include <filesystem>
 #include "compiler.h"
 
 class CompilerTest : public ::testing::Test {
@@ -12,6 +13,7 @@ protected:
     const char* kFileA = "import_a.cnd";
     const char* kFileB = "import_b.cnd";
     const char* kImportOutFile = "import_out.il";
+    const char* kImportDir = "import_dir";
 
     void TearDown() override {
         remove(kSourceFile);
@@ -19,6 +21,7 @@ protected:
         remove(kFileA);
         remove(kFileB);
         remove(kImportOutFile);
+        std::filesystem::remove_all(kImportDir);
     }
 
     void WriteSource(const std::string& content) {
@@ -325,6 +328,30 @@ TEST_F(CompilerTest, DuplicateImport) {
     );
     
     int res = cnd_compile_file(kFileB, kImportOutFile, 0, 0);
+    EXPECT_EQ(res, 0);
+    EXPECT_TRUE(CheckOutputExists(kImportOutFile));
+}
+
+TEST_F(CompilerTest, ImportPathNormalization) {
+    namespace fs = std::filesystem;
+
+    fs::create_directories(std::string(kImportDir) + "/shared");
+    fs::create_directories(std::string(kImportDir) + "/packets");
+
+    WriteFile("import_dir/shared/vec2.cnd", "struct Vec2 { float x; float y; }");
+    WriteFile(
+        "import_dir/packets/use_vec2.cnd",
+        "@import(\"../shared/vec2.cnd\")"
+        "struct UseVec2 { Vec2 v; }"
+    );
+    WriteFile(
+        "import_dir/main.cnd",
+        "@import(\"shared/vec2.cnd\")"
+        "@import(\"packets/use_vec2.cnd\")"
+        "packet P { Vec2 v; UseVec2 u; }"
+    );
+
+    int res = cnd_compile_file("import_dir/main.cnd", kImportOutFile, 0, 0);
     EXPECT_EQ(res, 0);
     EXPECT_TRUE(CheckOutputExists(kImportOutFile));
 }
